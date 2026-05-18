@@ -1,22 +1,22 @@
 import telebot
+import sqlite3
 import google.generativeai as genai
 import json
 import re
 import os
-import logging
+import base64
+import requests
 from dotenv import load_dotenv
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import db as DB
-from zepp_sync import zepp_sync, save as _zepp_save, make_headers as _zepp_headers
 
 load_dotenv()
-
-log = logging.getLogger("bot")
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 ZEPP_TOKEN     = os.getenv('ZEPP_APP_TOKEN', '').strip()
 ZEPP_USER_ID   = os.getenv('ZEPP_USER_ID', '').strip()
+DB_PATH        = os.getenv('DB_PATH', 'nutricao.db')
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 genai.configure(api_key=GEMINI_API_KEY)
@@ -71,11 +71,78 @@ def get_amazfit_hoje(day=None):
         return None
     return df.iloc[0].to_dict()
 
+def save_amazfit(row):
+    DB.execute("DELETE FROM amazfit_dados WHERE data_hora=?", [row["data_hora"]])
+    DB.execute(
+        "INSERT INTO amazfit_dados VALUES (?,?,?,?,?,?,?,?)",
+        [row["data_hora"], row["passos"], row["calorias_gastas"], row["distancia_km"],
+         row["sono_total_min"], row["sono_profundo_min"], row["hrv_ms"], row["pai"]]
+    )
+
 def update_hrv_pai(day, hrv, pai):
     DB.execute(
         "UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?",
         [hrv, pai, f"{day} 00:00:00"]
     )
+
+# ── Zepp sync ─────────────────────────────────────────────────────────────────
+def zepp_headers():
+    return {
+        "Accept": "*/*", "appname": "com.huami.midong",
+        "appplatform": "ios_phone", "apptoken": ZEPP_TOKEN,
+        "channel": "appstore", "country": "BR", "lang": "pt_BR",
+        "timezone": "America/Sao_Paulo",
+        "User-Agent": "Zepp/10.3.1 (iPhone; iOS 26.4.2; Scale/3.00)", "v": "2.0",
+    }
+
+def decode_summary(b64):
+    try:
+        pad = b64 + "=" * (4 - len(b64) % 4)
+        return json.loads(base64.b64decode(pad).decode("utf-8", "replace"))
+    except Exception:
+        return {}
+
+def zepp_sync(day=None):
+    """Sincroniza dados do Zepp para o dia especificado. Retorna dict com dados."""
+    if not ZEPP_TOKEN or not ZEPP_USER_ID:
+        return None
+    day = day or date.today().strftime("%Y-%m-%d")
+    try:
+        r = requests.get(
+            "https://api-mifit-us3.zepp.com/v1/data/band_data.json",
+            headers=zepp_headers(),
+            params={"query_type": "summary", "device_type": "0",
+                    "object_id": ZEPP_USER_ID, "from_date": day, "to_date": day},
+            timeout=15
+        )
+        data = r.json()
+        items = data.get("data", [])
+        if not items:
+            return None
+        s    = decode_summary(items[0].get("summary", ""))
+        stp  = s.get("stp", {}) or {}
+        slp  = s.get("slp", {}) or {}
+        deep = int(slp.get("dp", 0) or 0)
+        lt   = int(slp.get("lt", 0) or 0)
+        rem  = int(slp.get("dt", 0) or 0)
+        tot  = deep + lt + rem or int(slp.get("ebt", 0) or 0)
+
+        # Preserva HRV e PAI já salvos
+        existing = get_amazfit_hoje(day) or {}
+        row = {
+            "data_hora":         f"{day} 00:00:00",
+            "passos":            int(stp.get("ttl", 0) or 0),
+            "calorias_gastas":   int(stp.get("cal", 0) or 0),
+            "distancia_km":      round(int(stp.get("dis", 0) or 0) / 1000, 2),
+            "sono_total_min":    tot,
+            "sono_profundo_min": deep,
+            "hrv_ms":            existing.get("hrv_ms", 0),
+            "pai":               existing.get("pai", 0),
+        }
+        save_amazfit(row)
+        return row
+    except Exception as e:
+        return None
 
 def fmt_sono(m):
     return f"{m//60}h{m%60:02d}" if m else "—"
@@ -106,6 +173,34 @@ def build_resumo(data, day_pt):
 # ── IA ────────────────────────────────────────────────────────────────────────
 def analisar_texto_com_ia(texto):
     hora_atual = datetime.now().strftime("%H:%M")
+    # Detecta categoria explícita no texto
+    texto_lower = texto.lower()
+    categoria_forcada = None
+    mapa_keywords = {
+        "Café da Manhã":   ["café da manhã", "cafe da manha", "café:", "cafe:"],
+        "Lanche da Manhã": ["lanche da manhã", "lanche da manha", "lanche manhã", "lanche manha"],
+        "Almoço":          ["almoço:", "almoco:", "almoço", "almoco"],
+        "Lanche da Tarde": ["lanche da tarde", "lanche tarde"],
+        "Jantar":          ["jantar:", "jantar"],
+        "Lanche da Noite": ["lanche da noite", "lanche noite"],
+    }
+    for cat, keywords in mapa_keywords.items():
+        if any(kw in texto_lower for kw in keywords):
+            categoria_forcada = cat
+            break
+
+    # Categoria por horário se não foi forçada
+    hora_int = int(hora_atual.split(":")[0])
+    if not categoria_forcada:
+        if   6  <= hora_int <= 9:  cat_horario = "Café da Manhã"
+        elif 10 <= hora_int <= 11: cat_horario = "Lanche da Manhã"
+        elif 12 <= hora_int <= 14: cat_horario = "Almoço"
+        elif 15 <= hora_int <= 17: cat_horario = "Lanche da Tarde"
+        elif 18 <= hora_int <= 20: cat_horario = "Jantar"
+        else:                      cat_horario = "Lanche da Noite"
+    else:
+        cat_horario = categoria_forcada
+
     prompt = (
         f'Você é um assistente de saúde e nutrição. O usuário enviou: "{texto}". '
         f'Hora atual: {hora_atual}.\n\n'
@@ -113,19 +208,28 @@ def analisar_texto_com_ia(texto):
         'Retorne um objeto ou lista de objetos se houver múltiplas ações.\n\n'
         'O campo "tipo" é OBRIGATÓRIO. Valores: "refeicao", "agua", "peso", "medicacao".\n\n'
         'REFEIÇÃO (tipo="refeicao"):\n'
-        '{"tipo":"refeicao","categoria":"<Café da Manhã|Lanche da Manhã|Almoço|Lanche da Tarde|Jantar|Lanche da Noite>",'
-        '"descricao_resumida":"<texto>","calorias":<n>,"proteinas":<g>,"carboidratos":<g>,"gorduras":<g>}\n\n'
+        '{"tipo":"refeicao","categoria":"<valor>","descricao_resumida":"<texto>",'
+        '"calorias":<n>,"proteinas":<g>,"carboidratos":<g>,"gorduras":<g>}\n\n'
         'ÁGUA: {"tipo":"agua","quantidade_ml":<n>}\n'
         'PESO: {"tipo":"peso","peso_kg":<n>}\n'
         'MEDICAÇÃO (só Tirzepatida): {"tipo":"medicacao","dose_mg":<n>}\n\n'
+        f'CATEGORIA OBRIGATÓRIA para esta mensagem: "{cat_horario}"\n'
+        'Use EXATAMENTE este valor no campo categoria, a menos que o usuário mencione\n'
+        'explicitamente outro nome de refeição no texto.\n\n'
+        'Horários de referência (use apenas se o usuário forçar outra categoria):\n'
+        '06:00-09:30 → Café da Manhã\n'
+        '09:31-11:30 → Lanche da Manhã\n'
+        '11:31-14:30 → Almoço\n'
+        '14:31-17:30 → Lanche da Tarde\n'
+        '17:31-20:30 → Jantar\n'
+        '20:31-23:59 → Lanche da Noite\n\n'
         'REGRAS ESPECIAIS (rotina do Leandro):\n'
         '- Whey de manhã → categoria "Café da Manhã", cal 118, prot 24, carb 2, gord 1.5\n'
         '- Whey à noite/pós-treino/com creatina → LISTA com 2 objetos (Whey + Creatina 0cal)\n'
         '- Ômega 3/Omegafor → tipo "refeicao", cal 9, prot 0, carb 0, gord 1, desc "Ômega 3 Omegafor Plus"\n'
         '- Magnésio/quelato/Vitha → tipo "refeicao", cal 0, prot 0, carb 0, gord 0, desc "Magnésio Quelato Trio Vitha"\n'
         '- D3/K2/BioVit/vitamina D → tipo "refeicao", cal 0, prot 0, carb 0, gord 0, desc "Vit. D3+K2 BioVit"\n'
-        '- Categoria: use o que o usuário disser; se não informar, infira pela hora.\n'
-        '- Para qualquer alimento, estime macros pelo peso informado.\n'
+        '- Para qualquer alimento, estime macros pelo peso/quantidade informado.\n'
         'NUNCA omita o campo "tipo":"refeicao" para comidas.'
     )
     resposta    = model.generate_content(prompt)
@@ -156,7 +260,6 @@ def cmd_sync(message):
     today  = date.today().strftime("%Y-%m-%d")
     result = zepp_sync(today)
     if result:
-        _zepp_save(result)
         day_pt = date.today().strftime("%d/%m/%Y")
         bot.send_message(message.chat.id, build_resumo(result, day_pt),
                          parse_mode='Markdown')
@@ -255,11 +358,8 @@ def processar_mensagem(message):
                 parse_mode='Markdown')
         else:
             bot.reply_to(message, "❓ Não entendi. Tente descrever sua refeição ou use /sync, /hrv, /pai.")
-    except json.JSONDecodeError:
-        bot.reply_to(message, "❌ Não consegui interpretar. Tente reformular a mensagem.")
     except Exception as e:
-        log.error(f"Erro processando mensagem: {e}", exc_info=True)
-        bot.reply_to(message, "❌ Erro interno. Tente novamente em instantes.")
+        bot.reply_to(message, f"❌ Erro: {e}")
 
 
 # ── Init ──────────────────────────────────────────────────────────────────────
