@@ -297,10 +297,10 @@ c1, c2 = st.columns([2, 1])
 with c1:
     df_p = db("SELECT date(data) as dt, peso FROM medidas ORDER BY date(data) ASC")
     if not df_p.empty:
+        # Converte dt para string antes de qualquer operação
+        df_p["dt"] = df_p["dt"].apply(lambda x: str(x)[:10] if x else "")
         # Adiciona ponto inicial se não existir
         ponto_inicial = pd.DataFrame([{"dt": "2026-01-26", "peso": 115.3}])
-        df_p["dt"] = df_p["dt"].astype(str)
-        ponto_inicial["dt"] = ponto_inicial["dt"].astype(str)
         df_p = pd.concat([ponto_inicial, df_p]).drop_duplicates("dt").sort_values("dt").reset_index(drop=True)
         fig = go.Figure()
         fig.add_trace(go.Scatter(
