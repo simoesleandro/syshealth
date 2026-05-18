@@ -43,11 +43,12 @@ def tv(v):
 def from_turso_value(v):
     """Turso value → Python."""
     if v is None: return None
+    if not isinstance(v, dict): return v
     t = v.get("type")
     val = v.get("value")
     if t == "null":    return None
-    if t == "integer": return int(val)
-    if t == "float":   return float(val)
+    if t == "integer": return int(val) if val is not None else 0
+    if t == "float":   return float(val) if val is not None else 0.0
     return val
 
 
@@ -66,9 +67,17 @@ def _turso_run(statements):
     if r.status_code != 200:
         raise Exception(f"Turso HTTP {r.status_code}: {r.text[:200]}")
 
-    results = r.json().get("results", [])
-    output  = []
+    body = r.json()
+    # Turso pode retornar dict com "results" ou lista direta
+    if isinstance(body, list):
+        results = body
+    else:
+        results = body.get("results", [])
+
+    output = []
     for res in results:
+        if not isinstance(res, dict):
+            continue
         if res.get("type") == "error":
             raise Exception(f"Turso SQL: {res.get('error', {}).get('message')}")
         if res.get("type") == "ok":
@@ -83,9 +92,12 @@ def _turso_query(sql, args=None):
         return pd.DataFrame()
 
     result = results[0]
-    cols   = [c["name"] for c in result.get("cols", [])]
-    rows   = [
-        [from_turso_value(v) for v in row.get("values", [])]
+    if not isinstance(result, dict):
+        return pd.DataFrame()
+
+    cols = [c["name"] for c in result.get("cols", [])]
+    rows = [
+        [from_turso_value(v) for v in (row.get("values", []) if isinstance(row, dict) else [])]
         for row in result.get("rows", [])
     ]
     return pd.DataFrame(rows, columns=cols) if cols else pd.DataFrame()
