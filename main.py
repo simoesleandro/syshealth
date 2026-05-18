@@ -1,6 +1,7 @@
 """
 main.py — Entrypoint da nuvem
-Roda o bot do Telegram em paralelo com o sync diário do Zepp (07:00)
+Roda o bot do Telegram + sync diario do Zepp (07:00 Brasilia)
+Banco de dados: Turso (nuvem) — sem arquivo local necessario
 """
 import threading
 import time
@@ -18,60 +19,49 @@ logging.basicConfig(
 )
 log = logging.getLogger("main")
 
-# Garante que o DB_PATH aponta para o volume persistente
-DB_PATH = os.getenv("DB_PATH", "/data/nutricao.db")
-os.environ["DB_PATH"] = DB_PATH
-
-# Cria o diretório /data se não existir (ambiente local)
-os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+# Sem criacao de pasta — banco e o Turso
+import db as DB
+DB.init_tables()
+log.info(f"Banco: {DB.backend()}")
 
 
 def run_bot():
-    """Inicia o bot do Telegram em loop infinito."""
     log.info("Iniciando bot do Telegram...")
-    # Importa aqui para garantir que DB_PATH já está setado
     import bot as bot_module
-    bot_module.init_amazfit_table()
     bot_module.bot.infinity_polling(timeout=30, long_polling_timeout=30)
 
 
 def run_zepp_scheduler():
-    """Roda o sync do Zepp todo dia às 07:00 (horário de Brasília = UTC-3)."""
-    from zepp_sync import zepp_sync, init_db, save
-    init_db(DB_PATH)
-    log.info("Scheduler do Zepp iniciado — sync diário às 07:00")
-
+    from zepp_sync import zepp_sync, save, init_db
+    init_db()
+    log.info("Scheduler Zepp iniciado — sync diario as 07:00 Brasilia")
     ultimo_sync = None
 
     while True:
-        agora = datetime.utcnow()
-        # UTC-3 = Brasília
+        agora   = datetime.utcnow()
         hora_br = (agora.hour - 3) % 24
         hoje    = date.today().strftime("%Y-%m-%d")
 
         if hora_br == 7 and ultimo_sync != hoje:
-            log.info("Executando sync automático do Zepp...")
+            log.info("Executando sync automatico do Zepp...")
             try:
                 row = zepp_sync(hoje)
                 if row:
-                    save(DB_PATH, row)
-                    log.info(f"Sync OK: {row}")
+                    save(row)
+                    log.info(f"Sync OK — passos={row['passos']} sono={row['sono_total_min']}min")
                 else:
-                    log.warning("Zepp não retornou dados")
+                    log.warning("Zepp nao retornou dados")
             except Exception as e:
                 log.error(f"Erro no sync: {e}")
             ultimo_sync = hoje
 
-        time.sleep(60)  # checa a cada 1 minuto
+        time.sleep(60)
 
 
 if __name__ == "__main__":
     log.info("=== SYS.HEALTH iniciando ===")
-    log.info(f"DB: {DB_PATH}")
 
-    # Thread do scheduler do Zepp
     t_zepp = threading.Thread(target=run_zepp_scheduler, daemon=True)
     t_zepp.start()
 
-    # Bot roda na thread principal
     run_bot()
