@@ -1,8 +1,8 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
+import db as db_nuvem  # Importa o seu arquivo tradutor do Supabase
 
 # ── PAGE CONFIG ─────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -42,10 +42,8 @@ MONO    = "'Space Mono',monospace"
 
 # ── HELPERS ──────────────────────────────────────────────────────────────────
 def db(query):
-    conn = sqlite3.connect("nutricao.db")
-    df = pd.read_sql_query(query, conn)
-    conn.close()
-    return df
+    # Passa a query para o tradutor que busca direto no Supabase
+    return db_nuvem.query(query)
 
 def pbar(pct, cor, h=4):
     p = min(100, max(0, int(pct * 100)))
@@ -110,15 +108,6 @@ cal_h  = float(_dr["cal"].iloc[0]  or 0)
 prot_h = float(_dr["prot"].iloc[0] or 0)
 carb_h = float(_dr["carb"].iloc[0] or 0)
 gord_h = float(_dr["gord"].iloc[0] or 0)
-
-# Amazfit — cria tabela se não existir
-_conn = sqlite3.connect("nutricao.db")
-_conn.execute("""CREATE TABLE IF NOT EXISTS amazfit_dados (
-    data_hora TEXT, passos INTEGER DEFAULT 0, calorias_gastas INTEGER DEFAULT 0,
-    distancia_km REAL DEFAULT 0, sono_total_min INTEGER DEFAULT 0,
-    sono_profundo_min INTEGER DEFAULT 0, hrv_ms INTEGER DEFAULT 0, pai INTEGER DEFAULT 0)""")
-_conn.commit()
-_conn.close()
 
 _az = db("SELECT * FROM amazfit_dados ORDER BY date(data_hora) DESC LIMIT 1")
 passos    = int(_az["passos"].iloc[0])            if not _az.empty else 0
@@ -723,7 +712,7 @@ if not df_hist.empty:
         st.markdown(panel(ptitl("💓 HRV · PAI")), unsafe_allow_html=True)
         fig = go.Figure()
         fig.add_trace(linha(df_hist, "hrv_ms",  GREEN,  "HRV (ms)"))
-        fig.add_trace(linha(df_hist, "pai",      AMBER,  "PAI", dash="dot"))
+        fig.add_trace(linha(df_hist, "pai",     AMBER,  "PAI", dash="dot"))
         fig.update_layout(**chart_layout(180, show_legend=True),
                           legend=dict(font=dict(color=GHOST, size=9),
                                       bgcolor="rgba(0,0,0,0)"))
