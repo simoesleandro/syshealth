@@ -1,52 +1,86 @@
 """
-db.py — Camada de banco de dados
-Usa Supabase (PostgreSQL) se SUPABASE_URL estiver configurado, senão SQLite local.
+db.py — Banco de dados
+Usa Supabase (PostgreSQL via pg8000) ou SQLite local.
 """
-import os
-import sqlite3
+import os, sqlite3
 import pandas as pd
 from dotenv import load_dotenv
 
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
-DB_PATH      = os.getenv("DB_PATH", "nutricao.db").strip()
-
-USE_PG = bool(SUPABASE_URL)
+SUPABASE_URL = os.getenv("SUPABASE_URL","").strip()
+DB_PATH      = os.getenv("DB_PATH","nutricao.db").strip()
+USE_PG       = bool(SUPABASE_URL)
 
 if USE_PG:
-    try:
-        import psycopg2
-        import psycopg2.extras
-    except ImportError:
-        raise ImportError("psycopg2 nao instalado. Adicione psycopg2-binary ao requirements.txt")
+    import pg8000.native
+    from urllib.parse import urlparse
+
+    def _parse_url(url):
+        p = urlparse(url)
+        return {
+            "host":     p.hostname,
+            "port":     p.port or 5432,
+            "database": p.path.lstrip("/"),
+            "user":     p.username,
+            "password": p.password,
+        }
+
+    def _get_pg():
+        c = _parse_url(SUPABASE_URL)
+        return pg8000.native.Connection(
+            c["user"], host=c["host"], port=c["port"],
+            database=c["database"], password=c["password"],
+            ssl_context=True, timeout=15
+        )
 
 
-def _get_pg():
-    return psycopg2.connect(SUPABASE_URL, connect_timeout=15)
+def _adapt_sql(sql):
+    """Converte SQL SQLite para PostgreSQL."""
+    sql = sql.replace("?", "%s")
+    sql = sql.replace("date(data_hora,'localtime')",
+                      "DATE(data_hora AT TIME ZONE 'America/Sao_Paulo')")
+    sql = sql.replace("date(data_hora, 'localtime')",
+                      "DATE(data_hora AT TIME ZONE 'America/Sao_Paulo')")
+    sql = sql.replace("datetime(data_hora,'localtime')",
+                      "(data_hora AT TIME ZONE 'America/Sao_Paulo')")
+    sql = sql.replace("datetime(data_hora, 'localtime')",
+                      "(data_hora AT TIME ZONE 'America/Sao_Paulo')")
+    sql = sql.replace("time(datetime(data_hora,'localtime'))",
+                      "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS')")
+    sql = sql.replace("time(datetime(data_hora, 'localtime'))",
+                      "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS')")
+    sql = sql.replace("strftime('%d/%m/%Y',data)",
+                      "TO_CHAR(data,'DD/MM/YYYY')")
+    sql = sql.replace("strftime('%d/%m/%Y', data)",
+                      "TO_CHAR(data,'DD/MM/YYYY')")
+    sql = sql.replace("strftime('%d/%m/%Y', datetime(data_hora,'localtime'))",
+                      "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY')")
+    sql = sql.replace("strftime('%d/%m/%Y', datetime(data_hora, 'localtime'))",
+                      "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY')")
+    # date('now', '-N days') → CURRENT_DATE - INTERVAL 'N days'
+    import re
+    sql = re.sub(r"date\('now',\s*'-(\d+)\s+days'\)",
+                 r"(CURRENT_DATE - INTERVAL '\1 days')", sql)
+    return sql
 
 
 def query(sql, params=None):
-    """Executa SELECT e retorna DataFrame."""
+    """SELECT → DataFrame."""
     if USE_PG:
-        sql_pg = sql.replace("?", "%s")
-        # Corrige date() do SQLite para PostgreSQL
-        sql_pg = sql_pg.replace("date(data_hora,'localtime')", "DATE(data_hora AT TIME ZONE 'America/Sao_Paulo')")
-        sql_pg = sql_pg.replace("date(data_hora, 'localtime')", "DATE(data_hora AT TIME ZONE 'America/Sao_Paulo')")
-        sql_pg = sql_pg.replace("datetime(data_hora,'localtime')", "(data_hora AT TIME ZONE 'America/Sao_Paulo')")
-        sql_pg = sql_pg.replace("datetime(data_hora, 'localtime')", "(data_hora AT TIME ZONE 'America/Sao_Paulo')")
-        sql_pg = sql_pg.replace("time(datetime(data_hora,'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo', 'HH24:MI:SS')")
-        sql_pg = sql_pg.replace("time(datetime(data_hora, 'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo', 'HH24:MI:SS')")
-        sql_pg = sql_pg.replace("strftime('%d/%m/%Y',data)", "TO_CHAR(data, 'DD/MM/YYYY')")
-        sql_pg = sql_pg.replace("strftime('%d/%m/%Y', data)", "TO_CHAR(data, 'DD/MM/YYYY')")
-        sql_pg = sql_pg.replace("strftime('%d/%m/%Y', datetime(data_hora,'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY')")
-        sql_pg = sql_pg.replace("strftime('%d/%m/%Y', datetime(data_hora, 'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo', 'DD/MM/YYYY')")
-        sql_pg = sql_pg.replace("date('now', '-", "CURRENT_DATE - INTERVAL '")
-        sql_pg = sql_pg.replace("days')", "days'")
         conn = _get_pg()
-        df   = pd.read_sql_query(sql_pg, conn, params=params)
+        sql_pg = _adapt_sql(sql)
+        # pg8000 usa $1,$2 em vez de %s
+        import re
+        i = [0]
+        def repl(m):
+            i[0] += 1
+            return f"${i[0]}"
+        sql_pg = re.sub(r'%s', repl, sql_pg)
+        rows = conn.run(sql_pg, *(params or []))
+        cols = [c["name"] for c in conn.columns]
         conn.close()
-        return df
+        return pd.DataFrame(rows, columns=cols)
     conn = sqlite3.connect(DB_PATH)
     df   = pd.read_sql_query(sql, conn, params=params)
     conn.close()
@@ -54,13 +88,17 @@ def query(sql, params=None):
 
 
 def execute(sql, params=None):
-    """Executa INSERT/UPDATE/DELETE."""
+    """INSERT/UPDATE/DELETE."""
     if USE_PG:
-        sql_pg = sql.replace("?", "%s")
-        conn   = _get_pg()
-        cur    = conn.cursor()
-        cur.execute(sql_pg, params or [])
-        conn.commit()
+        conn = _get_pg()
+        sql_pg = _adapt_sql(sql)
+        import re
+        i = [0]
+        def repl(m):
+            i[0] += 1
+            return f"${i[0]}"
+        sql_pg = re.sub(r'%s', repl, sql_pg)
+        conn.run(sql_pg, *(params or []))
         conn.close()
         return
     conn = sqlite3.connect(DB_PATH)
@@ -70,89 +108,62 @@ def execute(sql, params=None):
 
 
 def executemany(sql, rows):
-    """Executa INSERT em lote."""
-    if USE_PG:
-        sql_pg = sql.replace("?", "%s")
-        conn   = _get_pg()
-        cur    = conn.cursor()
-        cur.executemany(sql_pg, rows)
-        conn.commit()
-        conn.close()
-        return
-    conn = sqlite3.connect(DB_PATH)
-    conn.executemany(sql, rows)
-    conn.commit()
-    conn.close()
+    """INSERT em lote."""
+    for row in rows:
+        execute(sql, list(row))
 
 
 def init_tables():
-    """Cria todas as tabelas se nao existirem."""
     if USE_PG:
-        sqls = [
+        conn = _get_pg()
+        for sql in [
             """CREATE TABLE IF NOT EXISTS refeicoes (
-                id SERIAL PRIMARY KEY,
-                data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                categoria TEXT, descricao TEXT,
-                calorias REAL DEFAULT 0, proteinas REAL DEFAULT 0,
-                carboidratos REAL DEFAULT 0, gorduras REAL DEFAULT 0)""",
+                id SERIAL PRIMARY KEY, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                categoria TEXT, descricao TEXT, calorias REAL DEFAULT 0,
+                proteinas REAL DEFAULT 0, carboidratos REAL DEFAULT 0, gorduras REAL DEFAULT 0)""",
             """CREATE TABLE IF NOT EXISTS agua (
-                id SERIAL PRIMARY KEY,
-                data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                id SERIAL PRIMARY KEY, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 quantidade_ml INTEGER DEFAULT 0)""",
             """CREATE TABLE IF NOT EXISTS medidas (
-                id SERIAL PRIMARY KEY,
-                data DATE DEFAULT CURRENT_DATE,
+                id SERIAL PRIMARY KEY, data DATE DEFAULT CURRENT_DATE,
                 peso REAL, cintura REAL, abdomen REAL, peitoral REAL, quadril REAL,
                 coxa_dir REAL, coxa_esq REAL, panturrilha_dir REAL,
                 panturrilha_esq REAL, biceps_dir REAL, biceps_esq REAL)""",
             """CREATE TABLE IF NOT EXISTS medicacao (
-                id SERIAL PRIMARY KEY,
-                data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                id SERIAL PRIMARY KEY, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 dose_mg REAL)""",
             """CREATE TABLE IF NOT EXISTS amazfit_dados (
-                data_hora TEXT PRIMARY KEY,
-                passos INTEGER DEFAULT 0, calorias_gastas INTEGER DEFAULT 0,
-                distancia_km REAL DEFAULT 0, sono_total_min INTEGER DEFAULT 0,
-                sono_profundo_min INTEGER DEFAULT 0, hrv_ms INTEGER DEFAULT 0,
-                pai INTEGER DEFAULT 0)""",
-        ]
-        conn = _get_pg()
-        cur  = conn.cursor()
-        for sql in sqls:
-            cur.execute(sql)
-        conn.commit()
+                data_hora TEXT PRIMARY KEY, passos INTEGER DEFAULT 0,
+                calorias_gastas INTEGER DEFAULT 0, distancia_km REAL DEFAULT 0,
+                sono_total_min INTEGER DEFAULT 0, sono_profundo_min INTEGER DEFAULT 0,
+                hrv_ms INTEGER DEFAULT 0, pai INTEGER DEFAULT 0)""",
+        ]:
+            conn.run(sql)
         conn.close()
     else:
-        sqls = [
+        conn = sqlite3.connect(DB_PATH)
+        for sql in [
             """CREATE TABLE IF NOT EXISTS refeicoes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
-                categoria TEXT, descricao TEXT,
-                calorias REAL DEFAULT 0, proteinas REAL DEFAULT 0,
-                carboidratos REAL DEFAULT 0, gorduras REAL DEFAULT 0)""",
+                id INTEGER PRIMARY KEY AUTOINCREMENT, data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+                categoria TEXT, descricao TEXT, calorias REAL DEFAULT 0,
+                proteinas REAL DEFAULT 0, carboidratos REAL DEFAULT 0, gorduras REAL DEFAULT 0)""",
             """CREATE TABLE IF NOT EXISTS agua (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+                id INTEGER PRIMARY KEY AUTOINCREMENT, data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
                 quantidade_ml INTEGER DEFAULT 0)""",
             """CREATE TABLE IF NOT EXISTS medidas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                data DATE DEFAULT CURRENT_DATE,
+                id INTEGER PRIMARY KEY AUTOINCREMENT, data DATE DEFAULT CURRENT_DATE,
                 peso REAL, cintura REAL, abdomen REAL, peitoral REAL, quadril REAL,
                 coxa_dir REAL, coxa_esq REAL, panturrilha_dir REAL,
                 panturrilha_esq REAL, biceps_dir REAL, biceps_esq REAL)""",
             """CREATE TABLE IF NOT EXISTS medicacao (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+                id INTEGER PRIMARY KEY AUTOINCREMENT, data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
                 dose_mg REAL)""",
             """CREATE TABLE IF NOT EXISTS amazfit_dados (
-                data_hora TEXT PRIMARY KEY,
-                passos INTEGER DEFAULT 0, calorias_gastas INTEGER DEFAULT 0,
-                distancia_km REAL DEFAULT 0, sono_total_min INTEGER DEFAULT 0,
-                sono_profundo_min INTEGER DEFAULT 0, hrv_ms INTEGER DEFAULT 0,
-                pai INTEGER DEFAULT 0)""",
-        ]
-        conn = sqlite3.connect(DB_PATH)
-        for sql in sqls:
+                data_hora TEXT PRIMARY KEY, passos INTEGER DEFAULT 0,
+                calorias_gastas INTEGER DEFAULT 0, distancia_km REAL DEFAULT 0,
+                sono_total_min INTEGER DEFAULT 0, sono_profundo_min INTEGER DEFAULT 0,
+                hrv_ms INTEGER DEFAULT 0, pai INTEGER DEFAULT 0)""",
+        ]:
             conn.execute(sql)
         conn.commit()
         conn.close()
@@ -160,6 +171,6 @@ def init_tables():
 
 def backend():
     if USE_PG:
-        host = SUPABASE_URL.split("@")[-1].split("/")[0] if "@" in SUPABASE_URL else "postgres"
-        return f"Supabase PostgreSQL ({host})"
+        h = SUPABASE_URL.split("@")[-1].split("/")[0] if "@" in SUPABASE_URL else "pg"
+        return f"Supabase ({h})"
     return f"SQLite ({DB_PATH})"
