@@ -26,7 +26,7 @@ if USE_PG:
 
 
 def _pg_sql(sql):
-    """Converte SQL SQLite → PostgreSQL e ? → $1,$2..."""
+    """Converte apenas dialetos de data/hora do SQLite → PostgreSQL"""
     sql = sql.replace("date(data_hora,'localtime')", "DATE(data_hora AT TIME ZONE 'America/Sao_Paulo')")
     sql = sql.replace("date(data_hora, 'localtime')", "DATE(data_hora AT TIME ZONE 'America/Sao_Paulo')")
     sql = sql.replace("datetime(data_hora,'localtime')", "(data_hora AT TIME ZONE 'America/Sao_Paulo')")
@@ -39,12 +39,6 @@ def _pg_sql(sql):
     sql = sql.replace("strftime('%d/%m/%Y', datetime(data_hora, 'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY')")
     sql = re.sub(r"date\('now',\s*'-(\d+)\s+days'\)", r"(CURRENT_DATE - INTERVAL '\1 days')", sql)
     sql = sql.replace("COALESCE(categoria, 'Lanche')", "COALESCE(categoria, 'Lanche')")
-    # Converte ? para $1, $2, $3...
-    counter = [0]
-    def to_dollar(m):
-        counter[0] += 1
-        return f"${counter[0]}"
-    sql = re.sub(r'\?', to_dollar, sql)
     return sql
 
 
@@ -53,15 +47,23 @@ def query(sql, params=None):
     if USE_PG:
         conn   = _get_pg()
         sql_pg = _pg_sql(sql)
+        kwargs = {}
+        
+        # TRADUTOR AUTOMÁTICO: ? -> :p0, :p1...
+        if params:
+            for i, val in enumerate(params):
+                p_name = f"p{i}"
+                sql_pg = sql_pg.replace("?", f":{p_name}", 1)
+                kwargs[p_name] = val
+                
         try:
-            if params:
-                rows = conn.run(sql_pg, *params)
-            else:
-                rows = conn.run(sql_pg)
+            # Passa as variáveis mastigadas para o pg8000
+            rows = conn.run(sql_pg, **kwargs)
             cols = [c["name"] for c in conn.columns]
             return pd.DataFrame(rows, columns=cols)
         finally:
             conn.close()
+            
     conn = sqlite3.connect(DB_PATH)
     df   = pd.read_sql_query(sql, conn, params=params)
     conn.close()
@@ -73,14 +75,21 @@ def execute(sql, params=None):
     if USE_PG:
         conn   = _get_pg()
         sql_pg = _pg_sql(sql)
+        kwargs = {}
+        
+        # TRADUTOR AUTOMÁTICO: ? -> :p0, :p1...
+        if params:
+            for i, val in enumerate(params):
+                p_name = f"p{i}"
+                sql_pg = sql_pg.replace("?", f":{p_name}", 1)
+                kwargs[p_name] = val
+                
         try:
-            if params:
-                conn.run(sql_pg, *params)
-            else:
-                conn.run(sql_pg)
+            conn.run(sql_pg, **kwargs)
         finally:
             conn.close()
         return
+        
     conn = sqlite3.connect(DB_PATH)
     conn.execute(sql, params or [])
     conn.commit()
