@@ -55,6 +55,15 @@ def salvar_medicacao(mg):
 def init_amazfit_table():
     DB.init_tables()
 
+def _criar_registro_vazio(day):
+    """Cria registro do dia com zeros se não existir."""
+    DB.execute(
+        "INSERT INTO amazfit_dados (data_hora,passos,calorias_gastas,distancia_km,"
+        "sono_total_min,sono_profundo_min,hrv_ms,pai) VALUES (?,0,0,0,0,0,0,0) "
+        "ON CONFLICT(data_hora) DO NOTHING",
+        [f"{day} 00:00:00"]
+    )
+
 def get_amazfit_hoje(day=None):
     day = day or date.today().strftime("%Y-%m-%d")
     df  = DB.query("SELECT * FROM amazfit_dados WHERE data_hora=?", [f"{day} 00:00:00"])
@@ -239,8 +248,8 @@ def cmd_hrv(message):
         today = date.today().strftime("%Y-%m-%d")
         existing = get_amazfit_hoje(today)
         if not existing:
-            bot.reply_to(message, "⚠️ Faça /sync primeiro para criar o registro do dia.")
-            return
+            _criar_registro_vazio(today)
+            existing = {"hrv_ms": 0, "pai": 0}
         update_hrv_pai(today, val, existing["pai"])
         bot.reply_to(message, f"💓 HRV salvo: *{val} ms*", parse_mode='Markdown')
     except (IndexError, ValueError):
@@ -254,8 +263,8 @@ def cmd_pai(message):
         today = date.today().strftime("%Y-%m-%d")
         existing = get_amazfit_hoje(today)
         if not existing:
-            bot.reply_to(message, "⚠️ Faça /sync primeiro para criar o registro do dia.")
-            return
+            _criar_registro_vazio(today)
+            existing = {"hrv_ms": 0, "pai": 0}
         update_hrv_pai(today, existing["hrv_ms"], val)
         bot.reply_to(message, f"⚡ PAI salvo: *{val}*", parse_mode='Markdown')
     except (IndexError, ValueError):
