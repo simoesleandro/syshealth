@@ -96,11 +96,18 @@ def _turso_query(sql, args=None):
         return pd.DataFrame()
 
     cols = [c["name"] for c in result.get("cols", [])]
-    rows = [
-        [from_turso_value(v) for v in (row.get("values", []) if isinstance(row, dict) else [])]
-        for row in result.get("rows", [])
-    ]
-    return pd.DataFrame(rows, columns=cols) if cols else pd.DataFrame()
+    raw_rows = result.get("rows", [])
+    parsed = []
+    for row in raw_rows:
+        if isinstance(row, dict):
+            # formato {"values": [...]}
+            parsed.append([from_turso_value(v) for v in row.get("values", [])])
+        elif isinstance(row, list):
+            # formato direto [val1, val2, ...]
+            parsed.append([from_turso_value(v) for v in row])
+        else:
+            parsed.append([])
+    return pd.DataFrame(parsed, columns=cols) if cols else pd.DataFrame()
 
 
 def _turso_execute(sql, args=None):
