@@ -8,6 +8,7 @@ import base64
 import requests
 from dotenv import load_dotenv
 from datetime import datetime, date, timedelta
+import db as DB
 
 load_dotenv()
 
@@ -33,25 +34,13 @@ MACROS_CREATINA = {
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 def executar_query(query, params=()):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(query, params)
-    conn.commit()
-    conn.close()
+    DB.execute(query, list(params) if params else [])
 
 def salvar_refeicao(dados):
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    try:
-        cursor.execute("ALTER TABLE refeicoes ADD COLUMN categoria TEXT")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass
-    conn.close()
-    executar_query(
+    DB.execute(
         'INSERT INTO refeicoes (categoria, descricao, calorias, proteinas, carboidratos, gorduras) VALUES (?, ?, ?, ?, ?, ?)',
-        (dados.get('categoria', 'Lanche'), dados['descricao_resumida'],
-         dados['calorias'], dados['proteinas'], dados['carboidratos'], dados['gorduras'])
+        [dados.get('categoria', 'Lanche'), dados['descricao_resumida'],
+         dados['calorias'], dados['proteinas'], dados['carboidratos'], dados['gorduras']]
     )
 
 def salvar_agua(ml):
@@ -64,49 +53,28 @@ def salvar_medicacao(mg):
     executar_query('INSERT INTO medicacao (dose_mg) VALUES (?)', (mg,))
 
 def init_amazfit_table():
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("""CREATE TABLE IF NOT EXISTS amazfit_dados (
-        data_hora TEXT, passos INTEGER DEFAULT 0,
-        calorias_gastas INTEGER DEFAULT 0, distancia_km REAL DEFAULT 0,
-        sono_total_min INTEGER DEFAULT 0, sono_profundo_min INTEGER DEFAULT 0,
-        hrv_ms INTEGER DEFAULT 0, pai INTEGER DEFAULT 0)""")
-    try:
-        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_az ON amazfit_dados(data_hora)")
-    except Exception:
-        pass
-    conn.commit()
-    conn.close()
+    DB.init_tables()
 
 def get_amazfit_hoje(day=None):
     day = day or date.today().strftime("%Y-%m-%d")
-    conn = sqlite3.connect(DB_PATH)
-    row = conn.execute(
-        "SELECT * FROM amazfit_dados WHERE data_hora=?", (f"{day} 00:00:00",)
-    ).fetchone()
-    conn.close()
-    if not row:
+    df  = DB.query("SELECT * FROM amazfit_dados WHERE data_hora=?", [f"{day} 00:00:00"])
+    if df.empty:
         return None
-    cols = ["data_hora","passos","calorias_gastas","distancia_km",
-            "sono_total_min","sono_profundo_min","hrv_ms","pai"]
-    return dict(zip(cols, row))
+    return df.iloc[0].to_dict()
 
 def save_amazfit(row):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("DELETE FROM amazfit_dados WHERE data_hora=?", (row["data_hora"],))
-    conn.execute("""INSERT INTO amazfit_dados VALUES
-        (:data_hora,:passos,:calorias_gastas,:distancia_km,
-         :sono_total_min,:sono_profundo_min,:hrv_ms,:pai)""", row)
-    conn.commit()
-    conn.close()
+    DB.execute("DELETE FROM amazfit_dados WHERE data_hora=?", [row["data_hora"]])
+    DB.execute(
+        "INSERT INTO amazfit_dados VALUES (?,?,?,?,?,?,?,?)",
+        [row["data_hora"], row["passos"], row["calorias_gastas"], row["distancia_km"],
+         row["sono_total_min"], row["sono_profundo_min"], row["hrv_ms"], row["pai"]]
+    )
 
 def update_hrv_pai(day, hrv, pai):
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute(
+    DB.execute(
         "UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?",
-        (hrv, pai, f"{day} 00:00:00")
+        [hrv, pai, f"{day} 00:00:00"]
     )
-    conn.commit()
-    conn.close()
 
 # ── Zepp sync ─────────────────────────────────────────────────────────────────
 def zepp_headers():

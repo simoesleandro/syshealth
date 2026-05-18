@@ -1,10 +1,11 @@
 """
 zepp_sync.py — versão nuvem
 """
-import base64, json, logging, os, sqlite3, time
+import base64, json, logging, os, time
 from datetime import date, timedelta
 import requests
 from dotenv import load_dotenv
+import db as DB
 
 load_dotenv()
 log     = logging.getLogger("zepp_sync")
@@ -32,12 +33,9 @@ def decode_summary(b64):
 
 def _get_existing(day):
     try:
-        conn = sqlite3.connect(DB_PATH)
-        row  = conn.execute(
-            "SELECT hrv_ms, pai FROM amazfit_dados WHERE data_hora=?",
-            (f"{day} 00:00:00",)).fetchone()
-        conn.close()
-        return {"hrv_ms": row[0], "pai": row[1]} if row else {}
+        df = DB.query("SELECT hrv_ms, pai FROM amazfit_dados WHERE data_hora=?", [f"{day} 00:00:00"])
+        if df.empty: return {}
+        return df.iloc[0].to_dict()
     except Exception:
         return {}
 
@@ -82,33 +80,18 @@ def zepp_sync(day=None):
 
 
 def init_db(path=None):
-    path = path or DB_PATH
-    conn = sqlite3.connect(path)
-    conn.execute("""CREATE TABLE IF NOT EXISTS amazfit_dados (
-        data_hora TEXT, passos INTEGER DEFAULT 0,
-        calorias_gastas INTEGER DEFAULT 0, distancia_km REAL DEFAULT 0,
-        sono_total_min INTEGER DEFAULT 0, sono_profundo_min INTEGER DEFAULT 0,
-        hrv_ms INTEGER DEFAULT 0, pai INTEGER DEFAULT 0)""")
-    try:
-        conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_az ON amazfit_dados(data_hora)")
-    except Exception:
-        pass
-    conn.commit()
-    conn.close()
+    DB.init_tables()
 
 
 def save(path_or_row, row=None):
     if row is None:
-        row, path = path_or_row, DB_PATH
-    else:
-        path = path_or_row
-    conn = sqlite3.connect(path)
-    conn.execute("DELETE FROM amazfit_dados WHERE data_hora=?", (row["data_hora"],))
-    conn.execute("""INSERT INTO amazfit_dados VALUES
-        (:data_hora,:passos,:calorias_gastas,:distancia_km,
-         :sono_total_min,:sono_profundo_min,:hrv_ms,:pai)""", row)
-    conn.commit()
-    conn.close()
+        row = path_or_row
+    DB.execute("DELETE FROM amazfit_dados WHERE data_hora=?", [row["data_hora"]])
+    DB.execute(
+        "INSERT INTO amazfit_dados VALUES (?,?,?,?,?,?,?,?)",
+        [row["data_hora"], row["passos"], row["calorias_gastas"], row["distancia_km"],
+         row["sono_total_min"], row["sono_profundo_min"], row["hrv_ms"], row["pai"]]
+    )
 
 
 if __name__ == "__main__":
