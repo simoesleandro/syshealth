@@ -41,9 +41,8 @@ GHOST   = "#2a3448"
 MONO    = "'Space Mono',monospace"
 
 # ── HELPERS ──────────────────────────────────────────────────────────────────
-def db(query):
-    # Passa a query para o tradutor que busca direto no Supabase
-    return db_nuvem.query(query)
+def db(query, params=None):
+    return db_nuvem.query(query, params)
 
 def pbar(pct, cor, h=4):
     p = min(100, max(0, int(pct * 100)))
@@ -96,30 +95,42 @@ hoje_pt  = agora.strftime("%d/%m/%Y")
 hora_now = agora.strftime("%H:%M")
 dia_sem  = ["SEG","TER","QUA","QUI","SEX","SAB","DOM"][agora.weekday()]
 # ── DADOS ────────────────────────────────────────────────────────────────────
-_dp = db("SELECT peso FROM medidas ORDER BY date(data) DESC LIMIT 1")
-peso = float(_dp["peso"].iloc[0]) if not _dp.empty else 93.0
+@st.cache_data(ttl=300)
+def _fetch_dados(hoje):
+    _dp = db("SELECT peso FROM medidas ORDER BY date(data) DESC LIMIT 1")
+    _peso = float(_dp["peso"].iloc[0]) if not _dp.empty else 93.0
 
-_da = db(f"SELECT COALESCE(SUM(quantidade_ml),0) as t FROM agua WHERE date(data_hora,'localtime')='{hoje_sql}'")
-agua_l = float(_da["t"].iloc[0] or 0) / 1000
+    _da = db(
+        "SELECT COALESCE(SUM(quantidade_ml),0) as t FROM agua WHERE date(data_hora,'localtime')=?",
+        [hoje]
+    )
+    _agua_l = float(_da["t"].iloc[0] or 0) / 1000
 
-_dr = db(
-    f"SELECT COALESCE(SUM(calorias),0) as cal, COALESCE(SUM(proteinas),0) as prot,"
-    f"COALESCE(SUM(carboidratos),0) as carb, COALESCE(SUM(gorduras),0) as gord "
-    f"FROM refeicoes WHERE date(data_hora,'localtime')='{hoje_sql}'"
-)
-cal_h  = float(_dr["cal"].iloc[0]  or 0)
-prot_h = float(_dr["prot"].iloc[0] or 0)
-carb_h = float(_dr["carb"].iloc[0] or 0)
-gord_h = float(_dr["gord"].iloc[0] or 0)
+    _dr = db(
+        "SELECT COALESCE(SUM(calorias),0) as cal, COALESCE(SUM(proteinas),0) as prot,"
+        "COALESCE(SUM(carboidratos),0) as carb, COALESCE(SUM(gorduras),0) as gord "
+        "FROM refeicoes WHERE date(data_hora,'localtime')=?",
+        [hoje]
+    )
+    _cal_h  = float(_dr["cal"].iloc[0]  or 0)
+    _prot_h = float(_dr["prot"].iloc[0] or 0)
+    _carb_h = float(_dr["carb"].iloc[0] or 0)
+    _gord_h = float(_dr["gord"].iloc[0] or 0)
 
-_az = db("SELECT * FROM amazfit_dados ORDER BY date(data_hora) DESC LIMIT 1")
-passos    = int(_az["passos"].iloc[0])            if not _az.empty else 0
-cal_gasta = int(_az["calorias_gastas"].iloc[0])   if not _az.empty else 0
-dist_km   = float(_az["distancia_km"].iloc[0])    if not _az.empty else 0.0
-sono_tot  = int(_az["sono_total_min"].iloc[0])    if not _az.empty else 0
-sono_prof = int(_az["sono_profundo_min"].iloc[0]) if not _az.empty else 0
-hrv       = int(_az["hrv_ms"].iloc[0])            if not _az.empty else 0
-pai       = int(_az["pai"].iloc[0])               if not _az.empty else 0
+    _az = db("SELECT * FROM amazfit_dados ORDER BY date(data_hora) DESC LIMIT 1")
+    _passos    = int(_az["passos"].iloc[0])            if not _az.empty else 0
+    _cal_gasta = int(_az["calorias_gastas"].iloc[0])   if not _az.empty else 0
+    _dist_km   = float(_az["distancia_km"].iloc[0])    if not _az.empty else 0.0
+    _sono_tot  = int(_az["sono_total_min"].iloc[0])    if not _az.empty else 0
+    _sono_prof = int(_az["sono_profundo_min"].iloc[0]) if not _az.empty else 0
+    _hrv       = int(_az["hrv_ms"].iloc[0])            if not _az.empty else 0
+    _pai       = int(_az["pai"].iloc[0])               if not _az.empty else 0
+
+    return (_peso, _agua_l, _cal_h, _prot_h, _carb_h, _gord_h,
+            _passos, _cal_gasta, _dist_km, _sono_tot, _sono_prof, _hrv, _pai)
+
+(peso, agua_l, cal_h, prot_h, carb_h, gord_h,
+ passos, cal_gasta, dist_km, sono_tot, sono_prof, hrv, pai) = _fetch_dados(hoje_sql)
 
 # Derivações
 deficit   = cal_gasta - int(cal_h)

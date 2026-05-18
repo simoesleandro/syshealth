@@ -1,22 +1,22 @@
 import telebot
-import sqlite3
 import google.generativeai as genai
 import json
 import re
 import os
-import base64
-import requests
+import logging
 from dotenv import load_dotenv
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 import db as DB
+from zepp_sync import zepp_sync, save as _zepp_save, make_headers as _zepp_headers
 
 load_dotenv()
+
+log = logging.getLogger("bot")
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 ZEPP_TOKEN     = os.getenv('ZEPP_APP_TOKEN', '').strip()
 ZEPP_USER_ID   = os.getenv('ZEPP_USER_ID', '').strip()
-DB_PATH        = os.getenv('DB_PATH', 'nutricao.db')
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 genai.configure(api_key=GEMINI_API_KEY)
@@ -71,78 +71,11 @@ def get_amazfit_hoje(day=None):
         return None
     return df.iloc[0].to_dict()
 
-def save_amazfit(row):
-    DB.execute("DELETE FROM amazfit_dados WHERE data_hora=?", [row["data_hora"]])
-    DB.execute(
-        "INSERT INTO amazfit_dados VALUES (?,?,?,?,?,?,?,?)",
-        [row["data_hora"], row["passos"], row["calorias_gastas"], row["distancia_km"],
-         row["sono_total_min"], row["sono_profundo_min"], row["hrv_ms"], row["pai"]]
-    )
-
 def update_hrv_pai(day, hrv, pai):
     DB.execute(
         "UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?",
         [hrv, pai, f"{day} 00:00:00"]
     )
-
-# ── Zepp sync ─────────────────────────────────────────────────────────────────
-def zepp_headers():
-    return {
-        "Accept": "*/*", "appname": "com.huami.midong",
-        "appplatform": "ios_phone", "apptoken": ZEPP_TOKEN,
-        "channel": "appstore", "country": "BR", "lang": "pt_BR",
-        "timezone": "America/Sao_Paulo",
-        "User-Agent": "Zepp/10.3.1 (iPhone; iOS 26.4.2; Scale/3.00)", "v": "2.0",
-    }
-
-def decode_summary(b64):
-    try:
-        pad = b64 + "=" * (4 - len(b64) % 4)
-        return json.loads(base64.b64decode(pad).decode("utf-8", "replace"))
-    except Exception:
-        return {}
-
-def zepp_sync(day=None):
-    """Sincroniza dados do Zepp para o dia especificado. Retorna dict com dados."""
-    if not ZEPP_TOKEN or not ZEPP_USER_ID:
-        return None
-    day = day or date.today().strftime("%Y-%m-%d")
-    try:
-        r = requests.get(
-            "https://api-mifit-us3.zepp.com/v1/data/band_data.json",
-            headers=zepp_headers(),
-            params={"query_type": "summary", "device_type": "0",
-                    "object_id": ZEPP_USER_ID, "from_date": day, "to_date": day},
-            timeout=15
-        )
-        data = r.json()
-        items = data.get("data", [])
-        if not items:
-            return None
-        s    = decode_summary(items[0].get("summary", ""))
-        stp  = s.get("stp", {}) or {}
-        slp  = s.get("slp", {}) or {}
-        deep = int(slp.get("dp", 0) or 0)
-        lt   = int(slp.get("lt", 0) or 0)
-        rem  = int(slp.get("dt", 0) or 0)
-        tot  = deep + lt + rem or int(slp.get("ebt", 0) or 0)
-
-        # Preserva HRV e PAI já salvos
-        existing = get_amazfit_hoje(day) or {}
-        row = {
-            "data_hora":         f"{day} 00:00:00",
-            "passos":            int(stp.get("ttl", 0) or 0),
-            "calorias_gastas":   int(stp.get("cal", 0) or 0),
-            "distancia_km":      round(int(stp.get("dis", 0) or 0) / 1000, 2),
-            "sono_total_min":    tot,
-            "sono_profundo_min": deep,
-            "hrv_ms":            existing.get("hrv_ms", 0),
-            "pai":               existing.get("pai", 0),
-        }
-        save_amazfit(row)
-        return row
-    except Exception as e:
-        return None
 
 def fmt_sono(m):
     return f"{m//60}h{m%60:02d}" if m else "—"
@@ -223,6 +156,7 @@ def cmd_sync(message):
     today  = date.today().strftime("%Y-%m-%d")
     result = zepp_sync(today)
     if result:
+        _zepp_save(result)
         day_pt = date.today().strftime("%d/%m/%Y")
         bot.send_message(message.chat.id, build_resumo(result, day_pt),
                          parse_mode='Markdown')
@@ -321,8 +255,11 @@ def processar_mensagem(message):
                 parse_mode='Markdown')
         else:
             bot.reply_to(message, "❓ Não entendi. Tente descrever sua refeição ou use /sync, /hrv, /pai.")
+    except json.JSONDecodeError:
+        bot.reply_to(message, "❌ Não consegui interpretar. Tente reformular a mensagem.")
     except Exception as e:
-        bot.reply_to(message, f"❌ Erro: {e}")
+        log.error(f"Erro processando mensagem: {e}", exc_info=True)
+        bot.reply_to(message, "❌ Erro interno. Tente novamente em instantes.")
 
 
 # ── Init ──────────────────────────────────────────────────────────────────────
