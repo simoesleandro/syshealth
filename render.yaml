@@ -1,0 +1,21 @@
+services:
+  - type: worker
+    name: syshealth-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    disk:
+      name: db-volume
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ZEPP_APP_TOKEN
+        sync: false
+      - key: ZEPP_USER_ID
+        sync: false
+      - key: DB_PATH
+        value: /data/nutricao.db
