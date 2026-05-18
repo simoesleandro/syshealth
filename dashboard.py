@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
-import db as db_nuvem  # Importa o seu arquivo tradutor do Supabase
+import db as DB
 
 # ── PAGE CONFIG ─────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -42,7 +42,7 @@ MONO    = "'Space Mono',monospace"
 
 # ── HELPERS ──────────────────────────────────────────────────────────────────
 def db(query, params=None):
-    return db_nuvem.query(query, params)
+    return DB.query(query, params)
 
 def pbar(pct, cor, h=4):
     p = min(100, max(0, int(pct * 100)))
@@ -56,10 +56,10 @@ def pbar(pct, cor, h=4):
 def sec(tag, titulo):
     return (
         f'<div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px">'
-        f'<span style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:2px;'
+        f'<span style="font-family:{MONO};font-size:12px;font-weight:700;letter-spacing:1.5px;'
         f'text-transform:uppercase;color:{CYAN};background:rgba(0,212,255,0.07);'
         f'border:1px solid rgba(0,212,255,0.2);border-radius:3px;padding:3px 8px">{tag}</span>'
-        f'<span style="font-size:11px;color:{GHOST}">{titulo}</span>'
+        f'<span style="font-size:13px;color:{GHOST}">{titulo}</span>'
         f'<div style="flex:1;height:1px;background:{BORDER2}"></div>'
         f'</div>'
     )
@@ -72,12 +72,12 @@ def panel(conteudo, extra=""):
 
 def ptitl(txt):
     return (
-        f'<div style="font-family:{MONO};font-size:10px;font-weight:700;letter-spacing:1.5px;'
+        f'<div style="font-family:{MONO};font-size:13px;font-weight:700;letter-spacing:1px;'
         f'text-transform:uppercase;color:{TEXT};margin-bottom:12px">{txt}</div>'
     )
 
 # ── METAS ────────────────────────────────────────────────────────────────────
-META_CAL  = 2400
+TMB       = 1863  # Taxa Metabólica Basal — meta calórica é calculada dinamicamente
 META_PROT = 190
 META_CARB = 241
 META_GORD = 75
@@ -86,65 +86,56 @@ META_PASS = 10000
 META_SONO = 90
 META_PAI  = 100
 
-from zoneinfo import ZoneInfo
-fuso_br = ZoneInfo("America/Sao_Paulo")
-agora = datetime.now(fuso_br)
+hoje_sql = datetime.now().strftime("%Y-%m-%d")
+hoje_pt  = datetime.now().strftime("%d/%m/%Y")
+hora_now = datetime.now().strftime("%H:%M")
+dia_sem  = ["SEG","TER","QUA","QUI","SEX","SAB","DOM"][datetime.now().weekday()]
 
-hoje_sql = agora.strftime("%Y-%m-%d")
-hoje_pt  = agora.strftime("%d/%m/%Y")
-hora_now = agora.strftime("%H:%M")
-dia_sem  = ["SEG","TER","QUA","QUI","SEX","SAB","DOM"][agora.weekday()]
 # ── DADOS ────────────────────────────────────────────────────────────────────
-@st.cache_data(ttl=300)
-def _fetch_dados(hoje):
-    _dp = db("SELECT peso FROM medidas ORDER BY date(data) DESC LIMIT 1")
-    _peso = float(_dp["peso"].iloc[0]) if not _dp.empty else 93.0
+_dp = db("SELECT peso FROM medidas ORDER BY date(data) DESC LIMIT 1")
+peso = float(_dp["peso"].iloc[0]) if not _dp.empty else 93.0
 
-    _da = db(
-        "SELECT COALESCE(SUM(quantidade_ml),0) as t FROM agua WHERE date(data_hora,'localtime')=?",
-        [hoje]
-    )
-    _agua_l = float(_da["t"].iloc[0] or 0) / 1000
+_da = db(f"SELECT COALESCE(SUM(quantidade_ml),0) as t FROM agua WHERE date(data_hora,'localtime')='{hoje_sql}'")
+agua_l = float(_da["t"].iloc[0] or 0) / 1000
 
-    _dr = db(
-        "SELECT COALESCE(SUM(calorias),0) as cal, COALESCE(SUM(proteinas),0) as prot,"
-        "COALESCE(SUM(carboidratos),0) as carb, COALESCE(SUM(gorduras),0) as gord "
-        "FROM refeicoes WHERE date(data_hora,'localtime')=?",
-        [hoje]
-    )
-    _cal_h  = float(_dr["cal"].iloc[0]  or 0)
-    _prot_h = float(_dr["prot"].iloc[0] or 0)
-    _carb_h = float(_dr["carb"].iloc[0] or 0)
-    _gord_h = float(_dr["gord"].iloc[0] or 0)
+_dr = db(
+    f"SELECT COALESCE(SUM(calorias),0) as cal, COALESCE(SUM(proteinas),0) as prot,"
+    f"COALESCE(SUM(carboidratos),0) as carb, COALESCE(SUM(gorduras),0) as gord "
+    f"FROM refeicoes WHERE date(data_hora,'localtime')='{hoje_sql}'"
+)
+cal_h  = float(_dr["cal"].iloc[0]  or 0)
+prot_h = float(_dr["prot"].iloc[0] or 0)
+carb_h = float(_dr["carb"].iloc[0] or 0)
+gord_h = float(_dr["gord"].iloc[0] or 0)
 
-    _az = db("SELECT * FROM amazfit_dados ORDER BY date(data_hora) DESC LIMIT 1")
-    _passos    = int(_az["passos"].iloc[0])            if not _az.empty else 0
-    _cal_gasta = int(_az["calorias_gastas"].iloc[0])   if not _az.empty else 0
-    _dist_km   = float(_az["distancia_km"].iloc[0])    if not _az.empty else 0.0
-    _sono_tot  = int(_az["sono_total_min"].iloc[0])    if not _az.empty else 0
-    _sono_prof = int(_az["sono_profundo_min"].iloc[0]) if not _az.empty else 0
-    _hrv       = int(_az["hrv_ms"].iloc[0])            if not _az.empty else 0
-    _pai       = int(_az["pai"].iloc[0])               if not _az.empty else 0
+# Garante que as tabelas existem (Supabase ou SQLite)
+DB.init_tables()
 
-    return (_peso, _agua_l, _cal_h, _prot_h, _carb_h, _gord_h,
-            _passos, _cal_gasta, _dist_km, _sono_tot, _sono_prof, _hrv, _pai)
+_az = db("SELECT * FROM amazfit_dados ORDER BY date(data_hora) DESC LIMIT 1")
+passos    = int(_az["passos"].iloc[0])            if not _az.empty else 0
+cal_gasta = int(_az["calorias_gastas"].iloc[0])   if not _az.empty else 0
+dist_km   = float(_az["distancia_km"].iloc[0])    if not _az.empty else 0.0
+sono_tot  = int(_az["sono_total_min"].iloc[0])    if not _az.empty else 0
+sono_prof = int(_az["sono_profundo_min"].iloc[0]) if not _az.empty else 0
+hrv       = int(_az["hrv_ms"].iloc[0])            if not _az.empty else 0
+pai       = int(_az["pai"].iloc[0])               if not _az.empty else 0
 
-(peso, agua_l, cal_h, prot_h, carb_h, gord_h,
- passos, cal_gasta, dist_km, sono_tot, sono_prof, hrv, pai) = _fetch_dados(hoje_sql)
-
-# Derivações
-deficit   = cal_gasta - int(cal_h)
+# Derivações — Método Dinâmico
+gasto_total_dia   = TMB + cal_gasta                    # TMB + atividade registrada
+meta_cal_dinamica = gasto_total_dia - 500              # déficit fixo de 500 kcal/dia
+deficit           = gasto_total_dia - int(cal_h)       # gasto real - consumido
 def_cor   = GREEN if deficit > 0 else RED
 def_txt   = (f"Déficit {abs(deficit):,}" if deficit > 0
              else f"Superávit {abs(deficit):,}" if deficit < 0
              else "Equilíbrio")
 sono_h_fmt = f"{sono_tot // 60}h{sono_tot % 60:02d}"
 sono_cor  = GREEN if sono_prof >= META_SONO else RED
-hrv_cor   = GREEN if hrv >= 50 else (AMBER if hrv >= 35 else RED)
-hrv_txt   = "↑ Bom" if hrv >= 50 else ("→ Médio" if hrv >= 35 else "↓ Baixo")
+# HRV para homem 40 anos: ≥35 Bom, 25-34 Médio, <25 Baixo
+hrv_cor   = GREEN if hrv >= 35 else (AMBER if hrv >= 25 else RED)
+hrv_txt   = "↑ Bom" if hrv >= 35 else ("→ Médio" if hrv >= 25 else "↓ Baixo")
 pai_cor   = GREEN if pai >= META_PAI else (AMBER if pai >= 70 else RED)
 pai_arc   = min(251, int(251 * pai / META_PAI)) if META_PAI else 0
-restam    = int(META_CAL - cal_h)
+restam    = int(meta_cal_dinamica - cal_h)             # quanto ainda pode comer
 rc_cor    = GREEN if restam > 0 else RED
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -154,13 +145,13 @@ st.markdown(
     f'<div style="display:flex;justify-content:space-between;align-items:flex-end;'
     f'padding-bottom:14px;border-bottom:1px solid {BORDER2};margin-bottom:6px">'
     f'<div>'
-    f'<div style="font-family:{MONO};font-size:10px;letter-spacing:3px;color:{CYAN};text-transform:uppercase">sys.health_tracker</div>'
-    f'<div style="font-size:26px;font-weight:800;color:{TEXT};line-height:1;letter-spacing:-0.5px;margin-top:2px">Leandro R.</div>'
-    f'<div style="font-size:10px;color:{GHOST};text-transform:uppercase;letter-spacing:1.5px;margin-top:4px">Rio de Janeiro &nbsp;·&nbsp; Dashboard v2.1</div>'
+    f'<div style="font-family:{MONO};font-size:12px;letter-spacing:2px;color:{CYAN};text-transform:uppercase">sys.health_tracker</div>'
+    f'<div style="font-size:30px;font-weight:800;color:{TEXT};line-height:1;letter-spacing:-0.5px;margin-top:2px">Leandro R.</div>'
+    f'<div style="font-size:12px;color:{GHOST};text-transform:uppercase;letter-spacing:1px;margin-top:4px">Rio de Janeiro &nbsp;·&nbsp; Dashboard v2.1</div>'
     f'</div>'
     f'<div style="text-align:right">'
-    f'<div style="font-family:{MONO};font-size:11px;color:{GHOST}">{dia_sem} · {hoje_pt} · {hora_now}</div>'
-    f'<div style="font-family:{MONO};font-size:11px;color:{GREEN};font-weight:700;margin-top:3px">'
+    f'<div style="font-family:{MONO};font-size:13px;color:{GHOST}">{dia_sem} · {hoje_pt} · {hora_now}</div>'
+    f'<div style="font-family:{MONO};font-size:13px;color:{GREEN};font-weight:700;margin-top:3px">'
     f'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;'
     f'background:{GREEN};margin-right:5px;vertical-align:middle"></span>'
     f'Amazfit Bip 6 — sincronizado</div>'
@@ -177,13 +168,13 @@ k1, k2, k3, k4 = st.columns(4)
 
 def kpi_card(acento, lbl, val, unit, extra=""):
     return panel(
-        f'<div style="position:absolute;top:0;left:0;right:0;height:2px;'
+        f'<div style="position:absolute;top:0;left:0;right:0;height:3px;'
         f'border-radius:10px 10px 0 0;background:{acento}"></div>'
-        f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:2px;'
-        f'text-transform:uppercase;color:{GHOST};margin-bottom:7px">{lbl}</div>'
-        f'<div><span style="font-size:28px;font-weight:800;color:{TEXT};line-height:1;'
+        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1.5px;'
+        f'text-transform:uppercase;color:{MUTED};margin-bottom:10px">{lbl}</div>'
+        f'<div><span style="font-size:36px;font-weight:800;color:{TEXT};line-height:1;'
         f'letter-spacing:-1px">{val}</span>'
-        f'<span style="font-size:13px;color:{MUTED};margin-left:3px">{unit}</span></div>'
+        f'<span style="font-size:18px;color:{MUTED};margin-left:5px">{unit}</span></div>'
         f'{extra}',
         extra="position:relative;overflow:hidden"
     )
@@ -191,23 +182,25 @@ def kpi_card(acento, lbl, val, unit, extra=""):
 with k1:
     st.markdown(kpi_card(
         CYAN, "Peso atual", f"{peso:.1f}", "kg",
-        f'<div style="font-size:11px;font-weight:700;color:{GREEN};margin-top:6px">▼ {110 - peso:.1f} kg desde o início</div>'
-        f'<div style="font-size:10px;color:{MUTED};margin-top:3px">Meta: 83 kg · faltam {peso - 83:.1f} kg</div>',
+        f'<div style="font-size:14px;font-weight:700;color:{GREEN};margin-top:10px">▼ {115.3 - peso:.1f} kg desde 26/01/2026</div>'
+        f'<div style="font-size:13px;color:{MUTED};margin-top:5px">Meta: 83 kg · faltam {peso - 83:.1f} kg</div>',
     ), unsafe_allow_html=True)
 
 with k2:
+    pct_cal = cal_h / meta_cal_dinamica if meta_cal_dinamica > 0 else 0
     st.markdown(kpi_card(
         GREEN, "Calorias", f"{int(cal_h):,}", "kcal",
-        pbar(cal_h / META_CAL, GREEN) +
-        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};margin-top:4px">'
-        f'{int(cal_h / META_CAL * 100)}% · restam {restam} kcal</div>',
+        pbar(pct_cal, GREEN) +
+        f'<div style="font-family:{MONO};font-size:13px;color:{MUTED};margin-top:6px">'
+        f'{int(pct_cal * 100)}% · restam {restam} kcal</div>'
+        f'<div style="font-size:13px;color:{MUTED};margin-top:5px">Meta hoje: {int(meta_cal_dinamica):,} kcal</div>',
     ), unsafe_allow_html=True)
 
 with k3:
     st.markdown(kpi_card(
         RED, "Proteínas", f"{int(prot_h)}", "g",
         pbar(prot_h / META_PROT, RED) +
-        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};margin-top:4px">'
+        f'<div style="font-family:{MONO};font-size:13px;color:{MUTED};margin-top:6px">'
         f'{int(prot_h / META_PROT * 100)}% · meta {META_PROT} g</div>',
     ), unsafe_allow_html=True)
 
@@ -215,7 +208,7 @@ with k4:
     st.markdown(kpi_card(
         PURPLE, "Hidratação", f"{agua_l:.1f}", "L",
         pbar(agua_l / META_AGUA, PURPLE) +
-        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};margin-top:4px">'
+        f'<div style="font-family:{MONO};font-size:13px;color:{MUTED};margin-top:6px">'
         f'{int(agua_l / META_AGUA * 100)}% · meta {META_AGUA} L</div>',
     ), unsafe_allow_html=True)
 
@@ -226,12 +219,12 @@ st.markdown(sec("Amazfit Bip 6", "Atividade · Recovery · Sono"), unsafe_allow_
 
 def az_card(icon, lbl, val, unit, extra=""):
     return panel(
-        f'<div style="font-size:20px;margin-bottom:6px;text-align:center">{icon}</div>'
-        f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-        f'text-transform:uppercase;color:{GHOST};margin-bottom:5px;text-align:center">{lbl}</div>'
-        f'<div style="font-size:20px;font-weight:800;color:{TEXT};line-height:1;'
+        f'<div style="font-size:24px;margin-bottom:8px;text-align:center">{icon}</div>'
+        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1px;'
+        f'text-transform:uppercase;color:{MUTED};margin-bottom:6px;text-align:center">{lbl}</div>'
+        f'<div style="font-size:24px;font-weight:800;color:{TEXT};line-height:1;'
         f'text-align:center;letter-spacing:-0.5px">{val}</div>'
-        f'<div style="font-size:10px;color:{MUTED};margin-top:2px;text-align:center">{unit}</div>'
+        f'<div style="font-size:14px;color:{MUTED};margin-top:5px;text-align:center">{unit}</div>'
         f'{extra}'
     )
 
@@ -242,15 +235,17 @@ with a1:
     st.markdown(az_card(
         "👟", "Passos", f"{passos:,}", f"meta {META_PASS:,}",
         pbar(pct_p, CYAN) +
-        f'<div style="font-size:11px;font-weight:700;color:{CYAN};margin-top:5px;text-align:center">'
+        f'<div style="font-size:14px;font-weight:700;color:{CYAN};margin-top:7px;text-align:center">'
         f'{int(pct_p * 100)}%</div>',
     ), unsafe_allow_html=True)
 
 with a2:
     st.markdown(az_card(
-        "🔥", "Cal. gastas", f"{cal_gasta:,}", "kcal totais",
-        f'<div style="font-size:11px;font-weight:700;color:{def_cor};margin-top:5px;text-align:center">'
-        f'{def_txt} kcal</div>',
+        "🔥", "Gasto Total", f"{gasto_total_dia:,}", "kcal (TMB + Atividade)",
+        f'<div style="font-size:14px;font-weight:700;color:{def_cor};margin-top:7px;text-align:center">'
+        f'{def_txt} real</div>'
+        f'<div style="font-size:13px;color:{MUTED};margin-top:4px;text-align:center">'
+        f'Só atividade: {cal_gasta:,} kcal</div>',
     ), unsafe_allow_html=True)
 
 with a3:
@@ -262,20 +257,20 @@ with a4:
     st.markdown(az_card(
         "🌙", "Sono total", sono_h_fmt, "Sono profundo",
         pbar(pct_sp, sono_cor) +
-        f'<div style="font-size:10px;font-weight:700;color:{sono_cor};margin-top:4px;text-align:center">'
+        f'<div style="font-size:14px;font-weight:700;color:{sono_cor};margin-top:6px;text-align:center">'
         f'{sono_prof} min · meta {META_SONO}</div>',
     ), unsafe_allow_html=True)
 
 with a5:
-    pct_hrv = hrv / 100 if hrv else 0
+    pct_hrv = min(1.0, max(0, (hrv - 20) / 60)) if hrv else 0  # escala 20-80ms (range real masculino)
     st.markdown(az_card(
         "💓", "HRV", str(hrv), "ms",
         pbar(pct_hrv, hrv_cor) +
         f'<div style="display:flex;justify-content:space-between;margin-top:3px">'
-        f'<span style="font-family:{MONO};font-size:9px;color:{GHOST}">20</span>'
-        f'<span style="font-family:{MONO};font-size:9px;color:{GHOST}">{hrv}</span>'
-        f'<span style="font-family:{MONO};font-size:9px;color:{GHOST}">100</span></div>'
-        f'<div style="font-size:11px;font-weight:700;color:{hrv_cor};margin-top:3px;text-align:center">{hrv_txt}</div>',
+        f'<span style="font-family:{MONO};font-size:12px;color:{MUTED}">20</span>'
+        f'<span style="font-family:{MONO};font-size:12px;color:{MUTED}">{hrv}</span>'
+        f'<span style="font-family:{MONO};font-size:12px;color:{MUTED}">80</span></div>'
+        f'<div style="font-size:15px;font-weight:700;color:{hrv_cor};margin-top:5px;text-align:center">{hrv_txt}</div>',
     ), unsafe_allow_html=True)
 
 with a6:
@@ -300,8 +295,13 @@ st.markdown(sec("Evolução", "Peso histórico · Macros do dia"), unsafe_allow_
 c1, c2 = st.columns([2, 1])
 
 with c1:
-    df_p = db("SELECT date(data) as dt, peso FROM medidas WHERE coxa_dir IS NOT NULL ORDER BY date(data) ASC")
+    df_p = db("SELECT date(data) as dt, peso FROM medidas ORDER BY date(data) ASC")
     if not df_p.empty:
+        # Adiciona ponto inicial se não existir
+        ponto_inicial = pd.DataFrame([{"dt": "2026-01-26", "peso": 115.3}])
+        df_p["dt"] = df_p["dt"].astype(str)
+        ponto_inicial["dt"] = ponto_inicial["dt"].astype(str)
+        df_p = pd.concat([ponto_inicial, df_p]).drop_duplicates("dt").sort_values("dt").reset_index(drop=True)
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=df_p["dt"], y=df_p["peso"], mode="lines+markers",
@@ -309,6 +309,15 @@ with c1:
             marker=dict(size=7, color=CYAN, line=dict(color=BG, width=1.5)),
             fill="tozeroy", fillcolor="rgba(0,212,255,0.04)",
             hovertemplate="<b>%{x|%d/%m/%Y}</b><br>%{y} kg<extra></extra>",
+        ))
+        # Marca ponto inicial
+        fig.add_trace(go.Scatter(
+            x=["2026-01-26"], y=[115.3], mode="markers+text",
+            marker=dict(size=10, color=RED, symbol="star"),
+            text=["Início 115,3kg"], textposition="top right",
+            textfont=dict(color=RED, size=10),
+            hovertemplate="<b>Início</b><br>115,3 kg<extra></extra>",
+            showlegend=False,
         ))
         fig.add_hline(y=83, line_dash="dash", line_color=RED, line_width=1, opacity=0.4,
                       annotation_text="Meta 83 kg", annotation_font_color=RED,
@@ -392,7 +401,7 @@ with col_m:
                 f'<span style="font-size:9px;font-weight:700;letter-spacing:1px;'
                 f'text-transform:uppercase;padding:2px 7px;border-radius:3px;'
                 f'white-space:nowrap;{bsty}">{r["cat"]}</span>'
-                f'<span style="font-size:12px;color:{MUTED};flex:1">{r["alimento"]}</span>'
+                f'<span style="font-size:14px;color:{MUTED};flex:1">{r["alimento"]}</span>'
                 f'</div>'
             )
     else:
@@ -522,18 +531,18 @@ with col_med:
 
 with col_bio:
     df_bio = db("""
-        SELECT date(data) as data_ord, strftime('%d/%m/%Y',data) as "Data",
-               peso as "Peso", cintura as "Cintura", abdomen as "Abdomen",
-               peitoral as "Peitoral", quadril as "Quadril",
-               coxa_dir as "CoxaD", coxa_esq as "CoxaE",
-               panturrilha_dir as "PantD", biceps_dir as "BicepsD", biceps_esq as "BicepsE"
+        SELECT date(data) as data_ord, strftime('%d/%m/%Y',data) as data_fmt,
+               peso, cintura, abdomen,
+               peitoral, quadril,
+               coxa_dir, coxa_esq,
+               panturrilha_dir, biceps_dir, biceps_esq
         FROM medidas WHERE coxa_dir IS NOT NULL
     """)
 
     if not df_bio.empty:
         df_bio = df_bio.sort_values("data_ord", ascending=True)
-        COLS_NUM = ["Peso","Cintura","Abdomen","Peitoral","Quadril",
-                    "CoxaD","CoxaE","PantD","BicepsD","BicepsE"]
+        COLS_NUM = ["peso","cintura","abdomen","peitoral","quadril",
+                    "coxa_dir","coxa_esq","panturrilha_dir","biceps_dir","biceps_esq"]
         idx_rec = df_bio.index[-1]
         diffs = {}
         for c in COLS_NUM:
@@ -578,10 +587,10 @@ with col_bio:
             rec    = (i == 0)
             row_bg = f"background:rgba(0,212,255,0.04);" if rec else ""
             data_val = (
-                f'{row["Data"]} <span style="background:{CYAN};color:{BG};font-size:8px;'
+                f'{row["data_fmt"]} <span style="background:{CYAN};color:{BG};font-size:8px;'
                 f'font-weight:900;padding:1px 4px;border-radius:2px;margin-left:4px;'
                 f'font-family:{MONO};letter-spacing:1px">ATUAL</span>'
-                if rec else row["Data"]
+                if rec else row["data_fmt"]
             )
             td_data = (
                 f"<td style='text-align:left;padding:7px 8px;border-bottom:1px solid #0a1020;"
@@ -589,9 +598,9 @@ with col_bio:
                 f"{data_val}</td>"
             )
             body += f"<tr>{td_data}"
-            body += cel(row["Peso"], diffs["Peso"], peso=True, rec=rec)
-            for c in ["Cintura","Abdomen","Peitoral","Quadril",
-                      "CoxaD","CoxaE","PantD","BicepsD","BicepsE"]:
+            body += cel(row["peso"], diffs["peso"], peso=True, rec=rec)
+            for c in ["cintura","abdomen","peitoral","quadril",
+                      "coxa_dir","coxa_esq","panturrilha_dir","biceps_dir","biceps_esq"]:
                 body += cel(row[c], diffs[c], rec=rec)
             body += "</tr>"
 
@@ -726,7 +735,7 @@ if not df_hist.empty:
         st.markdown(panel(ptitl("💓 HRV · PAI")), unsafe_allow_html=True)
         fig = go.Figure()
         fig.add_trace(linha(df_hist, "hrv_ms",  GREEN,  "HRV (ms)"))
-        fig.add_trace(linha(df_hist, "pai",     AMBER,  "PAI", dash="dot"))
+        fig.add_trace(linha(df_hist, "pai",      AMBER,  "PAI", dash="dot"))
         fig.update_layout(**chart_layout(180, show_legend=True),
                           legend=dict(font=dict(color=GHOST, size=9),
                                       bgcolor="rgba(0,0,0,0)"))
@@ -740,9 +749,9 @@ if not df_hist.empty:
             st.markdown(panel(ptitl("🔥 Calorias diárias")), unsafe_allow_html=True)
             fig = go.Figure()
             fig.add_trace(barra(df_macro_hist, "cal", GREEN, "Calorias"))
-            fig.add_hline(y=META_CAL, line_dash="dash", line_color=CYAN,
+            fig.add_hline(y=TMB, line_dash="dash", line_color=CYAN,
                           line_width=1, opacity=0.5,
-                          annotation_text=f"Meta {META_CAL}",
+                          annotation_text=f"Meta {TMB}",
                           annotation_font_color=CYAN, annotation_font_size=9)
             fig.update_layout(**chart_layout(180))
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
@@ -786,7 +795,7 @@ if not df_hist.empty:
     if not df_macro_hist.empty:
         medias += [
             ("🔥", "Calorias/dia",  fmt_val(media(df_macro_hist, "cal"), " kcal", 0),
-             f"meta {META_CAL}"),
+             f"meta {TMB}"),
             ("🥩", "Proteínas/dia", fmt_val(media(df_macro_hist, "prot"), " g", 0),
              f"meta {META_PROT}g"),
         ]
