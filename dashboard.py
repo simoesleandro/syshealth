@@ -87,11 +87,14 @@ META_PASS = 10000
 META_SONO = 90
 META_PAI  = 100
 
-hoje_sql = datetime.now().strftime("%Y-%m-%d")
-hoje_pt  = datetime.now().strftime("%d/%m/%Y")
-hora_now = datetime.now().strftime("%H:%M")
-dia_sem  = ["SEG","TER","QUA","QUI","SEX","SAB","DOM"][datetime.now().weekday()]
+from zoneinfo import ZoneInfo
+fuso_br = ZoneInfo("America/Sao_Paulo")
+agora = datetime.now(fuso_br)
 
+hoje_sql = agora.strftime("%Y-%m-%d")
+hoje_pt  = agora.strftime("%d/%m/%Y")
+hora_now = agora.strftime("%H:%M")
+dia_sem  = ["SEG","TER","QUA","QUI","SEX","SAB","DOM"][agora.weekday()]
 # ── DADOS ────────────────────────────────────────────────────────────────────
 _dp = db("SELECT peso FROM medidas ORDER BY date(data) DESC LIMIT 1")
 peso = float(_dp["peso"].iloc[0]) if not _dp.empty else 93.0
@@ -508,11 +511,11 @@ with col_med:
 
 with col_bio:
     df_bio = db("""
-        SELECT date(data) as data_ord, strftime('%d/%m/%Y',data) as Data,
-               peso as Peso, cintura as Cintura, abdomen as Abdomen,
-               peitoral as Peitoral, quadril as Quadril,
-               coxa_dir as CoxaD, coxa_esq as CoxaE,
-               panturrilha_dir as PantD, biceps_dir as BicepsD, biceps_esq as BicepsE
+        SELECT date(data) as data_ord, strftime('%d/%m/%Y',data) as "Data",
+               peso as "Peso", cintura as "Cintura", abdomen as "Abdomen",
+               peitoral as "Peitoral", quadril as "Quadril",
+               coxa_dir as "CoxaD", coxa_esq as "CoxaE",
+               panturrilha_dir as "PantD", biceps_dir as "BicepsD", biceps_esq as "BicepsE"
         FROM medidas WHERE coxa_dir IS NOT NULL
     """)
 

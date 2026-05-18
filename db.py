@@ -27,16 +27,24 @@ if USE_PG:
 
 def _pg_sql(sql):
     """Converte apenas dialetos de data/hora do SQLite → PostgreSQL"""
-    sql = sql.replace("date(data_hora,'localtime')", "DATE(data_hora AT TIME ZONE 'America/Sao_Paulo')")
-    sql = sql.replace("date(data_hora, 'localtime')", "DATE(data_hora AT TIME ZONE 'America/Sao_Paulo')")
-    sql = sql.replace("datetime(data_hora,'localtime')", "(data_hora AT TIME ZONE 'America/Sao_Paulo')")
-    sql = sql.replace("datetime(data_hora, 'localtime')", "(data_hora AT TIME ZONE 'America/Sao_Paulo')")
-    sql = sql.replace("time(datetime(data_hora,'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS')")
-    sql = sql.replace("time(datetime(data_hora, 'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS')")
+    # 1. Mais longos/específicos PRIMEIRO para evitar quebrar a string
+    sql = sql.replace("time(datetime(data_hora,'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS')")
+    sql = sql.replace("time(datetime(data_hora, 'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo','HH24:MI:SS')")
+    
+    sql = sql.replace("strftime('%d/%m/%Y', datetime(data_hora,'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY')")
+    sql = sql.replace("strftime('%d/%m/%Y', datetime(data_hora, 'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY')")
+    
+    # 2. Intermediários
     sql = sql.replace("strftime('%d/%m/%Y',data)", "TO_CHAR(data,'DD/MM/YYYY')")
     sql = sql.replace("strftime('%d/%m/%Y', data)", "TO_CHAR(data,'DD/MM/YYYY')")
-    sql = sql.replace("strftime('%d/%m/%Y', datetime(data_hora,'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY')")
-    sql = sql.replace("strftime('%d/%m/%Y', datetime(data_hora, 'localtime'))", "TO_CHAR(data_hora AT TIME ZONE 'America/Sao_Paulo','DD/MM/YYYY')")
+    
+    # 3. Curtos POR ÚLTIMO
+    sql = sql.replace("datetime(data_hora,'localtime')", "(data_hora AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')")
+    sql = sql.replace("datetime(data_hora, 'localtime')", "(data_hora AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')")
+    
+    sql = sql.replace("date(data_hora,'localtime')", "DATE(data_hora AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')")
+    sql = sql.replace("date(data_hora, 'localtime')", "DATE(data_hora AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')")
+    
     sql = re.sub(r"date\('now',\s*'-(\d+)\s+days'\)", r"(CURRENT_DATE - INTERVAL '\1 days')", sql)
     sql = sql.replace("COALESCE(categoria, 'Lanche')", "COALESCE(categoria, 'Lanche')")
     return sql
