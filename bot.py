@@ -366,4 +366,4 @@ def processar_mensagem(message):
 if __name__ == '__main__':
     init_amazfit_table()
     print("🚀 SYS.HEALTH Bot iniciado!")
-    bot.infinity_polling()
+    bot.infinity_polling(timeout=60, long_polling_timeout=60, logger_level=None, restart_on_change=False)
