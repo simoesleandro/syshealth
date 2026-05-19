@@ -8,7 +8,10 @@ import base64
 import requests
 from dotenv import load_dotenv
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 import db as DB
+
+FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 load_dotenv()
 
@@ -172,7 +175,8 @@ def build_resumo(data, day_pt):
 
 # ── IA ────────────────────────────────────────────────────────────────────────
 def analisar_texto_com_ia(texto):
-    hora_atual = datetime.now().strftime("%H:%M")
+    agora_br = datetime.now(FUSO_BR)
+    hora_atual = agora_br.strftime("%H:%M")
     # Detecta categoria explícita no texto
     texto_lower = texto.lower()
     categoria_forcada = None
@@ -190,7 +194,7 @@ def analisar_texto_com_ia(texto):
             break
 
     # Categoria por horário se não foi forçada
-    hora_int = int(hora_atual.split(":")[0])
+    hora_int = agora_br.hour
     if not categoria_forcada:
         if   6  <= hora_int <= 9:  cat_horario = "Café da Manhã"
         elif 10 <= hora_int <= 11: cat_horario = "Lanche da Manhã"
@@ -203,7 +207,7 @@ def analisar_texto_com_ia(texto):
 
     prompt = (
         f'Você é um assistente de saúde e nutrição. O usuário enviou: "{texto}". '
-        f'Hora atual: {hora_atual}.\n\n'
+        f'Hora atual (Brasília): {hora_atual}.\n\n'
         'Retorne APENAS JSON puro, sem markdown, sem ```json.\n'
         'Retorne um objeto ou lista de objetos se houver múltiplas ações.\n\n'
         'O campo "tipo" é OBRIGATÓRIO. Valores: "refeicao", "agua", "peso", "medicacao".\n\n'

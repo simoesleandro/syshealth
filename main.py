@@ -8,7 +8,10 @@ import time
 import logging
 import os
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
+
+FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 load_dotenv()
 
@@ -34,16 +37,14 @@ def run_bot():
 def run_zepp_scheduler():
     from zepp_sync import zepp_sync, save, init_db
     init_db()
-    log.info("Scheduler Zepp iniciado — sync diario as 09:00 Brasilia")
+    log.info("Scheduler Zepp iniciado — sync diario as 10:00 Brasilia")
     ultimo_sync = None
 
     while True:
-        from datetime import timezone
-        agora   = datetime.now(timezone.utc)
-        hora_br = (agora.hour - 3) % 24
-        hoje    = date.today().strftime("%Y-%m-%d")
+        agora_br = datetime.now(FUSO_BR)
+        hoje     = agora_br.date().strftime("%Y-%m-%d")
 
-        if hora_br == 9 and ultimo_sync != hoje:
+        if agora_br.hour == 10 and ultimo_sync != hoje:
             log.info("Executando sync automatico do Zepp...")
             try:
                 row = zepp_sync(hoje)
