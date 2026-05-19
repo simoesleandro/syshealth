@@ -38,7 +38,8 @@ def run_zepp_scheduler():
     ultimo_sync = None
 
     while True:
-        agora   = datetime.utcnow()
+        from datetime import timezone
+        agora   = datetime.now(timezone.utc)
         hora_br = (agora.hour - 3) % 24
         hoje    = date.today().strftime("%Y-%m-%d")
 
