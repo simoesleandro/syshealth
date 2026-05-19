@@ -285,7 +285,7 @@ with st.sidebar:
                         "VALUES (?,?,?,?,?,?)",
                         [cat_sel, desc_in.strip(), kcal_in, prot_in, carb_in, gord_in],
                     )
-                    _fetch_dados.clear()
+                    st.cache_data.clear()
                     st.success("✓ Refeição salva!")
                     st.rerun()
                 else:
@@ -306,7 +306,7 @@ with st.sidebar:
                     "VALUES (?,?,?,?,?,?)",
                     [cat_s, desc_s, kcal_s, prot_s, carb_s, gord_s],
                 )
-                _fetch_dados.clear()
+                st.cache_data.clear()
                 st.success(f"✓ {label}")
                 st.rerun()
 
@@ -331,17 +331,17 @@ with st.sidebar:
                     "UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?",
                     [hrv_in, pai_in, f"{hoje_sql} 00:00:00"],
                 )
-                _fetch_dados.clear()
+                st.cache_data.clear()
                 st.success(f"✓ HRV {hrv_in} ms · PAI {pai_in}")
                 st.rerun()
 
-    # ── 4. Editar categoria das refeições de hoje ──────────────────────────────
-    with st.expander("✏️  Editar Refeições"):
+    # ── 4. Editar / Excluir refeições de hoje ─────────────────────────────────
+    with st.expander("✏️  Editar / Excluir Refeições"):
         df_edit = DB.query(
             "SELECT id, COALESCE(categoria,'Lanche') as cat, descricao, "
             "time(datetime(data_hora,'localtime')) as hora "
             "FROM refeicoes WHERE date(data_hora,'localtime')=? "
-            "ORDER BY data_hora DESC LIMIT 10",
+            "ORDER BY data_hora DESC LIMIT 15",
             [hoje_sql],
         )
         if df_edit.empty:
@@ -351,24 +351,37 @@ with st.sidebar:
             )
         else:
             for _, row in df_edit.iterrows():
+                rid  = int(row["id"])
+                hora = str(row["hora"])[:5]
+                nome = str(row["descricao"])[:28]
                 st.markdown(
-                    f'<div style="font-size:9px;color:{GHOST};margin:10px 0 4px;'
-                    f'font-family:\'Space Mono\',monospace;letter-spacing:0.5px">'
-                    f'{str(row["hora"])[:5]} — {str(row["descricao"])[:30]}</div>',
+                    f'<div style="font-size:9px;color:{GHOST};margin:12px 0 4px;'
+                    f'font-family:\'Space Mono\',monospace;letter-spacing:0.5px;'
+                    f'border-top:1px solid #111c2e;padding-top:10px">'
+                    f'{hora} — {nome}</div>',
                     unsafe_allow_html=True,
                 )
-                with st.form(f"edit_ref_{row['id']}"):
+                with st.form(f"edit_ref_{rid}"):
                     idx = CATEGORIAS.index(row["cat"]) if row["cat"] in CATEGORIAS else 0
                     nova_cat = st.selectbox(
-                        "Nova categoria", CATEGORIAS, index=idx,
-                        key=f"sel_{row['id']}",
+                        "Categoria", CATEGORIAS, index=idx,
+                        key=f"sel_{rid}",
                     )
-                    if st.form_submit_button("ATUALIZAR", use_container_width=True):
+                    btn_atualizar, btn_deletar = st.columns([3, 1])
+                    with btn_atualizar:
+                        atualizar = st.form_submit_button("✓ ATUALIZAR", use_container_width=True)
+                    with btn_deletar:
+                        deletar = st.form_submit_button("🗑", use_container_width=True)
+                    if atualizar:
                         DB.execute(
                             "UPDATE refeicoes SET categoria=? WHERE id=?",
-                            [nova_cat, int(row["id"])],
+                            [nova_cat, rid],
                         )
-                        _fetch_dados.clear()
+                        st.cache_data.clear()
+                        st.rerun()
+                    if deletar:
+                        DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
+                        st.cache_data.clear()
                         st.rerun()
 
     # ── Rodapé sidebar ────────────────────────────────────────────────────────
