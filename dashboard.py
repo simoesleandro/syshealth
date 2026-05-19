@@ -279,7 +279,7 @@ with st.sidebar:
                 gord_in = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f")
             if st.form_submit_button("SALVAR REFEIÇÃO"):
                 if desc_in.strip():
-                    db_nuvem.execute(
+                    DB.execute(
                         "INSERT INTO refeicoes "
                         "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
                         "VALUES (?,?,?,?,?,?)",
@@ -300,7 +300,7 @@ with st.sidebar:
         )
         for label, desc_s, cat_s, kcal_s, prot_s, carb_s, gord_s in SUPP_REGISTER:
             if st.button(label, key=f"supp_{label}"):
-                db_nuvem.execute(
+                DB.execute(
                     "INSERT INTO refeicoes "
                     "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
                     "VALUES (?,?,?,?,?,?)",
@@ -320,14 +320,14 @@ with st.sidebar:
             pai_in = st.number_input("PAI", min_value=0, max_value=300,
                                      value=pai_default, step=1)
             if st.form_submit_button("SALVAR HRV / PAI"):
-                db_nuvem.execute(
+                DB.execute(
                     "INSERT INTO amazfit_dados "
                     "(data_hora,passos,calorias_gastas,distancia_km,"
                     "sono_total_min,sono_profundo_min,hrv_ms,pai) "
                     "VALUES (?,0,0,0,0,0,0,0) ON CONFLICT(data_hora) DO NOTHING",
                     [f"{hoje_sql} 00:00:00"],
                 )
-                db_nuvem.execute(
+                DB.execute(
                     "UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?",
                     [hrv_in, pai_in, f"{hoje_sql} 00:00:00"],
                 )
@@ -337,7 +337,7 @@ with st.sidebar:
 
     # ── 4. Editar categoria das refeições de hoje ──────────────────────────────
     with st.expander("✏️  Editar Refeições"):
-        df_edit = db_nuvem.query(
+        df_edit = DB.query(
             "SELECT id, COALESCE(categoria,'Lanche') as cat, descricao, "
             "time(datetime(data_hora,'localtime')) as hora "
             "FROM refeicoes WHERE date(data_hora,'localtime')=? "
@@ -364,7 +364,7 @@ with st.sidebar:
                         key=f"sel_{row['id']}",
                     )
                     if st.form_submit_button("ATUALIZAR", use_container_width=True):
-                        db_nuvem.execute(
+                        DB.execute(
                             "UPDATE refeicoes SET categoria=? WHERE id=?",
                             [nova_cat, int(row["id"])],
                         )
