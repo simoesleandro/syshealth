@@ -9,18 +9,108 @@ st.set_page_config(
     page_title="SYS.HEALTH // Leandro R.",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="auto",
 )
 
-# ── RESET STREAMLIT CHROME ───────────────────────────────────────────────────
+# ── RESET STREAMLIT CHROME + SIDEBAR WIDGET THEME ───────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700;800&display=swap');
+
 html,body,.stApp{background:#080c14!important;color:#e8edf5!important;font-family:'DM Sans',sans-serif!important}
 .block-container{padding:1.5rem 2rem!important;max-width:100%!important}
 #MainMenu,footer,header,[data-testid="stToolbar"]{visibility:hidden!important;height:0!important}
 .stDeployButton{display:none!important}
-section[data-testid="stSidebar"]{background:#0d1424!important}
+
+/* ── Sidebar container ── */
+section[data-testid="stSidebar"]{background:#080e1a!important;border-right:1px solid #111c2e!important}
+section[data-testid="stSidebar"] > div:first-child{padding:0.75rem 1rem 1rem!important}
+[data-testid="stSidebarNav"]{display:none!important}
+
+/* ── Expander ── */
+[data-testid="stExpander"]{
+  background:#0d1424!important;border:1px solid #1a2035!important;
+  border-radius:6px!important;margin-bottom:6px!important;overflow:hidden!important}
+[data-testid="stExpander"] summary{
+  padding:8px 12px!important;color:#e8edf5!important}
+[data-testid="stExpander"] summary p{
+  font-family:'Space Mono',monospace!important;font-size:10px!important;
+  font-weight:700!important;letter-spacing:1.5px!important;text-transform:uppercase!important;
+  color:#e8edf5!important}
+[data-testid="stExpander"] summary:hover{background:rgba(0,212,255,0.04)!important}
+[data-testid="stExpander"] [data-testid="stExpanderDetails"]{
+  padding:8px 12px 12px!important;background:#0a0f1a!important}
+
+/* ── Labels ── */
+[data-testid="stTextInput"] label,[data-testid="stNumberInput"] label,
+[data-testid="stSelectbox"] label{
+  font-family:'Space Mono',monospace!important;font-size:9px!important;font-weight:700!important;
+  letter-spacing:1.5px!important;text-transform:uppercase!important;color:#4a5568!important}
+
+/* ── Text inputs ── */
+[data-testid="stTextInput"] input{
+  background:#080c14!important;border:1px solid #1a2035!important;border-radius:4px!important;
+  color:#e8edf5!important;font-family:'DM Sans',sans-serif!important;font-size:12px!important;
+  padding:6px 10px!important}
+[data-testid="stTextInput"] input:focus{
+  border-color:#00d4ff!important;box-shadow:0 0 0 1px rgba(0,212,255,0.25)!important}
+
+/* ── Number inputs ── */
+[data-testid="stNumberInput"] input{
+  background:#080c14!important;border:1px solid #1a2035!important;border-radius:4px!important;
+  color:#e8edf5!important;font-family:'Space Mono',monospace!important;font-size:12px!important}
+[data-testid="stNumberInput"] input:focus{
+  border-color:#00d4ff!important;box-shadow:0 0 0 1px rgba(0,212,255,0.25)!important}
+[data-testid="stNumberInput"] button{
+  background:#0d1424!important;border-color:#1a2035!important;color:#e8edf5!important}
+
+/* ── Selectbox ── */
+[data-testid="stSelectbox"] [data-baseweb="select"] > div{
+  background:#080c14!important;border-color:#1a2035!important;border-radius:4px!important;
+  color:#e8edf5!important;font-size:12px!important}
+[data-testid="stSelectbox"] [data-baseweb="select"] > div:focus-within{
+  border-color:#00d4ff!important}
+[data-baseweb="popover"],[data-baseweb="menu"]{
+  background:#0d1424!important;border:1px solid #1a2035!important;border-radius:4px!important}
+[data-baseweb="option"]{
+  background:#0d1424!important;color:#e8edf5!important;font-size:12px!important}
+[data-baseweb="option"]:hover{background:#1a2035!important}
+[aria-selected="true"][data-baseweb="option"]{
+  background:rgba(0,212,255,0.08)!important;color:#00d4ff!important}
+
+/* ── Buttons (regular) ── */
+section[data-testid="stSidebar"] .stButton button{
+  background:transparent!important;border:1px solid #1a2035!important;
+  color:#e8edf5!important;font-family:'Space Mono',monospace!important;font-size:10px!important;
+  font-weight:700!important;letter-spacing:1px!important;text-transform:uppercase!important;
+  border-radius:4px!important;padding:6px 8px!important;width:100%!important;
+  transition:all 0.15s ease!important;text-align:left!important}
+section[data-testid="stSidebar"] .stButton button:hover{
+  border-color:#00d4ff!important;color:#00d4ff!important;
+  background:rgba(0,212,255,0.04)!important}
+section[data-testid="stSidebar"] .stButton button:active{
+  background:rgba(0,212,255,0.08)!important}
+
+/* ── Form submit button ── */
+[data-testid="stFormSubmitButton"] button{
+  background:rgba(0,212,255,0.07)!important;border:1px solid rgba(0,212,255,0.25)!important;
+  color:#00d4ff!important;font-family:'Space Mono',monospace!important;font-size:10px!important;
+  font-weight:700!important;letter-spacing:1.5px!important;text-transform:uppercase!important;
+  border-radius:4px!important;padding:8px 12px!important;width:100%!important;
+  transition:all 0.15s ease!important}
+[data-testid="stFormSubmitButton"] button:hover{
+  background:rgba(0,212,255,0.14)!important;border-color:#00d4ff!important}
+
+/* ── Success / Error alerts ── */
+[data-testid="stAlert"]{border-radius:4px!important;font-size:11px!important;padding:6px 10px!important}
+
+/* ── Form ── */
+[data-testid="stForm"]{border:none!important;padding:0!important}
+
+/* ── Scrollbar on sidebar ── */
+section[data-testid="stSidebar"] ::-webkit-scrollbar{width:3px}
+section[data-testid="stSidebar"] ::-webkit-scrollbar-track{background:transparent}
+section[data-testid="stSidebar"] ::-webkit-scrollbar-thumb{background:#1a2035;border-radius:2px}
 </style>
 """, unsafe_allow_html=True)
 
@@ -146,6 +236,159 @@ pai_cor   = GREEN if pai >= META_PAI else (AMBER if pai >= 70 else RED)
 pai_arc   = min(251, int(251 * pai / META_PAI)) if META_PAI else 0
 restam    = int(META_CAL - cal_h)
 rc_cor    = GREEN if restam > 0 else RED
+
+# ════════════════════════════════════════════════════════════════════════════
+# PAINEL INTERATIVO (sidebar)
+# ════════════════════════════════════════════════════════════════════════════
+CATEGORIAS = [
+    "Café da Manhã", "Lanche da Manhã", "Almoço",
+    "Lanche da Tarde", "Jantar", "Lanche da Noite",
+]
+
+SUPP_REGISTER = [
+    ("Whey Isolado Dux 30g",  "Whey Protein Isolado Dux (30g)", "Café da Manhã",  118, 24,   2,   1.5),
+    ("Creatina 6g",           "Creatina (6g)",                   "Pós-Treino",       0,  0,   0,   0  ),
+    ("Pré-Treino More",       "Pré-Treino More Dux",             "Pré-Treino",       0,  0,   0,   0  ),
+    ("Magnésio Quelato",      "Magnésio Quelato Trio Vitha",     "Jantar",           0,  0,   0,   0  ),
+    ("Ômega 3 Omegafor",      "Ômega 3 Omegafor Plus",          "Jantar",           9,  0,   0,   1  ),
+    ("Vit. D3 + K2 BioVit",  "Vit. D3+K2 BioVit",              "Jantar",           0,  0,   0,   0  ),
+]
+
+
+def _dot(cor):
+    return (f'<span style="display:inline-block;width:5px;height:5px;border-radius:50%;'
+            f'background:{cor};margin-right:6px;vertical-align:middle"></span>')
+
+
+with st.sidebar:
+    # ── Cabeçalho ──────────────────────────────────────────────────────────────
+    st.markdown(
+        f'<div style="padding:14px 0 10px;border-bottom:1px solid #111c2e;margin-bottom:10px">'
+        f'<div style="font-family:\'Space Mono\',monospace;font-size:8px;font-weight:700;'
+        f'letter-spacing:3px;color:{CYAN};text-transform:uppercase;margin-bottom:4px">'
+        f'{_dot(GREEN)}sys.health_control</div>'
+        f'<div style="font-size:14px;font-weight:800;color:{TEXT};letter-spacing:-0.3px">Painel de Entrada</div>'
+        f'<div style="font-size:10px;color:{GHOST};margin-top:3px;font-family:\'Space Mono\',monospace">'
+        f'{dia_sem} · {hoje_pt} · {hora_now}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── 1. Adicionar Refeição ──────────────────────────────────────────────────
+    with st.expander("➕  Adicionar Refeição"):
+        with st.form("form_add_refeicao", clear_on_submit=True):
+            cat_sel = st.selectbox("Categoria", CATEGORIAS)
+            desc_in = st.text_input("Descrição do alimento")
+            c1, c2  = st.columns(2)
+            with c1:
+                kcal_in = st.number_input("Kcal", min_value=0.0, step=1.0, format="%.0f")
+                carb_in = st.number_input("Carb (g)", min_value=0.0, step=0.5, format="%.1f")
+            with c2:
+                prot_in = st.number_input("Prot (g)", min_value=0.0, step=0.5, format="%.1f")
+                gord_in = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f")
+            if st.form_submit_button("SALVAR REFEIÇÃO"):
+                if desc_in.strip():
+                    db_nuvem.execute(
+                        "INSERT INTO refeicoes "
+                        "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
+                        "VALUES (?,?,?,?,?,?)",
+                        [cat_sel, desc_in.strip(), kcal_in, prot_in, carb_in, gord_in],
+                    )
+                    _fetch_dados.clear()
+                    st.success("✓ Refeição salva!")
+                    st.rerun()
+                else:
+                    st.error("Descrição obrigatória.")
+
+    # ── 2. Suplementação ───────────────────────────────────────────────────────
+    with st.expander("💊  Suplementação"):
+        st.markdown(
+            f'<div style="font-family:\'Space Mono\',monospace;font-size:9px;color:{GHOST};'
+            f'letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Registrar dose de hoje</div>',
+            unsafe_allow_html=True,
+        )
+        for label, desc_s, cat_s, kcal_s, prot_s, carb_s, gord_s in SUPP_REGISTER:
+            if st.button(label, key=f"supp_{label}"):
+                db_nuvem.execute(
+                    "INSERT INTO refeicoes "
+                    "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
+                    "VALUES (?,?,?,?,?,?)",
+                    [cat_s, desc_s, kcal_s, prot_s, carb_s, gord_s],
+                )
+                _fetch_dados.clear()
+                st.success(f"✓ {label}")
+                st.rerun()
+
+    # ── 3. HRV / PAI ──────────────────────────────────────────────────────────
+    with st.expander("💓  HRV / PAI"):
+        with st.form("form_hrv_pai"):
+            hrv_default = int(hrv) if hrv else 0
+            pai_default = int(pai) if pai else 0
+            hrv_in = st.number_input("HRV (ms)", min_value=0, max_value=200,
+                                     value=hrv_default, step=1)
+            pai_in = st.number_input("PAI", min_value=0, max_value=300,
+                                     value=pai_default, step=1)
+            if st.form_submit_button("SALVAR HRV / PAI"):
+                db_nuvem.execute(
+                    "INSERT INTO amazfit_dados "
+                    "(data_hora,passos,calorias_gastas,distancia_km,"
+                    "sono_total_min,sono_profundo_min,hrv_ms,pai) "
+                    "VALUES (?,0,0,0,0,0,0,0) ON CONFLICT(data_hora) DO NOTHING",
+                    [f"{hoje_sql} 00:00:00"],
+                )
+                db_nuvem.execute(
+                    "UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?",
+                    [hrv_in, pai_in, f"{hoje_sql} 00:00:00"],
+                )
+                _fetch_dados.clear()
+                st.success(f"✓ HRV {hrv_in} ms · PAI {pai_in}")
+                st.rerun()
+
+    # ── 4. Editar categoria das refeições de hoje ──────────────────────────────
+    with st.expander("✏️  Editar Refeições"):
+        df_edit = db_nuvem.query(
+            "SELECT id, COALESCE(categoria,'Lanche') as cat, descricao, "
+            "time(datetime(data_hora,'localtime')) as hora "
+            "FROM refeicoes WHERE date(data_hora,'localtime')=? "
+            "ORDER BY data_hora DESC LIMIT 10",
+            [hoje_sql],
+        )
+        if df_edit.empty:
+            st.markdown(
+                f'<p style="color:{GHOST};font-size:11px;margin-top:6px">Nenhuma refeição hoje.</p>',
+                unsafe_allow_html=True,
+            )
+        else:
+            for _, row in df_edit.iterrows():
+                st.markdown(
+                    f'<div style="font-size:9px;color:{GHOST};margin:10px 0 4px;'
+                    f'font-family:\'Space Mono\',monospace;letter-spacing:0.5px">'
+                    f'{str(row["hora"])[:5]} — {str(row["descricao"])[:30]}</div>',
+                    unsafe_allow_html=True,
+                )
+                with st.form(f"edit_ref_{row['id']}"):
+                    idx = CATEGORIAS.index(row["cat"]) if row["cat"] in CATEGORIAS else 0
+                    nova_cat = st.selectbox(
+                        "Nova categoria", CATEGORIAS, index=idx,
+                        key=f"sel_{row['id']}",
+                    )
+                    if st.form_submit_button("ATUALIZAR", use_container_width=True):
+                        db_nuvem.execute(
+                            "UPDATE refeicoes SET categoria=? WHERE id=?",
+                            [nova_cat, int(row["id"])],
+                        )
+                        _fetch_dados.clear()
+                        st.rerun()
+
+    # ── Rodapé sidebar ────────────────────────────────────────────────────────
+    st.markdown(
+        f'<div style="margin-top:16px;padding-top:10px;border-top:1px solid #111c2e;'
+        f'font-family:\'Space Mono\',monospace;font-size:8px;color:{GHOST};'
+        f'text-transform:uppercase;letter-spacing:1.5px">'
+        f'sys.health v2.2 · Rio de Janeiro</div>',
+        unsafe_allow_html=True,
+    )
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # TOPBAR
@@ -375,10 +618,11 @@ BADGE_STYLE = {
 
 with col_m:
     df_ref_hoje = db(
-        f"SELECT time(datetime(data_hora,'localtime')) as hora, "
-        f"COALESCE(categoria,'Lanche') as cat, descricao as alimento "
-        f"FROM refeicoes WHERE date(data_hora,'localtime')='{hoje_sql}' "
-        f"ORDER BY data_hora DESC LIMIT 6"
+        "SELECT time(datetime(data_hora,'localtime')) as hora, "
+        "COALESCE(categoria,'Lanche') as cat, descricao as alimento "
+        "FROM refeicoes WHERE date(data_hora,'localtime')=? "
+        "ORDER BY data_hora DESC LIMIT 6",
+        [hoje_sql],
     )
     rows = ""
     if not df_ref_hoje.empty:
@@ -402,9 +646,10 @@ with col_m:
 
 # Busca refeições de hoje para checar suplementos registrados
 df_supp_check = db(
-    f"SELECT descricao, COUNT(*) as qtd FROM refeicoes "
-    f"WHERE date(data_hora,'localtime')='{hoje_sql}' "
-    f"GROUP BY descricao"
+    "SELECT descricao, COUNT(*) as qtd FROM refeicoes "
+    "WHERE date(data_hora,'localtime')=? "
+    "GROUP BY descricao",
+    [hoje_sql],
 )
 # Monta dicionário: keyword → quantidade registrada hoje
 supp_registrados = {}
