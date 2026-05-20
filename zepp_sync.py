@@ -44,18 +44,34 @@ def zepp_sync(day=None):
     token   = os.getenv("ZEPP_APP_TOKEN", "").strip()
     user_id = os.getenv("ZEPP_USER_ID", "").strip()
     if not token or not user_id:
+        log.error("ZEPP_APP_TOKEN ou ZEPP_USER_ID não configurados")
         return None
     day = day or date.today().strftime("%Y-%m-%d")
     try:
-        r     = requests.get(f"{BASE}/v1/data/band_data.json",
-                             headers=make_headers(token),
-                             params={"query_type": "summary", "device_type": "0",
-                                     "object_id": user_id,
-                                     "from_date": day, "to_date": day},
-                             timeout=15)
-        items = r.json().get("data", [])
-        if not items:
+        r = requests.get(f"{BASE}/v1/data/band_data.json",
+                         headers=make_headers(token),
+                         params={"query_type": "summary", "device_type": "0",
+                                 "object_id": user_id,
+                                 "from_date": day, "to_date": day},
+                         timeout=15)
+
+        if r.status_code != 200:
+            log.error(f"Zepp HTTP {r.status_code}: {r.text[:200]}")
             return None
+
+        data  = r.json()
+        code  = data.get("code", "?")
+        msg   = data.get("message", "")
+        items = data.get("data", [])
+
+        if code not in (1, "1", 0, "0"):
+            log.error(f"Zepp API code={code}: {msg} — resposta: {json.dumps(data)[:300]}")
+            return None
+
+        if not items:
+            log.warning(f"Zepp sem dados para {day} (code={code}, msg={msg})")
+            return None
+
         s    = decode_summary(items[0].get("summary", ""))
         stp  = s.get("stp", {}) or {}
         slp  = s.get("slp", {}) or {}
@@ -74,8 +90,11 @@ def zepp_sync(day=None):
             "hrv_ms":            prev.get("hrv_ms", 0),
             "pai":               prev.get("pai", 0),
         }
+    except requests.Timeout:
+        log.error(f"Zepp timeout para {day}")
+        return None
     except Exception as e:
-        log.error(f"Erro zepp_sync: {e}")
+        log.error(f"Erro zepp_sync: {e}", exc_info=True)
         return None
 
 

@@ -106,9 +106,9 @@ def decode_summary(b64):
         return {}
 
 def zepp_sync(day=None):
-    """Sincroniza dados do Zepp para o dia especificado. Retorna dict com dados."""
+    """Sincroniza dados do Zepp. Retorna (row, erro_str) — erro_str é None se OK."""
     if not ZEPP_TOKEN or not ZEPP_USER_ID:
-        return None
+        return None, "ZEPP_APP_TOKEN ou ZEPP_USER_ID não configurados no .env"
     day = day or date.today().strftime("%Y-%m-%d")
     try:
         r = requests.get(
@@ -118,10 +118,26 @@ def zepp_sync(day=None):
                     "object_id": ZEPP_USER_ID, "from_date": day, "to_date": day},
             timeout=15
         )
-        data = r.json()
+
+        # HTTP fora do 200 → erro de rede/autenticação
+        if r.status_code != 200:
+            return None, f"HTTP {r.status_code} — {r.text[:120]}"
+
+        data  = r.json()
+        code  = data.get("code", "?")
+        msg   = data.get("message", "")
         items = data.get("data", [])
+
+        # Zepp retorna code != 1 quando o token expirou ou há erro de auth
+        if code not in (1, "1", 0, "0"):
+            dica = ""
+            if "token" in msg.lower() or code in (6, "6", 7, "7"):
+                dica = "\n\n🔑 *Token expirado.* Abra o app Zepp no celular, depois atualize ZEPP\\_APP\\_TOKEN no Render."
+            return None, f"Zepp code={code}: {msg}{dica}"
+
         if not items:
-            return None
+            return None, f"Zepp não enviou dados para {day} (sem sincronização ainda?)"
+
         s    = decode_summary(items[0].get("summary", ""))
         stp  = s.get("stp", {}) or {}
         slp  = s.get("slp", {}) or {}
@@ -130,7 +146,6 @@ def zepp_sync(day=None):
         rem  = int(slp.get("dt", 0) or 0)
         tot  = deep + lt + rem or int(slp.get("ebt", 0) or 0)
 
-        # Preserva HRV e PAI já salvos
         existing = get_amazfit_hoje(day) or {}
         row = {
             "data_hora":         f"{day} 00:00:00",
@@ -143,9 +158,14 @@ def zepp_sync(day=None):
             "pai":               existing.get("pai", 0),
         }
         save_amazfit(row)
-        return row
+        return row, None
+
+    except requests.Timeout:
+        return None, "Timeout — servidor Zepp não respondeu em 15s"
+    except requests.ConnectionError as e:
+        return None, f"Erro de conexão com Zepp: {e}"
     except Exception as e:
-        return None
+        return None, f"Erro inesperado: {e}"
 
 def fmt_sono(m):
     return f"{m//60}h{m%60:02d}" if m else "—"
@@ -261,16 +281,16 @@ def cmd_start(message):
 @bot.message_handler(commands=['sync'])
 def cmd_sync(message):
     bot.send_message(message.chat.id, "⏳ Sincronizando com o Zepp...")
-    today  = date.today().strftime("%Y-%m-%d")
-    result = zepp_sync(today)
+    today        = date.today().strftime("%Y-%m-%d")
+    result, erro = zepp_sync(today)
     if result:
         day_pt = date.today().strftime("%d/%m/%Y")
         bot.send_message(message.chat.id, build_resumo(result, day_pt),
                          parse_mode='Markdown')
     else:
         bot.send_message(message.chat.id,
-            "⚠️ Não foi possível sincronizar. Verifique se o Zepp está conectado "
-            "e se ZEPP_APP_TOKEN está no .env")
+            f"⚠️ *Sync falhou*\n\n{erro}",
+            parse_mode='Markdown')
 
 
 @bot.message_handler(commands=['status'])
