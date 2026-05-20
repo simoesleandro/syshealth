@@ -1,8 +1,19 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import pandas as pd
+import os, pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
+
+# ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
+# No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
+# Este shim garante que db.py (que usa os.getenv) receba as variáveis corretas.
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str):
+            os.environ.setdefault(_k, _v)
+except Exception:
+    pass
+
 import db as DB
 
 # ── PAGE CONFIG ─────────────────────────────────────────────────────────────
@@ -26,6 +37,26 @@ html,body,.stApp{background:#080c14!important;color:#e8edf5!important;font-famil
 /* ── Sidebar container ── */
 section[data-testid="stSidebar"]{background:#080e1a!important;border-right:1px solid #111c2e!important}
 section[data-testid="stSidebar"] > div:first-child{padding:0.75rem 1rem 1rem!important}
+
+/* ── Botão de reabrir sidebar — sempre visível no desktop ── */
+[data-testid="collapsedControl"]{
+  background:rgba(0,212,255,0.08)!important;
+  border:1px solid rgba(0,212,255,0.25)!important;
+  border-radius:0 6px 6px 0!important;
+  color:#00d4ff!important;
+  opacity:1!important;
+  visibility:visible!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  width:24px!important;
+  min-height:48px!important;
+  transition:background .15s ease,box-shadow .15s ease!important}
+[data-testid="collapsedControl"]:hover{
+  background:rgba(0,212,255,0.18)!important;
+  box-shadow:0 0 12px rgba(0,212,255,0.25)!important}
+[data-testid="collapsedControl"] svg{
+  color:#00d4ff!important;fill:#00d4ff!important}
 [data-testid="stSidebarNav"]{display:none!important}
 
 /* ── Expander ── */
