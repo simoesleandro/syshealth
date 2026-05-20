@@ -1,0 +1,22 @@
+# ── fly.toml — SYS.HEALTH Bot Worker ────────────────────────────────────────
+# Worker puro: sem porta HTTP, sem health-check HTTP
+# Roda: python main.py (bot Telegram + scheduler Zepp 07:00 SP)
+# ─────────────────────────────────────────────────────────────────────────────
+
+app            = "syshealth-bot"
+primary_region = "gru"          # São Paulo — menor latência para o Supabase BR
+
+[build]
+  dockerfile = "Dockerfile.bot"
+
+[env]
+  TZ = "America/Sao_Paulo"
+
+# Máquina mínima — cabe no free tier do Fly.io (3 VMs shared-cpu-1x/256MB)
+[vm]
+  cpu_kind = "shared"
+  cpus     = 1
+  memory   = "256mb"
+
+# Sem serviços HTTP — é um worker
+# Secrets definidos via: fly secrets set TELEGRAM_TOKEN=xxx ...

@@ -1,8 +1,19 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import pandas as pd
+import os, pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
+
+# ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
+# No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
+# Este shim garante que db.py (que usa os.getenv) receba as variáveis corretas.
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str):
+            os.environ.setdefault(_k, _v)
+except Exception:
+    pass
+
 import db as DB
 
 # ── PAGE CONFIG ─────────────────────────────────────────────────────────────
