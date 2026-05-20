@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import os, pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
@@ -154,7 +153,7 @@ section[data-testid="stSidebar"] ::-webkit-scrollbar-thumb{background:#1a2035;bo
 
 /* ══════════════════════════════════════════════════════════
    RESPONSIVE — classes JS-driven (sh-xs / sh-sm / sh-md / sh-lg)
-   injetadas via components.html() + fallback media queries
+   injetadas via st.html() + fallback media queries
    ══════════════════════════════════════════════════════════ */
 
 /* Mobile hint: oculto por padrão */
@@ -243,13 +242,13 @@ html.sh-xs section[data-testid="stSidebar"]{
 </style>
 """, unsafe_allow_html=True)
 
-# ── JS: detecta largura → adiciona classe ao <html> do doc pai ───────────────
-components.html("""
+# ── JS: detecta largura via st.html (sem iframe filho) ───────────────────────
+st.html("""
 <script>
 (function(){
   function bp(){
-    var w=window.parent.innerWidth;
-    var h=window.parent.document.documentElement;
+    var w=window.innerWidth;
+    var h=document.documentElement;
     h.classList.remove('sh-xs','sh-sm','sh-md','sh-lg');
     if(w<=400)      h.classList.add('sh-xs');
     else if(w<=680) h.classList.add('sh-sm');
@@ -257,10 +256,10 @@ components.html("""
     else            h.classList.add('sh-lg');
   }
   bp();
-  window.parent.addEventListener('resize',bp);
+  window.addEventListener('resize',bp);
 })();
 </script>
-""", height=0, scrolling=False)
+""")
 
 # ── CONSTANTES DE COR ────────────────────────────────────────────────────────
 BG      = "#080c14"
@@ -469,17 +468,17 @@ with st.sidebar:
         # Botões rápidos — 2 por linha
         wa1, wa2 = st.columns(2)
         with wa1:
-            if st.button("+ 200 ml", key="agua_200", use_container_width=True):
+            if st.button("+ 200 ml", key="agua_200", width="stretch"):
                 DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [200])
                 st.cache_data.clear(); st.rerun()
-            if st.button("+ 500 ml", key="agua_500", use_container_width=True):
+            if st.button("+ 500 ml", key="agua_500", width="stretch"):
                 DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [500])
                 st.cache_data.clear(); st.rerun()
         with wa2:
-            if st.button("+ 350 ml", key="agua_350", use_container_width=True):
+            if st.button("+ 350 ml", key="agua_350", width="stretch"):
                 DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [350])
                 st.cache_data.clear(); st.rerun()
-            if st.button("+ 750 ml", key="agua_750", use_container_width=True):
+            if st.button("+ 750 ml", key="agua_750", width="stretch"):
                 DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [750])
                 st.cache_data.clear(); st.rerun()
         # Quantidade personalizada
@@ -569,9 +568,9 @@ with st.sidebar:
                     )
                     btn_atualizar, btn_deletar = st.columns([3, 1])
                     with btn_atualizar:
-                        atualizar = st.form_submit_button("✓ ATUALIZAR", use_container_width=True)
+                        atualizar = st.form_submit_button("✓ ATUALIZAR", width="stretch")
                     with btn_deletar:
-                        deletar = st.form_submit_button("🗑", use_container_width=True)
+                        deletar = st.form_submit_button("🗑", width="stretch")
                     if atualizar:
                         DB.execute(
                             "UPDATE refeicoes SET categoria=? WHERE id=?",
@@ -802,7 +801,7 @@ with c1:
                        tickfont=dict(color=GHOST, size=9)),
             showlegend=False,
         )
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 with c2:
     def mrow(nome, val, meta, cor):
@@ -1177,14 +1176,14 @@ if not df_hist.empty:
                       annotation_text=f"Meta {META_PASS:,}",
                       annotation_font_color=GREEN, annotation_font_size=9)
         fig.update_layout(**chart_layout(180))
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     with h1b:
         st.markdown(panel(ptitl("📍 Distância (km)")), unsafe_allow_html=True)
         fig = go.Figure()
         fig.add_trace(linha(df_hist, "distancia_km", CYAN, "km", fill=True))
         fig.update_layout(**chart_layout(180))
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     # ── Linha 2: Sono ─────────────────────────────────────────────────────────
     h2a, h2b = st.columns(2)
@@ -1202,7 +1201,7 @@ if not df_hist.empty:
                           barmode="overlay",
                           legend=dict(font=dict(color=GHOST, size=9),
                                       bgcolor="rgba(0,0,0,0)"))
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     with h2b:
         st.markdown(panel(ptitl("💓 HRV · PAI")), unsafe_allow_html=True)
@@ -1212,7 +1211,7 @@ if not df_hist.empty:
         fig.update_layout(**chart_layout(180, show_legend=True),
                           legend=dict(font=dict(color=GHOST, size=9),
                                       bgcolor="rgba(0,0,0,0)"))
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     # ── Linha 3: Nutrição ─────────────────────────────────────────────────────
     if not df_macro_hist.empty:
@@ -1227,7 +1226,7 @@ if not df_hist.empty:
                           annotation_text=f"Meta {TMB}",
                           annotation_font_color=CYAN, annotation_font_size=9)
             fig.update_layout(**chart_layout(180))
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
         with h3b:
             st.markdown(panel(ptitl("🥩 Proteínas diárias (g)")), unsafe_allow_html=True)
@@ -1238,7 +1237,7 @@ if not df_hist.empty:
                           annotation_text=f"Meta {META_PROT}g",
                           annotation_font_color=CYAN, annotation_font_size=9)
             fig.update_layout(**chart_layout(180))
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     # ── Tabela resumo semanal ─────────────────────────────────────────────────
     st.markdown(sec("Resumo", f"Médias dos últimos {n_dias} dias"), unsafe_allow_html=True)
