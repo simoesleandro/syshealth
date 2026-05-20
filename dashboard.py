@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
@@ -32,7 +33,8 @@ section[data-testid="stSidebar"] > div:first-child{padding:0.75rem 1rem 1rem!imp
   background:#0d1424!important;border:1px solid #1a2035!important;
   border-radius:6px!important;margin-bottom:6px!important;overflow:hidden!important}
 [data-testid="stExpander"] summary{
-  padding:8px 12px!important;color:#e8edf5!important}
+  padding:12px 14px!important;color:#e8edf5!important;min-height:44px!important;
+  display:flex!important;align-items:center!important;cursor:pointer!important}
 [data-testid="stExpander"] summary p{
   font-family:'Space Mono',monospace!important;font-size:10px!important;
   font-weight:700!important;letter-spacing:1.5px!important;text-transform:uppercase!important;
@@ -83,8 +85,8 @@ section[data-testid="stSidebar"] .stButton button{
   background:transparent!important;border:1px solid #1a2035!important;
   color:#e8edf5!important;font-family:'Space Mono',monospace!important;font-size:10px!important;
   font-weight:700!important;letter-spacing:1px!important;text-transform:uppercase!important;
-  border-radius:4px!important;padding:6px 8px!important;width:100%!important;
-  transition:all 0.15s ease!important;text-align:left!important}
+  border-radius:4px!important;padding:8px 10px!important;width:100%!important;
+  min-height:44px!important;transition:all 0.15s ease!important;text-align:left!important}
 section[data-testid="stSidebar"] .stButton button:hover{
   border-color:#00d4ff!important;color:#00d4ff!important;
   background:rgba(0,212,255,0.04)!important}
@@ -96,8 +98,8 @@ section[data-testid="stSidebar"] .stButton button:active{
   background:rgba(0,212,255,0.07)!important;border:1px solid rgba(0,212,255,0.25)!important;
   color:#00d4ff!important;font-family:'Space Mono',monospace!important;font-size:10px!important;
   font-weight:700!important;letter-spacing:1.5px!important;text-transform:uppercase!important;
-  border-radius:4px!important;padding:8px 12px!important;width:100%!important;
-  transition:all 0.15s ease!important}
+  border-radius:4px!important;padding:10px 12px!important;width:100%!important;
+  min-height:44px!important;transition:all 0.15s ease!important}
 [data-testid="stFormSubmitButton"] button:hover{
   background:rgba(0,212,255,0.14)!important;border-color:#00d4ff!important}
 
@@ -111,8 +113,116 @@ section[data-testid="stSidebar"] .stButton button:active{
 section[data-testid="stSidebar"] ::-webkit-scrollbar{width:3px}
 section[data-testid="stSidebar"] ::-webkit-scrollbar-track{background:transparent}
 section[data-testid="stSidebar"] ::-webkit-scrollbar-thumb{background:#1a2035;border-radius:2px}
+
+/* ══════════════════════════════════════════════════════════
+   RESPONSIVE — classes JS-driven (sh-xs / sh-sm / sh-md / sh-lg)
+   injetadas via components.html() + fallback media queries
+   ══════════════════════════════════════════════════════════ */
+
+/* Mobile hint: oculto por padrão */
+.sh-mobile-hint{display:none!important}
+
+/* ── TABLET (md): 3 colunas por linha ── */
+html.sh-md [data-testid="stHorizontalBlock"],
+html.sh-sm [data-testid="stHorizontalBlock"],
+html.sh-xs [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}
+
+html.sh-md [data-testid="stHorizontalBlock"]>[data-testid="column"]{
+  flex:1 1 220px!important;min-width:0!important}
+
+/* ── MOBILE (sm): 2 colunas por linha ── */
+html.sh-sm [data-testid="stHorizontalBlock"]>[data-testid="column"]{
+  flex:1 1 calc(50% - 10px)!important;min-width:0!important}
+html.sh-sm .block-container{padding:0.75rem!important}
+html.sh-sm .sh-topbar{flex-direction:column!important;gap:8px!important;align-items:flex-start!important}
+html.sh-sm .sh-topbar-right{text-align:left!important}
+html.sh-sm .sh-mobile-hint{display:flex!important}
+html.sh-sm .sh-supp-grid{grid-template-columns:repeat(3,1fr)!important}
+
+/* ── MINI (xs): 1 coluna por linha ── */
+html.sh-xs [data-testid="stHorizontalBlock"]>[data-testid="column"]{
+  flex:1 1 100%!important;min-width:0!important}
+html.sh-xs .block-container{padding:0.5rem!important}
+html.sh-xs .sh-topbar{flex-direction:column!important;gap:6px!important;align-items:flex-start!important}
+html.sh-xs .sh-topbar-right{text-align:left!important}
+html.sh-xs .sh-mobile-hint{display:flex!important}
+html.sh-xs .sh-supp-grid{grid-template-columns:repeat(2,1fr)!important}
+
+/* ── FAB (mobile) — aparece como bolinha ciano fixa ── */
+html.sh-sm [data-testid="collapsedControl"],
+html.sh-xs [data-testid="collapsedControl"]{
+  position:fixed!important;
+  bottom:22px!important;right:18px!important;
+  top:auto!important;left:auto!important;
+  width:52px!important;height:52px!important;
+  border-radius:50%!important;
+  background:#080e1a!important;
+  border:1.5px solid #00d4ff!important;
+  box-shadow:0 0 20px rgba(0,212,255,.4),0 4px 18px rgba(0,0,0,.7)!important;
+  display:flex!important;align-items:center!important;justify-content:center!important;
+  z-index:9999!important;
+  transition:box-shadow .2s ease,transform .15s ease!important}
+html.sh-sm [data-testid="collapsedControl"]:hover,
+html.sh-xs [data-testid="collapsedControl"]:hover{
+  box-shadow:0 0 32px rgba(0,212,255,.65),0 6px 24px rgba(0,0,0,.8)!important;
+  transform:scale(1.05)!important}
+html.sh-sm [data-testid="collapsedControl"] svg,
+html.sh-xs [data-testid="collapsedControl"] svg{
+  color:#00d4ff!important;fill:#00d4ff!important;
+  width:22px!important;height:22px!important}
+html.sh-sm section[data-testid="stSidebar"],
+html.sh-xs section[data-testid="stSidebar"]{
+  width:100vw!important;max-width:340px!important}
+
+/* ── Fallback com media queries (para o primeiro render antes do JS rodar) ── */
+@media(max-width:960px){
+  [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}
+  [data-testid="stHorizontalBlock"]>[data-testid="column"]{
+    flex:1 1 220px!important;min-width:0!important}}
+@media(max-width:680px){
+  .block-container{padding:0.75rem!important}
+  .sh-mobile-hint{display:flex!important}
+  .sh-supp-grid{grid-template-columns:repeat(3,1fr)!important}
+  [data-testid="stHorizontalBlock"]>[data-testid="column"]{
+    flex:1 1 calc(50% - 10px)!important}
+  .sh-topbar{flex-direction:column!important;gap:8px!important;align-items:flex-start!important}
+  .sh-topbar-right{text-align:left!important}
+  [data-testid="collapsedControl"]{
+    position:fixed!important;bottom:22px!important;right:18px!important;
+    top:auto!important;left:auto!important;
+    width:52px!important;height:52px!important;border-radius:50%!important;
+    background:#080e1a!important;border:1.5px solid #00d4ff!important;
+    box-shadow:0 0 20px rgba(0,212,255,.4),0 4px 18px rgba(0,0,0,.7)!important;
+    display:flex!important;align-items:center!important;justify-content:center!important;
+    z-index:9999!important}
+  [data-testid="collapsedControl"] svg{
+    color:#00d4ff!important;fill:#00d4ff!important;
+    width:22px!important;height:22px!important}
+  section[data-testid="stSidebar"]{width:100vw!important;max-width:340px!important}}
+@media(max-width:400px){
+  [data-testid="stHorizontalBlock"]>[data-testid="column"]{flex:1 1 100%!important}
+  .sh-supp-grid{grid-template-columns:repeat(2,1fr)!important}}
 </style>
 """, unsafe_allow_html=True)
+
+# ── JS: detecta largura → adiciona classe ao <html> do doc pai ───────────────
+components.html("""
+<script>
+(function(){
+  function bp(){
+    var w=window.parent.innerWidth;
+    var h=window.parent.document.documentElement;
+    h.classList.remove('sh-xs','sh-sm','sh-md','sh-lg');
+    if(w<=400)      h.classList.add('sh-xs');
+    else if(w<=680) h.classList.add('sh-sm');
+    else if(w<=960) h.classList.add('sh-md');
+    else            h.classList.add('sh-lg');
+  }
+  bp();
+  window.parent.addEventListener('resize',bp);
+})();
+</script>
+""", height=0, scrolling=False)
 
 # ── CONSTANTES DE COR ────────────────────────────────────────────────────────
 BG      = "#080c14"
@@ -310,7 +420,59 @@ with st.sidebar:
                 st.success(f"✓ {label}")
                 st.rerun()
 
-    # ── 3. HRV / PAI ──────────────────────────────────────────────────────────
+    # ── 3. Água ───────────────────────────────────────────────────────────────
+    with st.expander("💧  Água"):
+        st.markdown(
+            f'<div style="font-family:\'Space Mono\',monospace;font-size:9px;color:{GHOST};'
+            f'letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">'
+            f'Hoje: <b style="color:{CYAN}">{agua_l:.2f} L</b> de {META_AGUA} L</div>',
+            unsafe_allow_html=True,
+        )
+        # Botões rápidos — 2 por linha
+        wa1, wa2 = st.columns(2)
+        with wa1:
+            if st.button("+ 200 ml", key="agua_200", use_container_width=True):
+                DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [200])
+                st.cache_data.clear(); st.rerun()
+            if st.button("+ 500 ml", key="agua_500", use_container_width=True):
+                DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [500])
+                st.cache_data.clear(); st.rerun()
+        with wa2:
+            if st.button("+ 350 ml", key="agua_350", use_container_width=True):
+                DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [350])
+                st.cache_data.clear(); st.rerun()
+            if st.button("+ 750 ml", key="agua_750", use_container_width=True):
+                DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [750])
+                st.cache_data.clear(); st.rerun()
+        # Quantidade personalizada
+        with st.form("form_agua_custom", clear_on_submit=True):
+            ml_in = st.number_input("Outro (ml)", min_value=50, max_value=2000,
+                                    value=300, step=50)
+            if st.form_submit_button("REGISTRAR"):
+                DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [int(ml_in)])
+                st.cache_data.clear(); st.rerun()
+
+    # ── 4. Peso de hoje ───────────────────────────────────────────────────────
+    with st.expander("⚖️  Peso de hoje"):
+        with st.form("form_peso_hoje"):
+            peso_default = round(peso, 1) if peso else 93.0
+            peso_in = st.number_input("Peso (kg)", min_value=40.0, max_value=200.0,
+                                      value=peso_default, step=0.1, format="%.1f")
+            if st.form_submit_button("SALVAR PESO"):
+                # Remove entrada de peso-apenas de hoje (preserva medidas completas)
+                DB.execute(
+                    "DELETE FROM medidas WHERE date(data)=? AND cintura IS NULL",
+                    [hoje_sql],
+                )
+                DB.execute(
+                    "INSERT INTO medidas (data, peso) VALUES (?, ?)",
+                    [hoje_sql, float(peso_in)],
+                )
+                st.cache_data.clear()
+                st.success(f"✓ {peso_in:.1f} kg registrado!")
+                st.rerun()
+
+    # ── 5. HRV / PAI ──────────────────────────────────────────────────────────
     with st.expander("💓  HRV / PAI"):
         with st.form("form_hrv_pai"):
             hrv_default = int(hrv) if hrv else 0
@@ -335,7 +497,7 @@ with st.sidebar:
                 st.success(f"✓ HRV {hrv_in} ms · PAI {pai_in}")
                 st.rerun()
 
-    # ── 4. Editar / Excluir refeições de hoje ─────────────────────────────────
+    # ── 6. Editar / Excluir refeições de hoje ─────────────────────────────────
     with st.expander("✏️  Editar / Excluir Refeições"):
         df_edit = DB.query(
             "SELECT id, COALESCE(categoria,'Lanche') as cat, descricao, "
@@ -389,7 +551,7 @@ with st.sidebar:
         f'<div style="margin-top:16px;padding-top:10px;border-top:1px solid #111c2e;'
         f'font-family:\'Space Mono\',monospace;font-size:8px;color:{GHOST};'
         f'text-transform:uppercase;letter-spacing:1.5px">'
-        f'sys.health v2.2 · Rio de Janeiro</div>',
+        f'sys.health v2.3 · Rio de Janeiro</div>',
         unsafe_allow_html=True,
     )
 
@@ -398,20 +560,35 @@ with st.sidebar:
 # TOPBAR
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown(
-    f'<div style="display:flex;justify-content:space-between;align-items:flex-end;'
+    f'<div class="sh-topbar" style="display:flex;justify-content:space-between;align-items:flex-end;'
     f'padding-bottom:14px;border-bottom:1px solid {BORDER2};margin-bottom:6px">'
     f'<div>'
     f'<div style="font-family:{MONO};font-size:12px;letter-spacing:2px;color:{CYAN};text-transform:uppercase">sys.health_tracker</div>'
-    f'<div style="font-size:30px;font-weight:800;color:{TEXT};line-height:1;letter-spacing:-0.5px;margin-top:2px">Leandro R.</div>'
+    f'<div style="font-size:28px;font-weight:800;color:{TEXT};line-height:1;letter-spacing:-0.5px;margin-top:2px">Leandro R.</div>'
     f'<div style="font-size:12px;color:{GHOST};text-transform:uppercase;letter-spacing:1px;margin-top:4px">Rio de Janeiro &nbsp;·&nbsp; Dashboard v2.1</div>'
     f'</div>'
-    f'<div style="text-align:right">'
+    f'<div class="sh-topbar-right" style="text-align:right">'
     f'<div style="font-family:{MONO};font-size:13px;color:{GHOST}">{dia_sem} · {hoje_pt} · {hora_now}</div>'
     f'<div style="font-family:{MONO};font-size:13px;color:{GREEN};font-weight:700;margin-top:3px">'
     f'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;'
     f'background:{GREEN};margin-right:5px;vertical-align:middle"></span>'
     f'Amazfit Bip 6 — sincronizado</div>'
     f'</div></div>',
+    unsafe_allow_html=True,
+)
+
+# ── Banner mobile: aparece só em telas pequenas ───────────────────────────────
+st.markdown(
+    f'<div class="sh-mobile-hint" style="align-items:center;gap:12px;'
+    f'background:rgba(0,212,255,0.05);border:1px solid rgba(0,212,255,0.18);'
+    f'border-radius:8px;padding:10px 14px;margin:6px 0 10px">'
+    f'<div style="font-size:22px;flex-shrink:0">✏️</div>'
+    f'<div style="font-size:12px;color:{TEXT};line-height:1.5">'
+    f'<b style="color:{CYAN}">Painel de entrada:</b> toque no botão '
+    f'<span style="background:{CYAN};color:#080c14;font-weight:900;padding:1px 6px;'
+    f'border-radius:4px;font-size:11px">☰</span>'
+    f' (canto inferior direito) para registrar refeições, suplementos e HRV/PAI.</div>'
+    f'</div>',
     unsafe_allow_html=True,
 )
 
@@ -743,7 +920,7 @@ with col_s:
     st.markdown(
         panel(
             ptitl("Suplementação do dia") +
-            f'<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">{cards}</div>'
+            f'<div class="sh-supp-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">{cards}</div>'
         ),
         unsafe_allow_html=True,
     )
