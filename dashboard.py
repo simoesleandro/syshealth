@@ -20,7 +20,7 @@ st.set_page_config(
     page_title="SYS.HEALTH // Leandro R.",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ── RESET STREAMLIT CHROME + SIDEBAR WIDGET THEME ───────────────────────────
@@ -145,6 +145,24 @@ section[data-testid="stSidebar"] .stButton button:active{
 
 /* ── Form ── */
 [data-testid="stForm"]{border:none!important;padding:0!important}
+
+/* ── Tabs navegação ── */
+[data-testid="stTabs"]{margin-bottom:4px!important}
+button[data-baseweb="tab"]{
+  font-family:'Space Mono',monospace!important;font-size:10px!important;
+  font-weight:700!important;letter-spacing:1.5px!important;text-transform:uppercase!important;
+  color:#4a5568!important;padding:10px 18px!important;border:none!important;
+  background:transparent!important}
+button[data-baseweb="tab"][aria-selected="true"]{color:#00d4ff!important}
+[data-baseweb="tab-highlight"]{background:#00d4ff!important;height:2px!important}
+[data-baseweb="tab-border"]{background:#1a2035!important}
+
+/* ── Painel entrada (expander no body) ── */
+.sh-painel [data-testid="stExpander"]{
+  border-color:rgba(0,212,255,0.2)!important;
+  border-radius:8px!important}
+.sh-painel [data-testid="stExpander"] summary p{
+  color:#00d4ff!important;font-size:11px!important}
 
 /* ── Scrollbar on sidebar ── */
 section[data-testid="stSidebar"] ::-webkit-scrollbar{width:3px}
@@ -376,7 +394,7 @@ restam    = int(meta_cal_dinamica - cal_h)             # quanto ainda pode comer
 rc_cor    = GREEN if restam > 0 else RED
 
 # ════════════════════════════════════════════════════════════════════════════
-# PAINEL INTERATIVO (sidebar)
+# CONSTANTES DO PAINEL
 # ════════════════════════════════════════════════════════════════════════════
 CATEGORIAS = [
     "Café da Manhã", "Lanche da Manhã", "Almoço",
@@ -393,27 +411,14 @@ SUPP_REGISTER = [
 ]
 
 
-def _dot(cor):
-    return (f'<span style="display:inline-block;width:5px;height:5px;border-radius:50%;'
-            f'background:{cor};margin-right:6px;vertical-align:middle"></span>')
+def _painel_entrada():
+    """Painel de entrada inline — substituiu a sidebar."""
+    st.markdown('<div class="sh-painel">', unsafe_allow_html=True)
 
+    # ── Tabs do painel ────────────────────────────────────────────────────────
+    tp1, tp2, tp3, tp4 = st.tabs(["➕ Refeição", "💊 Suplem.", "💧 Água · ⚖️ Peso · 💓 HRV", "✏️ Editar"])
 
-with st.sidebar:
-    # ── Cabeçalho ──────────────────────────────────────────────────────────────
-    st.markdown(
-        f'<div style="padding:14px 0 10px;border-bottom:1px solid #111c2e;margin-bottom:10px">'
-        f'<div style="font-family:\'Space Mono\',monospace;font-size:8px;font-weight:700;'
-        f'letter-spacing:3px;color:{CYAN};text-transform:uppercase;margin-bottom:4px">'
-        f'{_dot(GREEN)}sys.health_control</div>'
-        f'<div style="font-size:14px;font-weight:800;color:{TEXT};letter-spacing:-0.3px">Painel de Entrada</div>'
-        f'<div style="font-size:10px;color:{GHOST};margin-top:3px;font-family:\'Space Mono\',monospace">'
-        f'{dia_sem} · {hoje_pt} · {hora_now}</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    # ── 1. Adicionar Refeição ──────────────────────────────────────────────────
-    with st.expander("➕  Adicionar Refeição"):
+    with tp1:
         with st.form("form_add_refeicao", clear_on_submit=True):
             cat_sel = st.selectbox("Categoria", CATEGORIAS)
             desc_in = st.text_input("Descrição do alimento")
@@ -424,7 +429,7 @@ with st.sidebar:
             with c2:
                 prot_in = st.number_input("Prot (g)", min_value=0.0, step=0.5, format="%.1f")
                 gord_in = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f")
-            if st.form_submit_button("SALVAR REFEIÇÃO"):
+            if st.form_submit_button("SALVAR REFEIÇÃO", width="stretch"):
                 if desc_in.strip():
                     DB.execute(
                         "INSERT INTO refeicoes "
@@ -438,104 +443,56 @@ with st.sidebar:
                 else:
                     st.error("Descrição obrigatória.")
 
-    # ── 2. Suplementação ───────────────────────────────────────────────────────
-    with st.expander("💊  Suplementação"):
-        st.markdown(
-            f'<div style="font-family:\'Space Mono\',monospace;font-size:9px;color:{GHOST};'
-            f'letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Registrar dose de hoje</div>',
-            unsafe_allow_html=True,
-        )
-        for label, desc_s, cat_s, kcal_s, prot_s, carb_s, gord_s in SUPP_REGISTER:
-            if st.button(label, key=f"supp_{label}"):
-                DB.execute(
-                    "INSERT INTO refeicoes "
-                    "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
-                    "VALUES (?,?,?,?,?,?)",
-                    [cat_s, desc_s, kcal_s, prot_s, carb_s, gord_s],
-                )
-                st.cache_data.clear()
-                st.success(f"✓ {label}")
-                st.rerun()
+    with tp2:
+        cols_s = st.columns(3)
+        for i, (label, desc_s, cat_s, kcal_s, prot_s, carb_s, gord_s) in enumerate(SUPP_REGISTER):
+            with cols_s[i % 3]:
+                if st.button(label, key=f"supp_{label}", width="stretch"):
+                    DB.execute(
+                        "INSERT INTO refeicoes "
+                        "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
+                        "VALUES (?,?,?,?,?,?)",
+                        [cat_s, desc_s, kcal_s, prot_s, carb_s, gord_s],
+                    )
+                    st.cache_data.clear()
+                    st.success(f"✓ {label}")
+                    st.rerun()
 
-    # ── 3. Água ───────────────────────────────────────────────────────────────
-    with st.expander("💧  Água"):
-        st.markdown(
-            f'<div style="font-family:\'Space Mono\',monospace;font-size:9px;color:{GHOST};'
-            f'letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">'
-            f'Hoje: <b style="color:{CYAN}">{agua_l:.2f} L</b> de {META_AGUA} L</div>',
-            unsafe_allow_html=True,
-        )
-        # Botões rápidos — 2 por linha
-        wa1, wa2 = st.columns(2)
-        with wa1:
-            if st.button("+ 200 ml", key="agua_200", width="stretch"):
-                DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [200])
-                st.cache_data.clear(); st.rerun()
-            if st.button("+ 500 ml", key="agua_500", width="stretch"):
-                DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [500])
-                st.cache_data.clear(); st.rerun()
-        with wa2:
-            if st.button("+ 350 ml", key="agua_350", width="stretch"):
-                DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [350])
-                st.cache_data.clear(); st.rerun()
-            if st.button("+ 750 ml", key="agua_750", width="stretch"):
-                DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [750])
-                st.cache_data.clear(); st.rerun()
-        # Quantidade personalizada
-        with st.form("form_agua_custom", clear_on_submit=True):
-            ml_in = st.number_input("Outro (ml)", min_value=50, max_value=2000,
-                                    value=300, step=50)
-            if st.form_submit_button("REGISTRAR"):
-                DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [int(ml_in)])
-                st.cache_data.clear(); st.rerun()
+    with tp3:
+        cA, cB, cC = st.columns(3)
+        with cA:
+            st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💧 Água · {agua_l:.1f}L / {META_AGUA}L</div>', unsafe_allow_html=True)
+            wa1, wa2 = st.columns(2)
+            with wa1:
+                if st.button("+ 200ml", key="agua_200", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [200]); st.cache_data.clear(); st.rerun()
+                if st.button("+ 500ml", key="agua_500", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [500]); st.cache_data.clear(); st.rerun()
+            with wa2:
+                if st.button("+ 350ml", key="agua_350", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [350]); st.cache_data.clear(); st.rerun()
+                if st.button("+ 750ml", key="agua_750", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [750]); st.cache_data.clear(); st.rerun()
+            with st.form("form_agua_custom", clear_on_submit=True):
+                ml_in = st.number_input("Outro (ml)", min_value=50, max_value=2000, value=300, step=50)
+                if st.form_submit_button("+ Registrar", width="stretch"):
+                    DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [int(ml_in)])
+                    st.cache_data.clear(); st.rerun()
+        with cB:
+            st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">⚖️ Peso de hoje</div>', unsafe_allow_html=True)
+            with st.form("form_peso_hoje"):
+                peso_in = st.number_input("kg", min_value=40.0, max_value=200.0, value=round(peso,1), step=0.1, format="%.1f")
+                if st.form_submit_button("SALVAR", width="stretch"):
+                    DB.execute("DELETE FROM medidas WHERE date(data)=? AND cintura IS NULL", [hoje_sql])
+                    DB.execute("INSERT INTO medidas (data, peso) VALUES (?, ?)", [hoje_sql, float(peso_in)])
+                    st.cache_data.clear(); st.success(f"✓ {peso_in:.1f} kg"); st.rerun()
+        with cC:
+            st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💓 HRV / PAI</div>', unsafe_allow_html=True)
+            with st.form("form_hrv_pai"):
+                hrv_in = st.number_input("HRV (ms)", min_value=0, max_value=200, value=int(hrv) if hrv else 0, step=1)
+                pai_in = st.number_input("PAI", min_value=0, max_value=300, value=int(pai) if pai else 0, step=1)
+                if st.form_submit_button("SALVAR", width="stretch"):
+                    DB.execute("INSERT INTO amazfit_dados (data_hora,passos,calorias_gastas,distancia_km,sono_total_min,sono_profundo_min,hrv_ms,pai) VALUES (?,0,0,0,0,0,0,0) ON CONFLICT(data_hora) DO NOTHING", [f"{hoje_sql} 00:00:00"])
+                    DB.execute("UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?", [hrv_in, pai_in, f"{hoje_sql} 00:00:00"])
+                    st.cache_data.clear(); st.success(f"✓ HRV {hrv_in}ms · PAI {pai_in}"); st.rerun()
 
-    # ── 4. Peso de hoje ───────────────────────────────────────────────────────
-    with st.expander("⚖️  Peso de hoje"):
-        with st.form("form_peso_hoje"):
-            peso_default = round(peso, 1) if peso else 93.0
-            peso_in = st.number_input("Peso (kg)", min_value=40.0, max_value=200.0,
-                                      value=peso_default, step=0.1, format="%.1f")
-            if st.form_submit_button("SALVAR PESO"):
-                # Remove entrada de peso-apenas de hoje (preserva medidas completas)
-                DB.execute(
-                    "DELETE FROM medidas WHERE date(data)=? AND cintura IS NULL",
-                    [hoje_sql],
-                )
-                DB.execute(
-                    "INSERT INTO medidas (data, peso) VALUES (?, ?)",
-                    [hoje_sql, float(peso_in)],
-                )
-                st.cache_data.clear()
-                st.success(f"✓ {peso_in:.1f} kg registrado!")
-                st.rerun()
-
-    # ── 5. HRV / PAI ──────────────────────────────────────────────────────────
-    with st.expander("💓  HRV / PAI"):
-        with st.form("form_hrv_pai"):
-            hrv_default = int(hrv) if hrv else 0
-            pai_default = int(pai) if pai else 0
-            hrv_in = st.number_input("HRV (ms)", min_value=0, max_value=200,
-                                     value=hrv_default, step=1)
-            pai_in = st.number_input("PAI", min_value=0, max_value=300,
-                                     value=pai_default, step=1)
-            if st.form_submit_button("SALVAR HRV / PAI"):
-                DB.execute(
-                    "INSERT INTO amazfit_dados "
-                    "(data_hora,passos,calorias_gastas,distancia_km,"
-                    "sono_total_min,sono_profundo_min,hrv_ms,pai) "
-                    "VALUES (?,0,0,0,0,0,0,0) ON CONFLICT(data_hora) DO NOTHING",
-                    [f"{hoje_sql} 00:00:00"],
-                )
-                DB.execute(
-                    "UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?",
-                    [hrv_in, pai_in, f"{hoje_sql} 00:00:00"],
-                )
-                st.cache_data.clear()
-                st.success(f"✓ HRV {hrv_in} ms · PAI {pai_in}")
-                st.rerun()
-
-    # ── 6. Editar / Excluir refeições de hoje ─────────────────────────────────
-    with st.expander("✏️  Editar / Excluir Refeições"):
+    with tp4:
         df_edit = DB.query(
             "SELECT id, COALESCE(categoria,'Lanche') as cat, descricao, "
             "time(datetime(data_hora,'localtime')) as hora "
@@ -544,53 +501,27 @@ with st.sidebar:
             [hoje_sql],
         )
         if df_edit.empty:
-            st.markdown(
-                f'<p style="color:{GHOST};font-size:11px;margin-top:6px">Nenhuma refeição hoje.</p>',
-                unsafe_allow_html=True,
-            )
+            st.markdown(f'<p style="color:{GHOST};font-size:12px;margin-top:8px">Nenhuma refeição registrada hoje.</p>', unsafe_allow_html=True)
         else:
             for _, row in df_edit.iterrows():
                 rid  = int(row["id"])
                 hora = str(row["hora"])[:5]
-                nome = str(row["descricao"])[:28]
-                st.markdown(
-                    f'<div style="font-size:9px;color:{GHOST};margin:12px 0 4px;'
-                    f'font-family:\'Space Mono\',monospace;letter-spacing:0.5px;'
-                    f'border-top:1px solid #111c2e;padding-top:10px">'
-                    f'{hora} — {nome}</div>',
-                    unsafe_allow_html=True,
-                )
+                nome = str(row["descricao"])[:32]
+                st.markdown(f'<div style="font-size:9px;color:{GHOST};margin:10px 0 4px;font-family:{MONO};border-top:1px solid #111c2e;padding-top:8px">{hora} — {nome}</div>', unsafe_allow_html=True)
                 with st.form(f"edit_ref_{rid}"):
                     idx = CATEGORIAS.index(row["cat"]) if row["cat"] in CATEGORIAS else 0
-                    nova_cat = st.selectbox(
-                        "Categoria", CATEGORIAS, index=idx,
-                        key=f"sel_{rid}",
-                    )
-                    btn_atualizar, btn_deletar = st.columns([3, 1])
-                    with btn_atualizar:
-                        atualizar = st.form_submit_button("✓ ATUALIZAR", width="stretch")
-                    with btn_deletar:
-                        deletar = st.form_submit_button("🗑", width="stretch")
+                    nova_cat = st.selectbox("Categoria", CATEGORIAS, index=idx, key=f"sel_{rid}")
+                    ba, bd = st.columns([3, 1])
+                    with ba: atualizar = st.form_submit_button("✓ ATUALIZAR", width="stretch")
+                    with bd: deletar   = st.form_submit_button("🗑", width="stretch")
                     if atualizar:
-                        DB.execute(
-                            "UPDATE refeicoes SET categoria=? WHERE id=?",
-                            [nova_cat, rid],
-                        )
-                        st.cache_data.clear()
-                        st.rerun()
+                        DB.execute("UPDATE refeicoes SET categoria=? WHERE id=?", [nova_cat, rid])
+                        st.cache_data.clear(); st.rerun()
                     if deletar:
                         DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
-                        st.cache_data.clear()
-                        st.rerun()
+                        st.cache_data.clear(); st.rerun()
 
-    # ── Rodapé sidebar ────────────────────────────────────────────────────────
-    st.markdown(
-        f'<div style="margin-top:16px;padding-top:10px;border-top:1px solid #111c2e;'
-        f'font-family:\'Space Mono\',monospace;font-size:8px;color:{GHOST};'
-        f'text-transform:uppercase;letter-spacing:1.5px">'
-        f'sys.health v2.3 · Rio de Janeiro</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -614,20 +545,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Banner mobile: aparece só em telas pequenas ───────────────────────────────
-st.markdown(
-    f'<div class="sh-mobile-hint" style="align-items:center;gap:12px;'
-    f'background:rgba(0,212,255,0.05);border:1px solid rgba(0,212,255,0.18);'
-    f'border-radius:8px;padding:10px 14px;margin:6px 0 10px">'
-    f'<div style="font-size:22px;flex-shrink:0">✏️</div>'
-    f'<div style="font-size:12px;color:{TEXT};line-height:1.5">'
-    f'<b style="color:{CYAN}">Painel de entrada:</b> toque no botão '
-    f'<span style="background:{CYAN};color:#080c14;font-weight:900;padding:1px 6px;'
-    f'border-radius:4px;font-size:11px">☰</span>'
-    f' (canto inferior direito) para registrar refeições, suplementos e HRV/PAI.</div>'
-    f'</div>',
-    unsafe_allow_html=True,
-)
+# ── Painel de entrada inline (substituiu sidebar) ────────────────────────────
+_painel_entrada()
 
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 1 — NUTRIÇÃO
