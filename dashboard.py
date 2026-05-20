@@ -21,7 +21,7 @@ st.set_page_config(
     page_title="SYS.HEALTH // Leandro R.",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="auto",
+    initial_sidebar_state="expanded",
 )
 
 # ── RESET STREAMLIT CHROME + SIDEBAR WIDGET THEME ───────────────────────────
@@ -38,25 +38,32 @@ html,body,.stApp{background:#080c14!important;color:#e8edf5!important;font-famil
 section[data-testid="stSidebar"]{background:#080e1a!important;border-right:1px solid #111c2e!important}
 section[data-testid="stSidebar"] > div:first-child{padding:0.75rem 1rem 1rem!important}
 
-/* ── Botão de reabrir sidebar — sempre visível no desktop ── */
+/* ── Botão de abrir/fechar sidebar — faixa lateral sempre visível ── */
 [data-testid="collapsedControl"]{
-  background:rgba(0,212,255,0.08)!important;
-  border:1px solid rgba(0,212,255,0.25)!important;
-  border-radius:0 6px 6px 0!important;
+  background:#0d1424!important;
+  border-right:2px solid #00d4ff!important;
+  border-top:none!important;border-bottom:none!important;border-left:none!important;
   color:#00d4ff!important;
   opacity:1!important;
   visibility:visible!important;
   display:flex!important;
   align-items:center!important;
   justify-content:center!important;
-  width:24px!important;
-  min-height:48px!important;
-  transition:background .15s ease,box-shadow .15s ease!important}
+  width:20px!important;
+  min-height:100vh!important;
+  position:fixed!important;
+  top:0!important;left:0!important;
+  z-index:998!important;
+  transition:background .2s ease,box-shadow .2s ease!important;
+  box-shadow:2px 0 12px rgba(0,212,255,0.15)!important;
+  cursor:pointer!important}
 [data-testid="collapsedControl"]:hover{
-  background:rgba(0,212,255,0.18)!important;
-  box-shadow:0 0 12px rgba(0,212,255,0.25)!important}
+  background:rgba(0,212,255,0.12)!important;
+  box-shadow:2px 0 20px rgba(0,212,255,0.35)!important;
+  width:28px!important}
 [data-testid="collapsedControl"] svg{
-  color:#00d4ff!important;fill:#00d4ff!important}
+  color:#00d4ff!important;fill:#00d4ff!important;
+  width:14px!important;height:14px!important}
 [data-testid="stSidebarNav"]{display:none!important}
 
 /* ── Expander ── */
