@@ -274,7 +274,8 @@ def cmd_start(message):
         "/hrv 38 — salva HRV do dia\n"
         "/pai 117 — salva PAI do dia\n"
         "/hrv 38 /pai 117 — salva os dois juntos\n\n"
-        "📸 Envie uma *foto do prato* — a IA estima os macros automaticamente!\n\n"
+        "📸 Foto do prato → IA estima macros e registra automaticamente\n"
+        "📏 Foto com legenda *medidas* → extrai tabela de medidas corporais\n\n"
         "Para registrar alimentação, água ou peso, basta digitar normalmente.",
         parse_mode='Markdown')
 
@@ -333,64 +334,140 @@ def cmd_pai(message):
         bot.reply_to(message, "❌ Uso: /pai 117")
 
 
+# ── Helpers de foto ───────────────────────────────────────────────────────────
+
+def _baixar_foto(message):
+    """Baixa a maior resolução disponível."""
+    info = bot.get_file(message.photo[-1].file_id)
+    return bot.download_file(info.file_path)
+
+
+def _cat_hora_bot():
+    """Categoria de refeição pelo horário de Brasília."""
+    h = datetime.now(FUSO_BR).hour
+    if   6  <= h <= 9:  return "Café da Manhã"
+    elif 10 <= h <= 11: return "Lanche da Manhã"
+    elif 12 <= h <= 14: return "Almoço"
+    elif 15 <= h <= 17: return "Lanche da Tarde"
+    elif 18 <= h <= 20: return "Jantar"
+    else:               return "Lanche da Noite"
+
+
+def _foto_refeicao(message, foto_bytes):
+    """Analisa foto como prato de comida e salva no banco."""
+    import PIL.Image, io
+    img      = PIL.Image.open(io.BytesIO(foto_bytes))
+    cat      = _cat_hora_bot()
+    hora_txt = datetime.now(FUSO_BR).strftime("%H:%M")
+
+    prompt = (
+        f"Você é um nutricionista. Analise esta foto de alimento e estime macronutrientes.\n"
+        f"Hora: {hora_txt} (Brasília). Categoria sugerida: {cat}.\n\n"
+        "Retorne APENAS JSON puro, sem markdown:\n"
+        '{"tipo":"refeicao","categoria":"<cat>","descricao_resumida":"<nome e porção>",'
+        '"calorias":<int>,"proteinas":<float>,"carboidratos":<float>,"gorduras":<float>}\n\n'
+        "Se houver múltiplos alimentos no prato, retorne lista JSON.\n"
+        "Seja realista com as porções visíveis na foto."
+    )
+    resposta = model.generate_content([prompt, img])
+    dados    = json.loads(re.sub(r'```json|```', '', resposta.text).strip())
+    if isinstance(dados, dict):
+        dados = [dados]
+
+    respostas = []
+    for item in dados:
+        if item.get('tipo') == 'refeicao':
+            salvar_refeicao(item)
+            respostas.append(
+                f"🍽️ *{item.get('categoria','Refeição')}:* {item['descricao_resumida']}\n"
+                f"   🔥 {item['calorias']} kcal · 🥩 {item['proteinas']}g · "
+                f"🌾 {item['carboidratos']}g · 🫒 {item['gorduras']}g"
+            )
+
+    if respostas:
+        bot.reply_to(message,
+            "✅ *Foto analisada e registrada!*\n\n" + "\n\n".join(respostas),
+            parse_mode='Markdown')
+    else:
+        bot.reply_to(message, "❓ Não consegui identificar alimentos. Tente com uma foto mais clara.")
+
+
+def _foto_medidas(message, foto_bytes):
+    """Extrai tabela de medidas corporais da foto e salva no banco."""
+    import PIL.Image, io
+    img = PIL.Image.open(io.BytesIO(foto_bytes))
+
+    prompt = (
+        "Você é um analista de dados de saúde. Analise esta imagem de tabela de medidas corporais.\n\n"
+        "Extraia APENAS os valores encontrados, mapeando para estes campos:\n"
+        "  peso (kg), cintura (cm), abdomen (cm), peitoral (cm), quadril (cm),\n"
+        "  coxa_dir (cm), coxa_esq (cm), panturrilha_dir (cm), panturrilha_esq (cm),\n"
+        "  biceps_dir (cm), biceps_esq (cm)\n\n"
+        "Retorne APENAS JSON puro, sem markdown:\n"
+        '{"data":"YYYY-MM-DD ou null","peso":null,"cintura":null,"abdomen":null,'
+        '"peitoral":null,"quadril":null,"coxa_dir":null,"coxa_esq":null,'
+        '"panturrilha_dir":null,"panturrilha_esq":null,"biceps_dir":null,"biceps_esq":null}\n\n'
+        "Use null para campos não encontrados na imagem. "
+        "Se houver só um valor de coxa/panturrilha/bíceps, coloque em _dir e _esq iguais."
+    )
+    resposta = model.generate_content([prompt, img])
+    dados    = json.loads(re.sub(r'```json|```', '', resposta.text).strip())
+
+    data = dados.get("data") or date.today().strftime("%Y-%m-%d")
+    if data == "null" or not data:
+        data = date.today().strftime("%Y-%m-%d")
+
+    campos = ["peso", "cintura", "abdomen", "peitoral", "quadril",
+              "coxa_dir", "coxa_esq", "panturrilha_dir", "panturrilha_esq",
+              "biceps_dir", "biceps_esq"]
+    vals = {c: float(dados[c]) for c in campos if dados.get(c) is not None}
+
+    if not vals:
+        bot.reply_to(message, "❓ Não encontrei medidas legíveis na foto. Tente com a tabela mais nítida.")
+        return
+
+    cols_sql  = ", ".join(vals.keys())
+    plhold    = ", ".join(["?"] * len(vals))
+    DB.execute("DELETE FROM medidas WHERE date(data)=?", [data])
+    DB.execute(
+        f"INSERT INTO medidas (data, {cols_sql}) VALUES (?, {plhold})",
+        [data] + list(vals.values())
+    )
+
+    labels = {
+        "peso": "⚖️ Peso", "cintura": "📏 Cintura", "abdomen": "📏 Abdômen",
+        "peitoral": "📏 Peitoral", "quadril": "📏 Quadril",
+        "coxa_dir": "📏 Coxa D.", "coxa_esq": "📏 Coxa E.",
+        "panturrilha_dir": "📏 Panturrilha D.", "panturrilha_esq": "📏 Panturrilha E.",
+        "biceps_dir": "📏 Bíceps D.", "biceps_esq": "📏 Bíceps E.",
+    }
+    linhas = [f"📅 *{data}*\n"]
+    for c, label in labels.items():
+        v = vals.get(c)
+        if v is not None:
+            unit = "kg" if c == "peso" else "cm"
+            linhas.append(f"{label}: *{v} {unit}*")
+
+    bot.reply_to(message,
+        f"✅ *Medidas registradas!* ({len(vals)} campos)\n\n" + "\n".join(linhas),
+        parse_mode='Markdown')
+
+
 @bot.message_handler(content_types=['photo'])
 def handle_foto(message):
-    bot.send_message(message.chat.id, "📸 Analisando a foto com IA...")
+    caption    = (message.caption or "").lower()
+    is_medidas = any(kw in caption for kw in [
+        "medidas", "bioimped", "composição", "composicao",
+        "tabela", "avaliação", "avaliacao", "circunferência", "circunferencia",
+    ])
     try:
-        # Baixa foto em maior resolução disponível
-        photo     = message.photo[-1]
-        file_info = bot.get_file(photo.file_id)
-        foto_bytes = bot.download_file(file_info.file_path)
-
-        # Categoria pelo horário de Brasília
-        agora_br  = datetime.now(FUSO_BR)
-        h         = agora_br.hour
-        hora_txt  = agora_br.strftime("%H:%M")
-        if   6  <= h <= 9:  cat_foto = "Café da Manhã"
-        elif 10 <= h <= 11: cat_foto = "Lanche da Manhã"
-        elif 12 <= h <= 14: cat_foto = "Almoço"
-        elif 15 <= h <= 17: cat_foto = "Lanche da Tarde"
-        elif 18 <= h <= 20: cat_foto = "Jantar"
-        else:                cat_foto = "Lanche da Noite"
-
-        import PIL.Image, io
-        img = PIL.Image.open(io.BytesIO(foto_bytes))
-
-        prompt = (
-            f"Você é um nutricionista. Analise esta foto de alimento e estime macronutrientes.\n"
-            f"Hora: {hora_txt} (Brasília). Categoria sugerida: {cat_foto}.\n\n"
-            "Retorne APENAS JSON puro, sem markdown, sem ```json:\n"
-            '{"tipo":"refeicao","categoria":"<cat>","descricao_resumida":"<nome e porção estimada>",'
-            '"calorias":<int>,"proteinas":<float>,"carboidratos":<float>,"gorduras":<float>}\n\n'
-            "Se houver múltiplos alimentos no prato, retorne lista JSON.\n"
-            "Seja realista com as porções visíveis na foto."
-        )
-        resposta    = model.generate_content([prompt, img])
-        texto_limpo = re.sub(r'```json|```', '', resposta.text).strip()
-        dados       = json.loads(texto_limpo)
-
-        if isinstance(dados, dict):
-            dados = [dados]
-
-        respostas = []
-        for item in dados:
-            if item.get('tipo') == 'refeicao':
-                salvar_refeicao(item)
-                respostas.append(
-                    f"🍽️ *{item.get('categoria','Refeição')}:* {item['descricao_resumida']}\n"
-                    f"   🔥 {item['calorias']} kcal · 🥩 {item['proteinas']}g · "
-                    f"🌾 {item['carboidratos']}g · 🫒 {item['gorduras']}g"
-                )
-
-        if respostas:
-            bot.reply_to(
-                message,
-                "✅ *Foto analisada e registrada!*\n\n" + "\n\n".join(respostas),
-                parse_mode='Markdown',
-            )
+        foto_bytes = _baixar_foto(message)
+        if is_medidas:
+            bot.send_message(message.chat.id, "📏 Extraindo tabela de medidas...")
+            _foto_medidas(message, foto_bytes)
         else:
-            bot.reply_to(message, "❓ Não consegui identificar alimentos na foto. Tente com uma foto mais clara.")
-
+            bot.send_message(message.chat.id, "📸 Analisando a foto com IA...")
+            _foto_refeicao(message, foto_bytes)
     except json.JSONDecodeError:
         bot.reply_to(message, "❌ A IA não retornou dados válidos. Tente reenviar a foto.")
     except Exception as e:

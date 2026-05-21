@@ -430,6 +430,24 @@ def _cat_hora():
     else:               return "Lanche da Noite"
 
 
+def _analisar_texto_macros(descricao: str) -> dict:
+    """Usa Gemini para estimar macros de uma descrição textual."""
+    cat      = _cat_hora()
+    hora_txt = datetime.now(_BR).strftime("%H:%M")
+    prompt = (
+        f"Você é um nutricionista. Estime os macronutrientes para: '{descricao}'.\n"
+        f"Hora: {hora_txt} (Brasília). Categoria sugerida: {cat}.\n\n"
+        "Retorne APENAS JSON puro, sem markdown:\n"
+        '{"categoria":"<cat>","descricao_resumida":"<nome normalizado e porção>",'
+        '"calorias":<int>,"proteinas":<float>,"carboidratos":<float>,"gorduras":<float>}\n\n'
+        "Use valores realistas baseados em tabelas nutricionais brasileiras.\n"
+        "Se houver múltiplos alimentos separados por vírgula ou '+', some os macros e descreva tudo."
+    )
+    vision = genai.GenerativeModel("gemini-2.5-flash")
+    resp   = vision.generate_content(prompt)
+    return json.loads(re.sub(r"```json|```", "", resp.text).strip())
+
+
 def _analisar_foto_gemini(uploaded_file):
     """Envia foto para Gemini Vision e retorna lista de itens de refeição."""
     import PIL.Image, io
@@ -520,9 +538,69 @@ def _painel_entrada():
                     del st.session_state["foto_resultado"]
                     st.rerun()
 
+        # ── IA por texto ─────────────────────────────────────────────────────────
         st.markdown(
             f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
-            f'letter-spacing:1.5px;text-align:center;margin:10px 0 6px">'
+            f'letter-spacing:1.5px;text-align:center;margin:14px 0 8px">'
+            f'── OU DESCREVA E DEIXE A IA CALCULAR ──</div>',
+            unsafe_allow_html=True,
+        )
+        desc_ia = st.text_input(
+            "Descrição",
+            placeholder="Ex: frango grelhado 200g + arroz integral 150g",
+            key="ia_text_input",
+            label_visibility="collapsed",
+        )
+        if st.button("🤖 Analisar macros com IA", key="btn_ia_text", width="stretch"):
+            if desc_ia.strip():
+                with st.spinner("IA calculando..."):
+                    try:
+                        st.session_state["ia_text_result"] = _analisar_texto_macros(desc_ia.strip())
+                    except Exception as e:
+                        st.error(f"Erro: {e}")
+            else:
+                st.warning("Digite o que comeu antes de analisar.")
+
+        if "ia_text_result" in st.session_state:
+            r = st.session_state["ia_text_result"]
+            st.markdown(
+                f'<div style="background:rgba(0,230,118,0.07);border:1px solid rgba(0,230,118,0.22);'
+                f'border-radius:6px;padding:10px 14px;margin:6px 0">'
+                f'<div style="font-size:13px;font-weight:600;color:{TEXT}">'
+                f'{r.get("descricao_resumida","")}</div>'
+                f'<div style="font-size:11px;color:{MUTED};margin-top:5px">'
+                f'🔥 {r.get("calorias",0)} kcal &nbsp;·&nbsp; '
+                f'🥩 {r.get("proteinas",0)}g prot &nbsp;·&nbsp; '
+                f'🌾 {r.get("carboidratos",0)}g carb &nbsp;·&nbsp; '
+                f'🫒 {r.get("gorduras",0)}g gord</div>'
+                f'<div style="font-size:10px;color:{GREEN};margin-top:3px;font-family:{MONO}">'
+                f'{r.get("categoria","")}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            cs2, cd2 = st.columns(2)
+            with cs2:
+                if st.button("✅ Salvar", key="salvar_ia_text", width="stretch"):
+                    DB.execute(
+                        "INSERT INTO refeicoes "
+                        "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
+                        "VALUES (?,?,?,?,?,?)",
+                        [r.get("categoria", "Lanche"), r.get("descricao_resumida", ""),
+                         r.get("calorias", 0), r.get("proteinas", 0),
+                         r.get("carboidratos", 0), r.get("gorduras", 0)],
+                    )
+                    del st.session_state["ia_text_result"]
+                    st.cache_data.clear()
+                    st.toast("🤖 ✓ Refeição salva pela IA!")
+                    st.rerun()
+            with cd2:
+                if st.button("✗ Descartar", key="desc_ia_text", width="stretch"):
+                    del st.session_state["ia_text_result"]
+                    st.rerun()
+
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
+            f'letter-spacing:1.5px;text-align:center;margin:14px 0 6px">'
             f'── OU PREENCHA MANUALMENTE ──</div>',
             unsafe_allow_html=True,
         )
