@@ -274,8 +274,8 @@ def cmd_start(message):
         "/hrv 38 — salva HRV do dia\n"
         "/pai 117 — salva PAI do dia\n"
         "/hrv 38 /pai 117 — salva os dois juntos\n\n"
-        "📸 Foto do prato → IA estima macros e registra automaticamente\n"
-        "📏 Foto com legenda *medidas* → extrai tabela de medidas corporais\n\n"
+        "📸 Foto do prato → IA identifica e registra macros automaticamente\n"
+        "📏 Foto de tabela de medidas → IA detecta e salva as circunferências\n\n"
         "Para registrar alimentação, água ou peso, basta digitar normalmente.",
         parse_mode='Markdown')
 
@@ -353,121 +353,120 @@ def _cat_hora_bot():
     else:               return "Lanche da Noite"
 
 
-def _foto_refeicao(message, foto_bytes):
-    """Analisa foto como prato de comida e salva no banco."""
+def _processar_foto(message, foto_bytes):
+    """
+    Prompt unificado: Gemini detecta o tipo da foto (refeição ou medidas corporais)
+    e extrai os dados em uma única chamada — sem depender de legenda.
+    """
     import PIL.Image, io
     img      = PIL.Image.open(io.BytesIO(foto_bytes))
     cat      = _cat_hora_bot()
     hora_txt = datetime.now(FUSO_BR).strftime("%H:%M")
 
     prompt = (
-        f"Você é um nutricionista. Analise esta foto de alimento e estime macronutrientes.\n"
-        f"Hora: {hora_txt} (Brasília). Categoria sugerida: {cat}.\n\n"
-        "Retorne APENAS JSON puro, sem markdown:\n"
-        '{"tipo":"refeicao","categoria":"<cat>","descricao_resumida":"<nome e porção>",'
-        '"calorias":<int>,"proteinas":<float>,"carboidratos":<float>,"gorduras":<float>}\n\n'
-        "Se houver múltiplos alimentos no prato, retorne lista JSON.\n"
-        "Seja realista com as porções visíveis na foto."
+        "Analise esta imagem e determine seu tipo, depois extraia os dados correspondentes.\n\n"
+
+        "TIPO A — Prato de comida / alimento:\n"
+        f"Hora: {hora_txt} (Brasília). Categoria sugerida: {cat}.\n"
+        'Retorne: {{"tipo":"refeicao","categoria":"<cat>","descricao_resumida":"<nome e porção>",'
+        '"calorias":<int>,"proteinas":<float>,"carboidratos":<float>,"gorduras":<float>}}\n'
+        "Se houver múltiplos alimentos, retorne lista JSON de objetos com tipo=refeicao.\n\n"
+
+        "TIPO B — Tabela / relatório de medidas corporais (bioimpedância, avaliação física,\n"
+        "fichas com circunferências, peso, dobras cutâneas etc.):\n"
+        'Retorne: {{"tipo":"medidas","data":"YYYY-MM-DD ou null",'
+        '"peso":null,"cintura":null,"abdomen":null,"peitoral":null,"quadril":null,'
+        '"coxa_dir":null,"coxa_esq":null,"panturrilha_dir":null,"panturrilha_esq":null,'
+        '"biceps_dir":null,"biceps_esq":null}}\n'
+        "Use null para campos não encontrados. Se só houver um valor de coxa/panturrilha/bíceps,\n"
+        "repita em _dir e _esq. Unidades: peso em kg, demais em cm.\n\n"
+
+        "TIPO C — Outra coisa:\n"
+        'Retorne: {{"tipo":"outro","descricao":"<descrição breve do que é a imagem>"}}\n\n'
+
+        "Retorne APENAS JSON puro, sem markdown, sem ```json."
     )
+
     resposta = model.generate_content([prompt, img])
     dados    = json.loads(re.sub(r'```json|```', '', resposta.text).strip())
-    if isinstance(dados, dict):
-        dados = [dados]
 
-    respostas = []
-    for item in dados:
-        if item.get('tipo') == 'refeicao':
-            salvar_refeicao(item)
-            respostas.append(
-                f"🍽️ *{item.get('categoria','Refeição')}:* {item['descricao_resumida']}\n"
-                f"   🔥 {item['calorias']} kcal · 🥩 {item['proteinas']}g · "
-                f"🌾 {item['carboidratos']}g · 🫒 {item['gorduras']}g"
-            )
+    # ── Refeição ─────────────────────────────────────────────────────────────
+    if isinstance(dados, list) or (isinstance(dados, dict) and dados.get("tipo") == "refeicao"):
+        itens = dados if isinstance(dados, list) else [dados]
+        respostas = []
+        for item in itens:
+            if item.get("tipo") == "refeicao":
+                salvar_refeicao(item)
+                respostas.append(
+                    f"🍽️ *{item.get('categoria','Refeição')}:* {item['descricao_resumida']}\n"
+                    f"   🔥 {item['calorias']} kcal · 🥩 {item['proteinas']}g · "
+                    f"🌾 {item['carboidratos']}g · 🫒 {item['gorduras']}g"
+                )
+        if respostas:
+            bot.reply_to(message,
+                "✅ *Foto analisada e registrada!*\n\n" + "\n\n".join(respostas),
+                parse_mode='Markdown')
+        else:
+            bot.reply_to(message, "❓ Não consegui identificar alimentos. Tente com uma foto mais clara.")
 
-    if respostas:
+    # ── Medidas corporais ─────────────────────────────────────────────────────
+    elif isinstance(dados, dict) and dados.get("tipo") == "medidas":
+        data = dados.get("data") or date.today().strftime("%Y-%m-%d")
+        if not data or data in ("null", ""):
+            data = date.today().strftime("%Y-%m-%d")
+
+        campos = ["peso", "cintura", "abdomen", "peitoral", "quadril",
+                  "coxa_dir", "coxa_esq", "panturrilha_dir", "panturrilha_esq",
+                  "biceps_dir", "biceps_esq"]
+        vals = {c: float(dados[c]) for c in campos if dados.get(c) is not None}
+
+        if not vals:
+            bot.reply_to(message,
+                "❓ Encontrei uma tabela de medidas, mas não consegui ler os valores.\n"
+                "Tente com a imagem mais nítida ou com melhor iluminação.")
+            return
+
+        cols_sql = ", ".join(vals.keys())
+        plhold   = ", ".join(["?"] * len(vals))
+        DB.execute("DELETE FROM medidas WHERE date(data)=?", [data])
+        DB.execute(
+            f"INSERT INTO medidas (data, {cols_sql}) VALUES (?, {plhold})",
+            [data] + list(vals.values())
+        )
+
+        labels = {
+            "peso": "⚖️ Peso", "cintura": "📏 Cintura", "abdomen": "📏 Abdômen",
+            "peitoral": "📏 Peitoral", "quadril": "📏 Quadril",
+            "coxa_dir": "📏 Coxa D.", "coxa_esq": "📏 Coxa E.",
+            "panturrilha_dir": "📏 Panturrilha D.", "panturrilha_esq": "📏 Panturrilha E.",
+            "biceps_dir": "📏 Bíceps D.", "biceps_esq": "📏 Bíceps E.",
+        }
+        linhas = [f"📅 *{data}*\n"]
+        for c, label in labels.items():
+            v = vals.get(c)
+            if v is not None:
+                unit = "kg" if c == "peso" else "cm"
+                linhas.append(f"{label}: *{v} {unit}*")
+
         bot.reply_to(message,
-            "✅ *Foto analisada e registrada!*\n\n" + "\n\n".join(respostas),
+            f"✅ *Medidas registradas!* ({len(vals)} campos)\n\n" + "\n".join(linhas),
             parse_mode='Markdown')
+
+    # ── Outro ─────────────────────────────────────────────────────────────────
     else:
-        bot.reply_to(message, "❓ Não consegui identificar alimentos. Tente com uma foto mais clara.")
-
-
-def _foto_medidas(message, foto_bytes):
-    """Extrai tabela de medidas corporais da foto e salva no banco."""
-    import PIL.Image, io
-    img = PIL.Image.open(io.BytesIO(foto_bytes))
-
-    prompt = (
-        "Você é um analista de dados de saúde. Analise esta imagem de tabela de medidas corporais.\n\n"
-        "Extraia APENAS os valores encontrados, mapeando para estes campos:\n"
-        "  peso (kg), cintura (cm), abdomen (cm), peitoral (cm), quadril (cm),\n"
-        "  coxa_dir (cm), coxa_esq (cm), panturrilha_dir (cm), panturrilha_esq (cm),\n"
-        "  biceps_dir (cm), biceps_esq (cm)\n\n"
-        "Retorne APENAS JSON puro, sem markdown:\n"
-        '{"data":"YYYY-MM-DD ou null","peso":null,"cintura":null,"abdomen":null,'
-        '"peitoral":null,"quadril":null,"coxa_dir":null,"coxa_esq":null,'
-        '"panturrilha_dir":null,"panturrilha_esq":null,"biceps_dir":null,"biceps_esq":null}\n\n'
-        "Use null para campos não encontrados na imagem. "
-        "Se houver só um valor de coxa/panturrilha/bíceps, coloque em _dir e _esq iguais."
-    )
-    resposta = model.generate_content([prompt, img])
-    dados    = json.loads(re.sub(r'```json|```', '', resposta.text).strip())
-
-    data = dados.get("data") or date.today().strftime("%Y-%m-%d")
-    if data == "null" or not data:
-        data = date.today().strftime("%Y-%m-%d")
-
-    campos = ["peso", "cintura", "abdomen", "peitoral", "quadril",
-              "coxa_dir", "coxa_esq", "panturrilha_dir", "panturrilha_esq",
-              "biceps_dir", "biceps_esq"]
-    vals = {c: float(dados[c]) for c in campos if dados.get(c) is not None}
-
-    if not vals:
-        bot.reply_to(message, "❓ Não encontrei medidas legíveis na foto. Tente com a tabela mais nítida.")
-        return
-
-    cols_sql  = ", ".join(vals.keys())
-    plhold    = ", ".join(["?"] * len(vals))
-    DB.execute("DELETE FROM medidas WHERE date(data)=?", [data])
-    DB.execute(
-        f"INSERT INTO medidas (data, {cols_sql}) VALUES (?, {plhold})",
-        [data] + list(vals.values())
-    )
-
-    labels = {
-        "peso": "⚖️ Peso", "cintura": "📏 Cintura", "abdomen": "📏 Abdômen",
-        "peitoral": "📏 Peitoral", "quadril": "📏 Quadril",
-        "coxa_dir": "📏 Coxa D.", "coxa_esq": "📏 Coxa E.",
-        "panturrilha_dir": "📏 Panturrilha D.", "panturrilha_esq": "📏 Panturrilha E.",
-        "biceps_dir": "📏 Bíceps D.", "biceps_esq": "📏 Bíceps E.",
-    }
-    linhas = [f"📅 *{data}*\n"]
-    for c, label in labels.items():
-        v = vals.get(c)
-        if v is not None:
-            unit = "kg" if c == "peso" else "cm"
-            linhas.append(f"{label}: *{v} {unit}*")
-
-    bot.reply_to(message,
-        f"✅ *Medidas registradas!* ({len(vals)} campos)\n\n" + "\n".join(linhas),
-        parse_mode='Markdown')
+        desc = dados.get("descricao", "imagem não reconhecida") if isinstance(dados, dict) else ""
+        bot.reply_to(message,
+            f"❓ Não reconheci esta imagem como alimento nem como tabela de medidas.\n"
+            f"_{desc}_\n\n"
+            "Envie a foto de um prato de comida, ou de uma tabela de medidas corporais.",
+            parse_mode='Markdown')
 
 
 @bot.message_handler(content_types=['photo'])
 def handle_foto(message):
-    caption    = (message.caption or "").lower()
-    is_medidas = any(kw in caption for kw in [
-        "medidas", "bioimped", "composição", "composicao",
-        "tabela", "avaliação", "avaliacao", "circunferência", "circunferencia",
-    ])
     try:
-        foto_bytes = _baixar_foto(message)
-        if is_medidas:
-            bot.send_message(message.chat.id, "📏 Extraindo tabela de medidas...")
-            _foto_medidas(message, foto_bytes)
-        else:
-            bot.send_message(message.chat.id, "📸 Analisando a foto com IA...")
-            _foto_refeicao(message, foto_bytes)
+        bot.send_message(message.chat.id, "🔍 Analisando foto...")
+        _processar_foto(message, _baixar_foto(message))
     except json.JSONDecodeError:
         bot.reply_to(message, "❌ A IA não retornou dados válidos. Tente reenviar a foto.")
     except Exception as e:
