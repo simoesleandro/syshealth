@@ -1115,7 +1115,8 @@ with col_bio:
                peitoral, quadril,
                coxa_dir, coxa_esq,
                panturrilha_dir, biceps_dir, biceps_esq
-        FROM medidas WHERE coxa_dir IS NOT NULL
+        FROM medidas WHERE peso IS NOT NULL OR cintura IS NOT NULL OR coxa_dir IS NOT NULL
+        ORDER BY date(data) ASC
     """)
 
     if not df_bio.empty:
