@@ -667,8 +667,11 @@ def _painel_entrada():
             with st.form("form_peso_hoje"):
                 peso_in = st.number_input("kg", min_value=40.0, max_value=200.0, value=round(peso,1), step=0.1, format="%.1f")
                 if st.form_submit_button("SALVAR", width="stretch"):
-                    DB.execute("DELETE FROM medidas WHERE date(data)=? AND cintura IS NULL", [hoje_sql])
-                    DB.execute("INSERT INTO medidas (data, peso) VALUES (?, ?)", [hoje_sql, float(peso_in)])
+                    _ex = DB.query("SELECT id FROM medidas WHERE date(data)=?", [hoje_sql])
+                    if not _ex.empty:
+                        DB.execute("UPDATE medidas SET peso=? WHERE date(data)=?", [float(peso_in), hoje_sql])
+                    else:
+                        DB.execute("INSERT INTO medidas (data, peso) VALUES (?, ?)", [hoje_sql, float(peso_in)])
                     st.cache_data.clear(); st.toast(f"⚖️ ✓ {peso_in:.1f} kg"); st.rerun()
         with cC:
             st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💓 HRV / PAI</div>', unsafe_allow_html=True)
@@ -1110,12 +1113,21 @@ with col_med:
 
 with col_bio:
     df_bio = db("""
-        SELECT date(data) as data_ord, strftime('%d/%m/%Y',data) as data_fmt,
-               peso, cintura, abdomen,
-               peitoral, quadril,
-               coxa_dir, coxa_esq,
-               panturrilha_dir, biceps_dir, biceps_esq
-        FROM medidas WHERE peso IS NOT NULL OR cintura IS NOT NULL OR coxa_dir IS NOT NULL
+        SELECT date(data) as data_ord,
+               strftime('%d/%m/%Y', date(data)) as data_fmt,
+               MAX(peso)            as peso,
+               MAX(cintura)         as cintura,
+               MAX(abdomen)         as abdomen,
+               MAX(peitoral)        as peitoral,
+               MAX(quadril)         as quadril,
+               MAX(coxa_dir)        as coxa_dir,
+               MAX(coxa_esq)        as coxa_esq,
+               MAX(panturrilha_dir) as panturrilha_dir,
+               MAX(biceps_dir)      as biceps_dir,
+               MAX(biceps_esq)      as biceps_esq
+        FROM medidas
+        WHERE peso IS NOT NULL OR cintura IS NOT NULL OR coxa_dir IS NOT NULL
+        GROUP BY date(data)
         ORDER BY date(data) ASC
     """)
 

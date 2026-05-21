@@ -50,7 +50,12 @@ def salvar_agua(ml):
     executar_query('INSERT INTO agua (quantidade_ml) VALUES (?)', (ml,))
 
 def salvar_peso(kg):
-    executar_query('INSERT INTO medidas (peso) VALUES (?)', (kg,))
+    hoje = date.today().strftime("%Y-%m-%d")
+    df = DB.query("SELECT id FROM medidas WHERE date(data)=?", [hoje])
+    if not df.empty:
+        DB.execute("UPDATE medidas SET peso=? WHERE date(data)=?", [kg, hoje])
+    else:
+        DB.execute("INSERT INTO medidas (data, peso) VALUES (?, ?)", [hoje, kg])
 
 def salvar_medicacao(mg):
     executar_query('INSERT INTO medicacao (dose_mg) VALUES (?)', (mg,))
