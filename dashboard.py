@@ -1,7 +1,9 @@
 import streamlit as st
-import os, pandas as pd
+import os, pandas as pd, re, json
 import plotly.graph_objects as go
+import google.generativeai as genai
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -14,6 +16,11 @@ except Exception:
     pass
 
 import db as DB
+
+# ── Gemini Vision (análise de fotos) ─────────────────────────────────────────
+_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
+if _GEMINI_KEY:
+    genai.configure(api_key=_GEMINI_KEY)
 
 # ── PAGE CONFIG ─────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -341,10 +348,11 @@ META_PASS = 10000
 META_SONO = 90
 META_PAI  = 100
 
-hoje_sql = datetime.now().strftime("%Y-%m-%d")
-hoje_pt  = datetime.now().strftime("%d/%m/%Y")
-hora_now = datetime.now().strftime("%H:%M")
-dia_sem  = ["SEG","TER","QUA","QUI","SEX","SAB","DOM"][datetime.now().weekday()]
+_BR      = ZoneInfo("America/Sao_Paulo")
+hoje_sql = datetime.now(_BR).strftime("%Y-%m-%d")
+hoje_pt  = datetime.now(_BR).strftime("%d/%m/%Y")
+hora_now = datetime.now(_BR).strftime("%H:%M")
+dia_sem  = ["SEG","TER","QUA","QUI","SEX","SAB","DOM"][datetime.now(_BR).weekday()]
 
 # ── DADOS ────────────────────────────────────────────────────────────────────
 _dp = db("SELECT peso FROM medidas ORDER BY date(data) DESC LIMIT 1")
@@ -411,6 +419,41 @@ SUPP_REGISTER = [
 ]
 
 
+def _cat_hora():
+    """Retorna categoria de refeição pelo horário de Brasília."""
+    h = datetime.now(_BR).hour
+    if   6  <= h <= 9:  return "Café da Manhã"
+    elif 10 <= h <= 11: return "Lanche da Manhã"
+    elif 12 <= h <= 14: return "Almoço"
+    elif 15 <= h <= 17: return "Lanche da Tarde"
+    elif 18 <= h <= 20: return "Jantar"
+    else:               return "Lanche da Noite"
+
+
+def _analisar_foto_gemini(uploaded_file):
+    """Envia foto para Gemini Vision e retorna lista de itens de refeição."""
+    import PIL.Image, io
+    foto_bytes = uploaded_file.read()
+    img        = PIL.Image.open(io.BytesIO(foto_bytes))
+    cat        = _cat_hora()
+    agora_txt  = datetime.now(_BR).strftime("%H:%M")
+    prompt = (
+        f"Você é um nutricionista. Analise esta foto de alimento e estime macronutrientes.\n"
+        f"Hora: {agora_txt} (Brasília). Categoria sugerida: {cat}.\n\n"
+        "Retorne APENAS JSON puro, sem markdown, sem ```json:\n"
+        '{"tipo":"refeicao","categoria":"<cat>","descricao_resumida":"<nome e porção estimada>",'
+        '"calorias":<int>,"proteinas":<float>,"carboidratos":<float>,"gorduras":<float>}\n\n'
+        "Se houver múltiplos alimentos, retorne lista JSON.\n"
+        "Seja realista com as porções visíveis na foto."
+    )
+    vision = genai.GenerativeModel("gemini-2.5-flash")
+    resp   = vision.generate_content([prompt, img])
+    dados  = json.loads(re.sub(r"```json|```", "", resp.text).strip())
+    if isinstance(dados, dict):
+        dados = [dados]
+    return dados
+
+
 def _painel_entrada():
     """Painel de entrada inline — substituiu a sidebar."""
     st.markdown('<div class="sh-painel">', unsafe_allow_html=True)
@@ -419,6 +462,72 @@ def _painel_entrada():
     tp1, tp2, tp3, tp4 = st.tabs(["➕ Refeição", "💊 Suplem.", "💧 Água · ⚖️ Peso · 💓 HRV", "✏️ Editar"])
 
     with tp1:
+        # ── Análise por foto ─────────────────────────────────────────────────────
+        foto_up = st.file_uploader(
+            "📸 Envie uma foto do prato para análise automática de macros",
+            type=["jpg", "jpeg", "png", "webp"],
+            key="foto_refeicao",
+        )
+        if foto_up is not None:
+            ci, cb = st.columns([3, 1])
+            with ci:
+                st.image(foto_up, width=220)
+            with cb:
+                if st.button("🔍 Analisar", key="btn_foto_analisar", width="stretch"):
+                    with st.spinner("IA analisando..."):
+                        try:
+                            st.session_state["foto_resultado"] = _analisar_foto_gemini(foto_up)
+                        except Exception as e:
+                            st.error(f"Erro: {e}")
+
+        if "foto_resultado" in st.session_state:
+            itens = st.session_state["foto_resultado"]
+            for item in itens:
+                st.markdown(
+                    f'<div style="background:rgba(0,212,255,0.07);border:1px solid rgba(0,212,255,0.22);'
+                    f'border-radius:6px;padding:10px 14px;margin:6px 0">'
+                    f'<div style="font-size:13px;font-weight:600;color:{TEXT}">'
+                    f'{item.get("descricao_resumida","")}</div>'
+                    f'<div style="font-size:11px;color:{MUTED};margin-top:5px">'
+                    f'🔥 {item.get("calorias",0)} kcal &nbsp;·&nbsp; '
+                    f'🥩 {item.get("proteinas",0)}g prot &nbsp;·&nbsp; '
+                    f'🌾 {item.get("carboidratos",0)}g carb &nbsp;·&nbsp; '
+                    f'🫒 {item.get("gorduras",0)}g gord</div>'
+                    f'<div style="font-size:10px;color:{CYAN};margin-top:3px;font-family:{MONO}">'
+                    f'{item.get("categoria","")}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            cs, cd = st.columns(2)
+            with cs:
+                if st.button("✅ Salvar tudo", key="salvar_foto", width="stretch"):
+                    for item in itens:
+                        DB.execute(
+                            "INSERT INTO refeicoes "
+                            "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
+                            "VALUES (?,?,?,?,?,?)",
+                            [item.get("categoria", "Lanche"),
+                             item.get("descricao_resumida", ""),
+                             item.get("calorias", 0), item.get("proteinas", 0),
+                             item.get("carboidratos", 0), item.get("gorduras", 0)],
+                        )
+                    del st.session_state["foto_resultado"]
+                    st.cache_data.clear()
+                    st.toast("📸 ✓ Foto registrada!")
+                    st.rerun()
+            with cd:
+                if st.button("✗ Descartar", key="desc_foto", width="stretch"):
+                    del st.session_state["foto_resultado"]
+                    st.rerun()
+
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
+            f'letter-spacing:1.5px;text-align:center;margin:10px 0 6px">'
+            f'── OU PREENCHA MANUALMENTE ──</div>',
+            unsafe_allow_html=True,
+        )
+
+        # ── Form manual ──────────────────────────────────────────────────────────
         with st.form("form_add_refeicao", clear_on_submit=True):
             cat_sel = st.selectbox("Categoria", CATEGORIAS)
             desc_in = st.text_input("Descrição do alimento")
@@ -438,24 +547,24 @@ def _painel_entrada():
                         [cat_sel, desc_in.strip(), kcal_in, prot_in, carb_in, gord_in],
                     )
                     st.cache_data.clear()
-                    st.success("✓ Refeição salva!")
+                    st.toast("✓ Refeição salva!")
                     st.rerun()
                 else:
                     st.error("Descrição obrigatória.")
 
     with tp2:
         cols_s = st.columns(3)
-        for i, (label, desc_s, cat_s, kcal_s, prot_s, carb_s, gord_s) in enumerate(SUPP_REGISTER):
+        for i, (label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s) in enumerate(SUPP_REGISTER):
             with cols_s[i % 3]:
                 if st.button(label, key=f"supp_{label}", width="stretch"):
                     DB.execute(
                         "INSERT INTO refeicoes "
                         "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
                         "VALUES (?,?,?,?,?,?)",
-                        [cat_s, desc_s, kcal_s, prot_s, carb_s, gord_s],
+                        [_cat_hora(), desc_s, kcal_s, prot_s, carb_s, gord_s],
                     )
                     st.cache_data.clear()
-                    st.success(f"✓ {label}")
+                    st.toast(f"✓ {label}")
                     st.rerun()
 
     with tp3:
@@ -464,11 +573,11 @@ def _painel_entrada():
             st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💧 Água · {agua_l:.1f}L / {META_AGUA}L</div>', unsafe_allow_html=True)
             wa1, wa2 = st.columns(2)
             with wa1:
-                if st.button("+ 200ml", key="agua_200", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [200]); st.cache_data.clear(); st.rerun()
-                if st.button("+ 500ml", key="agua_500", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [500]); st.cache_data.clear(); st.rerun()
+                if st.button("+ 200ml", key="agua_200", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [200]); st.cache_data.clear(); st.toast("💧 +200 ml"); st.rerun()
+                if st.button("+ 500ml", key="agua_500", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [500]); st.cache_data.clear(); st.toast("💧 +500 ml"); st.rerun()
             with wa2:
-                if st.button("+ 350ml", key="agua_350", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [350]); st.cache_data.clear(); st.rerun()
-                if st.button("+ 750ml", key="agua_750", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [750]); st.cache_data.clear(); st.rerun()
+                if st.button("+ 350ml", key="agua_350", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [350]); st.cache_data.clear(); st.toast("💧 +350 ml"); st.rerun()
+                if st.button("+ 750ml", key="agua_750", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [750]); st.cache_data.clear(); st.toast("💧 +750 ml"); st.rerun()
             with st.form("form_agua_custom", clear_on_submit=True):
                 ml_in = st.number_input("Outro (ml)", min_value=50, max_value=2000, value=300, step=50)
                 if st.form_submit_button("+ Registrar", width="stretch"):
@@ -481,7 +590,7 @@ def _painel_entrada():
                 if st.form_submit_button("SALVAR", width="stretch"):
                     DB.execute("DELETE FROM medidas WHERE date(data)=? AND cintura IS NULL", [hoje_sql])
                     DB.execute("INSERT INTO medidas (data, peso) VALUES (?, ?)", [hoje_sql, float(peso_in)])
-                    st.cache_data.clear(); st.success(f"✓ {peso_in:.1f} kg"); st.rerun()
+                    st.cache_data.clear(); st.toast(f"⚖️ ✓ {peso_in:.1f} kg"); st.rerun()
         with cC:
             st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💓 HRV / PAI</div>', unsafe_allow_html=True)
             with st.form("form_hrv_pai"):
@@ -490,7 +599,7 @@ def _painel_entrada():
                 if st.form_submit_button("SALVAR", width="stretch"):
                     DB.execute("INSERT INTO amazfit_dados (data_hora,passos,calorias_gastas,distancia_km,sono_total_min,sono_profundo_min,hrv_ms,pai) VALUES (?,0,0,0,0,0,0,0) ON CONFLICT(data_hora) DO NOTHING", [f"{hoje_sql} 00:00:00"])
                     DB.execute("UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?", [hrv_in, pai_in, f"{hoje_sql} 00:00:00"])
-                    st.cache_data.clear(); st.success(f"✓ HRV {hrv_in}ms · PAI {pai_in}"); st.rerun()
+                    st.cache_data.clear(); st.toast(f"💓 HRV {hrv_in}ms · PAI {pai_in}"); st.rerun()
 
     with tp4:
         df_edit = DB.query(
@@ -516,10 +625,10 @@ def _painel_entrada():
                     with bd: deletar   = st.form_submit_button("🗑", width="stretch")
                     if atualizar:
                         DB.execute("UPDATE refeicoes SET categoria=? WHERE id=?", [nova_cat, rid])
-                        st.cache_data.clear(); st.rerun()
+                        st.cache_data.clear(); st.toast("✓ Categoria atualizada!"); st.rerun()
                     if deletar:
                         DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
-                        st.cache_data.clear(); st.rerun()
+                        st.cache_data.clear(); st.toast("🗑 Refeição removida"); st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 

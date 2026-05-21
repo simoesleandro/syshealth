@@ -274,6 +274,7 @@ def cmd_start(message):
         "/hrv 38 — salva HRV do dia\n"
         "/pai 117 — salva PAI do dia\n"
         "/hrv 38 /pai 117 — salva os dois juntos\n\n"
+        "📸 Envie uma *foto do prato* — a IA estima os macros automaticamente!\n\n"
         "Para registrar alimentação, água ou peso, basta digitar normalmente.",
         parse_mode='Markdown')
 
@@ -330,6 +331,70 @@ def cmd_pai(message):
         bot.reply_to(message, f"⚡ PAI salvo: *{val}*", parse_mode='Markdown')
     except (IndexError, ValueError):
         bot.reply_to(message, "❌ Uso: /pai 117")
+
+
+@bot.message_handler(content_types=['photo'])
+def handle_foto(message):
+    bot.send_message(message.chat.id, "📸 Analisando a foto com IA...")
+    try:
+        # Baixa foto em maior resolução disponível
+        photo     = message.photo[-1]
+        file_info = bot.get_file(photo.file_id)
+        foto_bytes = bot.download_file(file_info.file_path)
+
+        # Categoria pelo horário de Brasília
+        agora_br  = datetime.now(FUSO_BR)
+        h         = agora_br.hour
+        hora_txt  = agora_br.strftime("%H:%M")
+        if   6  <= h <= 9:  cat_foto = "Café da Manhã"
+        elif 10 <= h <= 11: cat_foto = "Lanche da Manhã"
+        elif 12 <= h <= 14: cat_foto = "Almoço"
+        elif 15 <= h <= 17: cat_foto = "Lanche da Tarde"
+        elif 18 <= h <= 20: cat_foto = "Jantar"
+        else:                cat_foto = "Lanche da Noite"
+
+        import PIL.Image, io
+        img = PIL.Image.open(io.BytesIO(foto_bytes))
+
+        prompt = (
+            f"Você é um nutricionista. Analise esta foto de alimento e estime macronutrientes.\n"
+            f"Hora: {hora_txt} (Brasília). Categoria sugerida: {cat_foto}.\n\n"
+            "Retorne APENAS JSON puro, sem markdown, sem ```json:\n"
+            '{"tipo":"refeicao","categoria":"<cat>","descricao_resumida":"<nome e porção estimada>",'
+            '"calorias":<int>,"proteinas":<float>,"carboidratos":<float>,"gorduras":<float>}\n\n'
+            "Se houver múltiplos alimentos no prato, retorne lista JSON.\n"
+            "Seja realista com as porções visíveis na foto."
+        )
+        resposta    = model.generate_content([prompt, img])
+        texto_limpo = re.sub(r'```json|```', '', resposta.text).strip()
+        dados       = json.loads(texto_limpo)
+
+        if isinstance(dados, dict):
+            dados = [dados]
+
+        respostas = []
+        for item in dados:
+            if item.get('tipo') == 'refeicao':
+                salvar_refeicao(item)
+                respostas.append(
+                    f"🍽️ *{item.get('categoria','Refeição')}:* {item['descricao_resumida']}\n"
+                    f"   🔥 {item['calorias']} kcal · 🥩 {item['proteinas']}g · "
+                    f"🌾 {item['carboidratos']}g · 🫒 {item['gorduras']}g"
+                )
+
+        if respostas:
+            bot.reply_to(
+                message,
+                "✅ *Foto analisada e registrada!*\n\n" + "\n\n".join(respostas),
+                parse_mode='Markdown',
+            )
+        else:
+            bot.reply_to(message, "❓ Não consegui identificar alimentos na foto. Tente com uma foto mais clara.")
+
+    except json.JSONDecodeError:
+        bot.reply_to(message, "❌ A IA não retornou dados válidos. Tente reenviar a foto.")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Erro ao analisar foto: {e}")
 
 
 @bot.message_handler(func=lambda message: True)
