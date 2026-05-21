@@ -1114,7 +1114,7 @@ with col_med:
 with col_bio:
     df_bio = db("""
         SELECT date(data) as data_ord,
-               strftime('%d/%m/%Y', date(data)) as data_fmt,
+               strftime('%d/%m/%Y',data) as data_fmt,
                MAX(peso)            as peso,
                MAX(cintura)         as cintura,
                MAX(abdomen)         as abdomen,
