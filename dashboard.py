@@ -355,8 +355,9 @@ hora_now = datetime.now(_BR).strftime("%H:%M")
 dia_sem  = ["SEG","TER","QUA","QUI","SEX","SAB","DOM"][datetime.now(_BR).weekday()]
 
 # ── DADOS ────────────────────────────────────────────────────────────────────
-_dp = db("SELECT peso FROM medidas ORDER BY date(data) DESC LIMIT 1")
-peso = float(_dp["peso"].iloc[0]) if not _dp.empty else 93.0
+_dp = db("SELECT peso FROM medidas WHERE peso IS NOT NULL ORDER BY date(data) DESC LIMIT 1")
+_dp_val = _dp["peso"].iloc[0] if not _dp.empty else None
+peso = float(_dp_val) if _dp_val is not None else 93.0
 
 _da = db(f"SELECT COALESCE(SUM(quantidade_ml),0) as t FROM agua WHERE date(data_hora,'localtime')='{hoje_sql}'")
 agua_l = float(_da["t"].iloc[0] or 0) / 1000
