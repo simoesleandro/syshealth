@@ -1553,6 +1553,16 @@ with col_m:
 
     df_ref_hoje = _q_refeicoes(_hist_sql)
 
+    # Mapeamentos de cor e ícone por categoria
+    _CAT_COLOR = {
+        "Café da Manhã":   CYAN,
+        "Lanche da Manhã": PURPLE,
+        "Almoço":          GREEN,
+        "Lanche da Tarde": PURPLE,
+        "Jantar":          RED,
+        "Lanche da Noite": PURPLE,
+        "Lanche":          MUTED,
+    }
     _CAT_ICON = {
         "Café da Manhã":   "☕",
         "Lanche da Manhã": "🍎",
@@ -1588,84 +1598,107 @@ with col_m:
             carb_v = float(r["carb"]) if r["carb"] else 0.0
             gord_v = float(r["gord"]) if r["gord"] else 0.0
             icon   = _CAT_ICON.get(cat, "🍴")
+            cor    = _CAT_COLOR.get(cat, MUTED)
+            bsty   = BADGE_STYLE.get(cat, BADGE_STYLE["Lanche"])
 
-            # Label colapsado: hora  ícone Categoria  ·  Descrição
-            lbl_expand = f"{hora}  {icon} {cat}  ·  {food[:40]}"
+            edit_key = f"meal_edit_{rid}"
+            is_editing = st.session_state.get(edit_key, False)
 
-            with st.expander(lbl_expand):
-                # ── Linha de macros ───────────────────────────────────────────
-                if kcal_v or prot_v or carb_v or gord_v:
+            # ── Card colorido (sempre visível) ────────────────────────────────
+            has_macros = kcal_v or prot_v or carb_v or gord_v
+            macro_row  = ""
+            if has_macros:
+                macro_row = (
+                    f'<div style="display:flex;gap:14px;flex-wrap:wrap;'
+                    f'margin-top:7px;padding-top:7px;border-top:1px solid {cor}22">'
+                    f'<span style="font-family:{MONO};font-size:11px;font-weight:700;color:{AMBER}">🔥 {kcal_v}</span>'
+                    f'<span style="font-size:11px;color:{MUTED}">🥩<b style="color:{GREEN}"> {prot_v:.0f}g</b></span>'
+                    f'<span style="font-size:11px;color:{MUTED}">🌾<b style="color:{CYAN}"> {carb_v:.0f}g</b></span>'
+                    f'<span style="font-size:11px;color:{MUTED}">🫒<b style="color:{PURPLE}"> {gord_v:.0f}g</b></span>'
+                    f'</div>'
+                )
+            _cc, _ce = st.columns([1, 0.1])
+            with _cc:
+                st.markdown(
+                    f'<div style="background:{BG2};border:1px solid {cor}22;'
+                    f'border-left:3px solid {cor};border-radius:0 8px 8px 0;'
+                    f'padding:10px 14px;margin-bottom:2px">'
+                    f'<div style="display:flex;align-items:center;gap:8px">'
+                    f'<span style="font-family:{MONO};font-size:11px;font-weight:700;'
+                    f'color:{cor};white-space:nowrap;min-width:36px">{hora}</span>'
+                    f'<span style="font-size:8px;font-weight:700;letter-spacing:1px;'
+                    f'text-transform:uppercase;padding:2px 6px;border-radius:3px;'
+                    f'white-space:nowrap;{bsty}">{icon} {cat}</span>'
+                    f'<span style="font-size:12px;color:{TEXT};overflow:hidden;'
+                    f'text-overflow:ellipsis;white-space:nowrap;flex:1">{food[:36]}</span>'
+                    f'</div>'
+                    f'{macro_row}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with _ce:
+                _edit_lbl = "✕" if is_editing else "✏"
+                if st.button(_edit_lbl, key=f"tog_meal_{rid}", width="stretch",
+                             help="Editar / Fechar"):
+                    st.session_state[edit_key] = not is_editing
+                    st.rerun()
+
+            # ── Form de edição (só aparece quando aberto) ─────────────────────
+            if is_editing:
+                with st.container():
                     st.markdown(
-                        f'<div style="display:flex;gap:18px;flex-wrap:wrap;'
-                        f'padding:6px 0 10px;border-bottom:1px solid {BORDER};margin-bottom:10px">'
-                        f'<span style="font-family:{MONO};font-size:13px;font-weight:700;'
-                        f'color:{AMBER}">🔥 {kcal_v} kcal</span>'
-                        f'<span style="font-size:12px;color:{MUTED}">'
-                        f'🥩 <b style="color:{GREEN}">{prot_v:.1f}g</b> prot</span>'
-                        f'<span style="font-size:12px;color:{MUTED}">'
-                        f'🌾 <b style="color:{CYAN}">{carb_v:.1f}g</b> carb</span>'
-                        f'<span style="font-size:12px;color:{MUTED}">'
-                        f'🫒 <b style="color:{PURPLE}">{gord_v:.1f}g</b> gord</span>'
-                        f'</div>',
+                        f'<div style="height:1px;background:{cor}33;margin:0 0 6px 3px"></div>',
                         unsafe_allow_html=True,
                     )
-                else:
-                    st.markdown(
-                        f'<div style="font-size:11px;color:{GHOST};font-style:italic;'
-                        f'padding:4px 0 10px;border-bottom:1px solid {BORDER};'
-                        f'margin-bottom:10px">Macros não registrados</div>',
-                        unsafe_allow_html=True,
-                    )
-
-                # ── Form de edição completa + deletar ─────────────────────────
-                with st.form(f"form_edit_ref_{rid}"):
-                    _ec, _ed = st.columns([1, 2])
-                    with _ec:
-                        idx_cat  = CATEGORIAS.index(cat) if cat in CATEGORIAS else 0
-                        nova_cat = st.selectbox("Categoria", CATEGORIAS, index=idx_cat,
-                                                key=f"ecat_{rid}")
-                    with _ed:
-                        nova_desc = st.text_input("Descrição", value=food, key=f"edesc_{rid}")
-
-                    _em1, _em2, _em3, _em4 = st.columns(4)
-                    with _em1:
-                        nova_kcal = st.number_input("Kcal", value=float(kcal_v),
-                                                    min_value=0.0, step=1.0, format="%.0f",
-                                                    key=f"ekcal_{rid}")
-                    with _em2:
-                        nova_prot = st.number_input("Prot g", value=prot_v,
-                                                    min_value=0.0, step=0.5, format="%.1f",
-                                                    key=f"eprot_{rid}")
-                    with _em3:
-                        nova_carb = st.number_input("Carb g", value=carb_v,
-                                                    min_value=0.0, step=0.5, format="%.1f",
-                                                    key=f"ecarb_{rid}")
-                    with _em4:
-                        nova_gord = st.number_input("Gord g", value=gord_v,
-                                                    min_value=0.0, step=0.5, format="%.1f",
-                                                    key=f"egord_{rid}")
-
-                    _ba, _bd = st.columns([3, 1])
-                    with _ba:
-                        _salvar  = st.form_submit_button("✓ SALVAR", width="stretch")
-                    with _bd:
-                        _deletar = st.form_submit_button("🗑", width="stretch")
-
-                    if _salvar:
-                        DB.execute(
-                            "UPDATE refeicoes SET categoria=?, descricao=?, calorias=?, "
-                            "proteinas=?, carboidratos=?, gorduras=? WHERE id=?",
-                            [nova_cat, nova_desc.strip(), nova_kcal,
-                             nova_prot, nova_carb, nova_gord, rid],
-                        )
-                        st.cache_data.clear()
-                        _notif(f"Refeição atualizada · {int(nova_kcal)} kcal")
-                        st.rerun()
-                    if _deletar:
-                        DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
-                        st.cache_data.clear()
-                        _notif("Refeição removida", "err")
-                        st.rerun()
+                    with st.form(f"form_edit_ref_{rid}"):
+                        _ec, _ed = st.columns([1, 2])
+                        with _ec:
+                            idx_cat  = CATEGORIAS.index(cat) if cat in CATEGORIAS else 0
+                            nova_cat = st.selectbox("Categoria", CATEGORIAS, index=idx_cat,
+                                                    key=f"ecat_{rid}")
+                        with _ed:
+                            nova_desc = st.text_input("Descrição", value=food,
+                                                      key=f"edesc_{rid}")
+                        _em1, _em2, _em3, _em4 = st.columns(4)
+                        with _em1:
+                            nova_kcal = st.number_input("Kcal", value=float(kcal_v),
+                                                        min_value=0.0, step=1.0, format="%.0f",
+                                                        key=f"ekcal_{rid}")
+                        with _em2:
+                            nova_prot = st.number_input("Prot g", value=prot_v,
+                                                        min_value=0.0, step=0.5, format="%.1f",
+                                                        key=f"eprot_{rid}")
+                        with _em3:
+                            nova_carb = st.number_input("Carb g", value=carb_v,
+                                                        min_value=0.0, step=0.5, format="%.1f",
+                                                        key=f"ecarb_{rid}")
+                        with _em4:
+                            nova_gord = st.number_input("Gord g", value=gord_v,
+                                                        min_value=0.0, step=0.5, format="%.1f",
+                                                        key=f"egord_{rid}")
+                        _ba, _bd = st.columns([3, 1])
+                        with _ba:
+                            _salvar  = st.form_submit_button("✓ SALVAR", width="stretch")
+                        with _bd:
+                            _deletar = st.form_submit_button("🗑", width="stretch")
+                        if _salvar:
+                            DB.execute(
+                                "UPDATE refeicoes SET categoria=?, descricao=?, calorias=?, "
+                                "proteinas=?, carboidratos=?, gorduras=? WHERE id=?",
+                                [nova_cat, nova_desc.strip(), nova_kcal,
+                                 nova_prot, nova_carb, nova_gord, rid],
+                            )
+                            st.cache_data.clear()
+                            st.session_state[edit_key] = False
+                            _notif(f"Refeição atualizada · {int(nova_kcal)} kcal")
+                            st.rerun()
+                        if _deletar:
+                            DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
+                            st.cache_data.clear()
+                            st.session_state.pop(edit_key, None)
+                            _notif("Refeição removida", "err")
+                            st.rerun()
+                    st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 
 # Busca refeições de hoje para checar suplementos registrados (cached)
 df_supp_check = _q_supp_check(hoje_sql)
@@ -1745,18 +1778,55 @@ with col_s:
         unsafe_allow_html=True,
     )
 
-    # ── Tirzepatida — CRUD ────────────────────────────────────────────────────
+    # ── Tirzepatida — timeline colorida ──────────────────────────────────────
     df_med = _q_medicacao()
+    from datetime import date as _date, datetime as _datetime
 
-    # Cabeçalho da seção
-    st.markdown(
-        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;'
-        f'letter-spacing:1.5px;text-transform:uppercase;color:{TEXT};'
-        f'margin:14px 0 8px;display:flex;align-items:center;gap:8px">'
-        f'💉 Tirzepatida'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    # Cabeçalho com botão de nova dose
+    _th, _tn = st.columns([1, 0.55])
+    with _th:
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:11px;font-weight:700;'
+            f'letter-spacing:1.5px;text-transform:uppercase;color:{TEXT};'
+            f'margin:14px 0 8px">💉 Tirzepatida</div>',
+            unsafe_allow_html=True,
+        )
+    with _tn:
+        st.markdown('<div style="margin-top:14px"></div>', unsafe_allow_html=True)
+        if st.button("＋ Dose", key="btn_med_nova_toggle", width="stretch"):
+            st.session_state["med_nova_open"] = not st.session_state.get("med_nova_open", False)
+            st.rerun()
+
+    # Form de nova dose (toggle)
+    if st.session_state.get("med_nova_open", False):
+        with st.container():
+            st.markdown(
+                f'<div style="border-left:3px solid {GREEN};padding:2px 0 2px 0;'
+                f'margin-bottom:6px"></div>',
+                unsafe_allow_html=True,
+            )
+            with st.form("form_med_nova", clear_on_submit=True):
+                _mn1, _mn2 = st.columns(2)
+                with _mn1:
+                    nova_data_n = st.date_input(
+                        "Data", value=_date.fromisoformat(hoje_sql),
+                        key="mdata_nova", format="DD/MM/YYYY"
+                    )
+                with _mn2:
+                    nova_dose_n = st.number_input(
+                        "Dose (mg)", value=5.0,
+                        min_value=0.5, max_value=25.0, step=0.5, format="%.1f",
+                        key="mdose_nova"
+                    )
+                if st.form_submit_button("REGISTRAR DOSE", width="stretch"):
+                    DB.execute(
+                        "INSERT INTO medicacao (data_hora, dose_mg) VALUES (?,?)",
+                        [f"{nova_data_n} 12:00:00", nova_dose_n],
+                    )
+                    st.cache_data.clear()
+                    st.session_state["med_nova_open"] = False
+                    _notif(f"Tirzepatida {nova_dose_n:.1f} mg registrada")
+                    st.rerun()
 
     if df_med.empty:
         st.markdown(
@@ -1764,20 +1834,60 @@ with col_s:
             unsafe_allow_html=True,
         )
     else:
-        from datetime import date as _date, datetime as _datetime
         for i, (_, r) in enumerate(df_med.iterrows()):
             mid      = int(r["id"])
             dose     = float(r["dose_mg"])
             if dose > 100:
                 dose /= 1000
-            data_fmt = str(r["data_fmt"])          # "DD/MM/YYYY"
-            data_iso = str(r["data_iso"])[:10]     # "YYYY-MM-DD"
+            data_fmt = str(r["data_fmt"])
+            data_iso = str(r["data_iso"])[:10]
             is_atual = (i == 0)
 
-            # Label do expander: data + dose + badge ATUAL se for o mais recente
-            lbl_med = f"{'✦ ' if is_atual else ''}{data_fmt}  ·  {dose:.1f} mg{'  ← atual' if is_atual else ''}"
+            cor_med  = GREEN if is_atual else GHOST
+            bg_med   = "rgba(0,230,118,0.05)" if is_atual else "transparent"
+            bd_med   = "rgba(0,230,118,0.28)" if is_atual else f"{BORDER}"
 
-            with st.expander(lbl_med):
+            edit_key  = f"med_edit_{mid}"
+            is_editing = st.session_state.get(edit_key, False)
+
+            # ── Card da dose ──────────────────────────────────────────────────
+            _mc, _me = st.columns([1, 0.1])
+            with _mc:
+                atual_badge = (
+                    f'<span style="font-family:{MONO};font-size:8px;font-weight:700;'
+                    f'background:rgba(0,230,118,0.12);color:{GREEN};'
+                    f'border:1px solid rgba(0,230,118,0.3);padding:2px 7px;'
+                    f'border-radius:3px;letter-spacing:1px;margin-left:6px">ATUAL</span>'
+                    if is_atual else ""
+                )
+                st.markdown(
+                    f'<div style="background:{bg_med};border:1px solid {bd_med};'
+                    f'border-left:3px solid {cor_med};border-radius:0 8px 8px 0;'
+                    f'padding:10px 14px;margin-bottom:3px;'
+                    f'display:flex;align-items:center;gap:10px">'
+                    f'<span style="width:8px;height:8px;border-radius:50%;'
+                    f'background:{cor_med};flex-shrink:0;display:inline-block"></span>'
+                    f'<span style="font-family:{MONO};font-size:11px;color:{MUTED}">'
+                    f'{data_fmt}</span>'
+                    f'<span style="font-size:18px;font-weight:800;color:{cor_med};'
+                    f'letter-spacing:-0.5px">{dose:.1f} mg</span>'
+                    f'{atual_badge}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            with _me:
+                _edit_lbl = "✕" if is_editing else "✏"
+                if st.button(_edit_lbl, key=f"tog_med_{mid}", width="stretch",
+                             help="Editar / Fechar"):
+                    st.session_state[edit_key] = not is_editing
+                    st.rerun()
+
+            # ── Form de edição inline ─────────────────────────────────────────
+            if is_editing:
+                st.markdown(
+                    f'<div style="height:1px;background:{cor_med}33;margin:0 0 6px 3px"></div>',
+                    unsafe_allow_html=True,
+                )
                 with st.form(f"form_med_edit_{mid}"):
                     _mc1, _mc2 = st.columns(2)
                     with _mc1:
@@ -1800,45 +1910,22 @@ with col_s:
                         _med_salvar = st.form_submit_button("✓ SALVAR", width="stretch")
                     with _mdb:
                         _med_del    = st.form_submit_button("🗑", width="stretch")
-
                     if _med_salvar:
                         DB.execute(
                             "UPDATE medicacao SET data_hora=?, dose_mg=? WHERE id=?",
                             [f"{nova_data_med} 12:00:00", nova_dose_med, mid],
                         )
                         st.cache_data.clear()
+                        st.session_state[edit_key] = False
                         _notif(f"Dose atualizada: {nova_dose_med:.1f} mg")
                         st.rerun()
                     if _med_del:
                         DB.execute("DELETE FROM medicacao WHERE id=?", [mid])
                         st.cache_data.clear()
+                        st.session_state.pop(edit_key, None)
                         _notif("Registro removido", "err")
                         st.rerun()
-
-    # ── Adicionar nova dose ───────────────────────────────────────────────────
-    with st.expander("➕ Registrar nova dose"):
-        from datetime import date as _date
-        with st.form("form_med_nova", clear_on_submit=True):
-            _mn1, _mn2 = st.columns(2)
-            with _mn1:
-                nova_data_n = st.date_input(
-                    "Data", value=_date.fromisoformat(hoje_sql),
-                    key="mdata_nova", format="DD/MM/YYYY"
-                )
-            with _mn2:
-                nova_dose_n = st.number_input(
-                    "Dose (mg)", value=5.0,
-                    min_value=0.5, max_value=25.0, step=0.5, format="%.1f",
-                    key="mdose_nova"
-                )
-            if st.form_submit_button("REGISTRAR DOSE", width="stretch"):
-                DB.execute(
-                    "INSERT INTO medicacao (data_hora, dose_mg) VALUES (?,?)",
-                    [f"{nova_data_n} 12:00:00", nova_dose_n],
-                )
-                st.cache_data.clear()
-                _notif(f"Tirzepatida {nova_dose_n:.1f} mg registrada")
-                st.rerun()
+                st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 5 — EVOLUÇÃO DE MEDIDAS (largura total — 11 colunas cabem melhor)
