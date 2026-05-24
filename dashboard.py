@@ -54,7 +54,7 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700;800&display=swap');
 
 html,body,.stApp{background:#080c14!important;color:#e8edf5!important;font-family:'DM Sans',sans-serif!important}
-.block-container{padding:1.5rem 2rem!important;max-width:100%!important}
+.block-container{padding:1.5rem 2rem!important;max-width:1440px!important;margin-left:auto!important;margin-right:auto!important}
 #MainMenu,footer,header,[data-testid="stToolbar"]{visibility:hidden!important;height:0!important}
 .stDeployButton{display:none!important}
 
@@ -356,6 +356,65 @@ def ptitl(txt):
         f'text-transform:uppercase;color:{TEXT};margin-bottom:12px">{txt}</div>'
     )
 
+# ── NOTIFICAÇÕES VISUAIS ─────────────────────────────────────────────────────
+def _notif(msg: str, tipo: str = "ok"):
+    """
+    Agenda uma notificação animada para ser exibida no próximo render.
+    tipo: 'ok' (verde) | 'err' (vermelho) | 'info' (ciano)
+    """
+    st.session_state["_notif_pending"] = (msg, tipo)
+
+
+def _render_notif_pendente():
+    """
+    Renderiza a notificação pendente (se houver) como overlay fixo animado.
+    Chamar UMA VEZ no início do corpo da página.
+    """
+    if "_notif_pending" not in st.session_state:
+        return
+    msg, tipo = st.session_state.pop("_notif_pending")
+    cor = {"ok": "#00e676", "err": "#ff6b6b", "info": "#00d4ff"}.get(tipo, "#00e676")
+    icone = {"ok": "✓", "err": "✗", "info": "ℹ"}.get(tipo, "✓")
+    st.html(f"""
+<style>
+@keyframes _sh_notif {{
+  0%   {{ opacity:0; transform:translate(-50%,20px) scale(.96); }}
+  15%  {{ opacity:1; transform:translate(-50%,0)    scale(1);   }}
+  75%  {{ opacity:1; transform:translate(-50%,0)    scale(1);   }}
+  100% {{ opacity:0; transform:translate(-50%,12px) scale(.97); }}
+}}
+</style>
+<div style="
+  position:fixed; bottom:36px; left:50%;
+  background:#0c1525; border:1.5px solid {cor};
+  border-radius:12px; padding:14px 32px;
+  font-family:'Space Mono',monospace; font-size:13px; font-weight:700;
+  color:{cor}; letter-spacing:1.2px; white-space:nowrap;
+  box-shadow:0 8px 40px rgba(0,0,0,.85), 0 0 28px {cor}44;
+  z-index:999999; pointer-events:none;
+  animation:_sh_notif 2.8s cubic-bezier(.22,.68,0,1.2) forwards;
+">{icone}&nbsp; {msg}</div>
+""")
+
+
+# ── ZEPP SYNC ─────────────────────────────────────────────────────────────────
+def _zepp_sync_dashboard(day: str | None = None) -> str:
+    """
+    Chama zepp_sync + salva no banco. Retorna mensagem de status.
+    Precisa de ZEPP_APP_TOKEN e ZEPP_USER_ID nos secrets.
+    """
+    try:
+        import zepp_sync as _zs
+        d = day or datetime.now(_BR).strftime("%Y-%m-%d")
+        row = _zs.zepp_sync(d)
+        if row:
+            _zs.save(row)
+            return f"Amazfit sincronizado — {row['passos']:,} passos · {row['sono_total_min']} min sono"
+        return "Zepp: sem dados novos"
+    except Exception as e:
+        return f"Erro sync: {e}"
+
+
 # ── METAS ────────────────────────────────────────────────────────────────────
 TMB       = 1863  # Taxa Metabólica Basal — meta calórica é calculada dinamicamente
 META_PROT = 190
@@ -611,7 +670,7 @@ def _painel_entrada():
                         )
                     del st.session_state["foto_resultado"]
                     st.cache_data.clear()
-                    st.toast("📸 ✓ Foto registrada!")
+                    _notif("Foto registrada com sucesso!")
                     st.rerun()
             with cd:
                 if st.button("✗ Descartar", key="desc_foto", width="stretch"):
@@ -675,7 +734,7 @@ def _painel_entrada():
                     )
                     del st.session_state["ia_text_result"]
                     st.cache_data.clear()
-                    st.toast("🤖 ✓ Refeição salva pela IA!")
+                    _notif(f"Refeicao salva · {r.get('calorias',0)} kcal")
                     st.rerun()
             with cd2:
                 if st.button("✗ Descartar", key="desc_ia_text", width="stretch"):
@@ -709,31 +768,48 @@ def _painel_entrada():
                         [cat_sel, desc_in.strip(), kcal_in, prot_in, carb_in, gord_in],
                     )
                     st.cache_data.clear()
-                    st.toast("✓ Refeição salva!")
+                    _notif(f"Refeicao salva · {int(kcal_in)} kcal")
                     st.rerun()
                 else:
                     st.error("Descrição obrigatória.")
 
     with tp2:
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;'
+            f'margin-bottom:10px">Marque um ou mais e clique em Registrar:</div>',
+            unsafe_allow_html=True,
+        )
         cols_s = st.columns(3)
+        _sel_supps = []
         for i, (label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s) in enumerate(SUPP_REGISTER):
             with cols_s[i % 3]:
-                if st.button(label, key=f"supp_{label}", width="stretch"):
-                    DB.execute(
-                        "INSERT INTO refeicoes "
-                        "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
-                        "VALUES (?,?,?,?,?,?)",
-                        [_cat_hora(), desc_s, kcal_s, prot_s, carb_s, gord_s],
-                    )
-                    st.cache_data.clear()
-                    st.toast(f"✓ {label}")
-                    st.rerun()
+                if st.checkbox(label, key=f"chk_supp_{label}"):
+                    _sel_supps.append((label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s))
+        _btn_label = (f"✅ Registrar {len(_sel_supps)} selecionado(s)"
+                      if _sel_supps else "Selecione suplementos acima")
+        if st.button(_btn_label, key="btn_reg_supps", width="stretch",
+                     disabled=not _sel_supps):
+            cat_agora = _cat_hora()
+            for label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s in _sel_supps:
+                DB.execute(
+                    "INSERT INTO refeicoes "
+                    "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
+                    "VALUES (?,?,?,?,?,?)",
+                    [cat_agora, desc_s, kcal_s, prot_s, carb_s, gord_s],
+                )
+            # Limpa checkboxes
+            for label, *_ in _sel_supps:
+                if f"chk_supp_{label}" in st.session_state:
+                    del st.session_state[f"chk_supp_{label}"]
+            nomes = " + ".join(l for l, *_ in _sel_supps)
+            st.cache_data.clear()
+            _notif(f"{nomes} registrado(s)!")
+            st.rerun()
 
     with tp3:
         # ── Trigger de animação: meta de água atingida ───────────────────────────
         if st.session_state.pop("_agua_meta_atingida", False):
             st.balloons()
-            st.toast("🎉 Meta de água atingida! Parabéns!", icon="🏆")
 
         cA, cB, cC = st.columns(3)
 
@@ -744,9 +820,9 @@ def _painel_entrada():
             nova = agua_l + ml / 1000
             if nova >= META_AGUA and agua_l < META_AGUA:
                 st.session_state["_agua_meta_atingida"] = True
-                st.toast(f"💧 +{ml} ml · 🎉 {nova:.1f}L — meta atingida!")
+                _notif(f"META DE AGUA ATINGIDA!  {nova:.1f}L", "ok")
             else:
-                st.toast(f"💧 +{ml} ml · {nova:.1f}L / {META_AGUA}L")
+                _notif(f"+{ml} ml  agua  {nova:.1f} / {META_AGUA}L", "info")
             st.rerun()
 
         with cA:
@@ -777,7 +853,7 @@ def _painel_entrada():
                         DB.execute("UPDATE medidas SET peso=? WHERE date(data)=?", [float(peso_in), hoje_sql])
                     else:
                         DB.execute("INSERT INTO medidas (data, peso) VALUES (?, ?)", [hoje_sql, float(peso_in)])
-                    st.cache_data.clear(); st.toast(f"⚖️ ✓ {peso_in:.1f} kg"); st.rerun()
+                    st.cache_data.clear(); _notif(f"Peso {peso_in:.1f} kg salvo"); st.rerun()
         with cC:
             st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💓 HRV / PAI</div>', unsafe_allow_html=True)
             with st.form("form_hrv_pai"):
@@ -786,10 +862,9 @@ def _painel_entrada():
                 if st.form_submit_button("SALVAR", width="stretch"):
                     DB.execute("INSERT INTO amazfit_dados (data_hora,passos,calorias_gastas,distancia_km,sono_total_min,sono_profundo_min,hrv_ms,pai) VALUES (?,0,0,0,0,0,0,0) ON CONFLICT(data_hora) DO NOTHING", [f"{hoje_sql} 00:00:00"])
                     DB.execute("UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?", [hrv_in, pai_in, f"{hoje_sql} 00:00:00"])
-                    hrv_ok = "✅" if hrv_in >= 35 else ("⚠️" if hrv_in >= 25 else "❌")
-                    pai_ok = "✅" if pai_in >= META_PAI else ("⚠️" if pai_in >= 70 else "❌")
+                    hrv_status = "BOM" if hrv_in >= 35 else ("MED" if hrv_in >= 25 else "BAIXO")
                     st.cache_data.clear()
-                    st.toast(f"💓 HRV {hrv_in}ms {hrv_ok} · PAI {pai_in} {pai_ok}")
+                    _notif(f"HRV {hrv_in}ms [{hrv_status}]  PAI {pai_in}", "info")
                     st.rerun()
 
     with tp4:
@@ -816,34 +891,63 @@ def _painel_entrada():
                     with bd: deletar   = st.form_submit_button("🗑", width="stretch")
                     if atualizar:
                         DB.execute("UPDATE refeicoes SET categoria=? WHERE id=?", [nova_cat, rid])
-                        st.cache_data.clear(); st.toast("✓ Categoria atualizada!"); st.rerun()
+                        st.cache_data.clear(); _notif("Categoria atualizada"); st.rerun()
                     if deletar:
                         DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
-                        st.cache_data.clear(); st.toast("🗑 Refeição removida"); st.rerun()
+                        st.cache_data.clear(); _notif("Refeicao removida", "err"); st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 
 
+# ── Auto-sync Zepp na primeira abertura da sessão ────────────────────────────
+_zepp_status_txt = "sincronizado"
+_zepp_status_cor = GREEN
+if "zepp_auto_synced" not in st.session_state:
+    st.session_state["zepp_auto_synced"] = True
+    _sync_result = _zepp_sync_dashboard(hoje_sql)
+    if "passos" in _sync_result:
+        DB.init_tables()
+        st.cache_data.clear()
+    elif "Erro" in _sync_result:
+        _zepp_status_txt = "erro de sync"
+        _zepp_status_cor = RED
+    else:
+        _zepp_status_txt = "sem dados novos"
+        _zepp_status_cor = AMBER
+
 # ════════════════════════════════════════════════════════════════════════════
 # TOPBAR
 # ════════════════════════════════════════════════════════════════════════════
-st.markdown(
-    f'<div class="sh-topbar" style="display:flex;justify-content:space-between;align-items:flex-end;'
-    f'padding-bottom:14px;border-bottom:1px solid {BORDER2};margin-bottom:6px">'
-    f'<div>'
-    f'<div style="font-family:{MONO};font-size:12px;letter-spacing:2px;color:{CYAN};text-transform:uppercase">sys.health_tracker</div>'
-    f'<div style="font-size:28px;font-weight:800;color:{TEXT};line-height:1;letter-spacing:-0.5px;margin-top:2px">Leandro R.</div>'
-    f'<div style="font-size:12px;color:{GHOST};text-transform:uppercase;letter-spacing:1px;margin-top:4px">Rio de Janeiro &nbsp;·&nbsp; Dashboard v2.1</div>'
-    f'</div>'
-    f'<div class="sh-topbar-right" style="text-align:right">'
-    f'<div style="font-family:{MONO};font-size:13px;color:{GHOST}">{dia_sem} · {hoje_pt} · {hora_now}</div>'
-    f'<div style="font-family:{MONO};font-size:13px;color:{GREEN};font-weight:700;margin-top:3px">'
-    f'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;'
-    f'background:{GREEN};margin-right:5px;vertical-align:middle"></span>'
-    f'Amazfit Bip 6 — sincronizado</div>'
-    f'</div></div>',
-    unsafe_allow_html=True,
-)
+_tb_left, _tb_right = st.columns([3, 1])
+with _tb_left:
+    st.markdown(
+        f'<div class="sh-topbar" style="padding-bottom:14px;border-bottom:1px solid {BORDER2};margin-bottom:6px">'
+        f'<div style="font-family:{MONO};font-size:12px;letter-spacing:2px;color:{CYAN};text-transform:uppercase">sys.health_tracker</div>'
+        f'<div style="font-size:28px;font-weight:800;color:{TEXT};line-height:1;letter-spacing:-0.5px;margin-top:2px">Leandro R.</div>'
+        f'<div style="font-size:12px;color:{GHOST};text-transform:uppercase;letter-spacing:1px;margin-top:4px">Rio de Janeiro &nbsp;·&nbsp; Dashboard v2.2</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+with _tb_right:
+    st.markdown(
+        f'<div class="sh-topbar-right" style="text-align:right;padding-bottom:6px;border-bottom:1px solid {BORDER2};margin-bottom:6px">'
+        f'<div style="font-family:{MONO};font-size:13px;color:{GHOST}">{dia_sem} · {hoje_pt} · {hora_now}</div>'
+        f'<div style="font-family:{MONO};font-size:12px;color:{_zepp_status_cor};font-weight:700;margin-top:3px">'
+        f'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;'
+        f'background:{_zepp_status_cor};margin-right:5px;vertical-align:middle"></span>'
+        f'Amazfit Bip 6 — {_zepp_status_txt}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    if st.button("🔄 Sync Zepp", key="btn_zepp_sync_top", width="stretch"):
+        with st.spinner("Sincronizando Zepp..."):
+            _sync_result = _zepp_sync_dashboard(hoje_sql)
+        st.cache_data.clear()
+        _notif(_sync_result, "ok" if "passos" in _sync_result else "info")
+        st.rerun()
+
+# ── Notificação animada pendente (roda UMA vez por ação) ─────────────────────
+_render_notif_pendente()
 
 # ── Painel de entrada inline (substituiu sidebar) ────────────────────────────
 _painel_entrada()
