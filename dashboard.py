@@ -514,8 +514,10 @@ def _q_peso_historico():
 @st.cache_data(ttl=60)
 def _q_medicacao():
     return DB.query(
-        "SELECT strftime('%d/%m/%Y', datetime(data_hora,'localtime')) as data, "
-        "dose_mg FROM medicacao ORDER BY date(data_hora) DESC")
+        "SELECT id, "
+        "strftime('%d/%m/%Y', datetime(data_hora,'localtime')) as data_fmt, "
+        "date(data_hora,'localtime') as data_iso, "
+        "dose_mg FROM medicacao ORDER BY date(data_hora,'localtime') DESC")
 
 @st.cache_data(ttl=60)
 def _q_medidas():
@@ -549,6 +551,25 @@ def _q_biometria():
 if "db_init_done" not in st.session_state:
     DB.init_tables()
     st.session_state["db_init_done"] = True
+
+# ── Seed: histórico de doses Tirzepatida ─────────────────────────────────────
+if "med_seeded" not in st.session_state:
+    st.session_state["med_seeded"] = True
+    _datas_seed = {
+        "2026-05-10": 7.0,
+        "2026-05-03": 7.0,
+    }
+    for _ds, _dose_s in _datas_seed.items():
+        _ex_med = DB.query(
+            "SELECT COUNT(*) as cnt FROM medicacao WHERE date(data_hora,'localtime')=?",
+            [_ds]
+        )
+        if int(_ex_med["cnt"].iloc[0]) == 0:
+            DB.execute(
+                "INSERT INTO medicacao (data_hora, dose_mg) VALUES (?,?)",
+                [f"{_ds} 12:00:00", _dose_s]
+            )
+    st.cache_data.clear()
 
 # ── Leitura dos dados com cache ───────────────────────────────────────────────
 _dp = _q_peso()
@@ -1724,34 +1745,100 @@ with col_s:
         unsafe_allow_html=True,
     )
 
-    # ── Tirzepatida — empilhada abaixo dos suplementos ────────────────────────
-    df_med   = _q_medicacao()
-    med_rows = ""
-    for i, (_, r) in enumerate(df_med.iterrows()):
-        dose = float(r["dose_mg"])
-        if dose > 100:
-            dose = dose / 1000
-        badge = (
-            f'<span style="font-family:{MONO};font-size:8px;font-weight:700;'
-            f'background:rgba(0,230,118,0.08);color:{GREEN};'
-            f'border:1px solid rgba(0,230,118,0.2);padding:1px 6px;'
-            f'border-radius:3px;letter-spacing:1px">ATUAL</span>'
-            if i == 0 else ""
-        )
-        med_rows += (
-            f'<div style="display:flex;justify-content:space-between;align-items:center;'
-            f'padding:8px 0;border-bottom:1px solid {BG3}">'
-            f'<span style="font-family:{MONO};font-size:11px;color:{MUTED}">{r["data"]}</span>'
-            f'<span style="font-size:13px;font-weight:700;color:{TEXT}">{dose:.1f} mg</span>'
-            f'{badge}</div>'
-        )
+    # ── Tirzepatida — CRUD ────────────────────────────────────────────────────
+    df_med = _q_medicacao()
+
+    # Cabeçalho da seção
     st.markdown(
-        panel(
-            ptitl("Tirzepatida") +
-            (med_rows or f'<p style="color:{GHOST};font-size:12px">Sem registros.</p>')
-        ),
+        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;'
+        f'letter-spacing:1.5px;text-transform:uppercase;color:{TEXT};'
+        f'margin:14px 0 8px;display:flex;align-items:center;gap:8px">'
+        f'💉 Tirzepatida'
+        f'</div>',
         unsafe_allow_html=True,
     )
+
+    if df_med.empty:
+        st.markdown(
+            f'<p style="color:{GHOST};font-size:12px;margin-bottom:8px">Sem registros.</p>',
+            unsafe_allow_html=True,
+        )
+    else:
+        from datetime import date as _date, datetime as _datetime
+        for i, (_, r) in enumerate(df_med.iterrows()):
+            mid      = int(r["id"])
+            dose     = float(r["dose_mg"])
+            if dose > 100:
+                dose /= 1000
+            data_fmt = str(r["data_fmt"])          # "DD/MM/YYYY"
+            data_iso = str(r["data_iso"])[:10]     # "YYYY-MM-DD"
+            is_atual = (i == 0)
+
+            # Label do expander: data + dose + badge ATUAL se for o mais recente
+            lbl_med = f"{'✦ ' if is_atual else ''}{data_fmt}  ·  {dose:.1f} mg{'  ← atual' if is_atual else ''}"
+
+            with st.expander(lbl_med):
+                with st.form(f"form_med_edit_{mid}"):
+                    _mc1, _mc2 = st.columns(2)
+                    with _mc1:
+                        try:
+                            _val_data = _datetime.strptime(data_iso, "%Y-%m-%d").date()
+                        except Exception:
+                            _val_data = _date.fromisoformat(hoje_sql)
+                        nova_data_med = st.date_input(
+                            "Data", value=_val_data,
+                            key=f"mdata_{mid}", format="DD/MM/YYYY"
+                        )
+                    with _mc2:
+                        nova_dose_med = st.number_input(
+                            "Dose (mg)", value=dose,
+                            min_value=0.5, max_value=25.0, step=0.5, format="%.1f",
+                            key=f"mdose_{mid}"
+                        )
+                    _msb, _mdb = st.columns([3, 1])
+                    with _msb:
+                        _med_salvar = st.form_submit_button("✓ SALVAR", width="stretch")
+                    with _mdb:
+                        _med_del    = st.form_submit_button("🗑", width="stretch")
+
+                    if _med_salvar:
+                        DB.execute(
+                            "UPDATE medicacao SET data_hora=?, dose_mg=? WHERE id=?",
+                            [f"{nova_data_med} 12:00:00", nova_dose_med, mid],
+                        )
+                        st.cache_data.clear()
+                        _notif(f"Dose atualizada: {nova_dose_med:.1f} mg")
+                        st.rerun()
+                    if _med_del:
+                        DB.execute("DELETE FROM medicacao WHERE id=?", [mid])
+                        st.cache_data.clear()
+                        _notif("Registro removido", "err")
+                        st.rerun()
+
+    # ── Adicionar nova dose ───────────────────────────────────────────────────
+    with st.expander("➕ Registrar nova dose"):
+        from datetime import date as _date
+        with st.form("form_med_nova", clear_on_submit=True):
+            _mn1, _mn2 = st.columns(2)
+            with _mn1:
+                nova_data_n = st.date_input(
+                    "Data", value=_date.fromisoformat(hoje_sql),
+                    key="mdata_nova", format="DD/MM/YYYY"
+                )
+            with _mn2:
+                nova_dose_n = st.number_input(
+                    "Dose (mg)", value=5.0,
+                    min_value=0.5, max_value=25.0, step=0.5, format="%.1f",
+                    key="mdose_nova"
+                )
+            if st.form_submit_button("REGISTRAR DOSE", width="stretch"):
+                DB.execute(
+                    "INSERT INTO medicacao (data_hora, dose_mg) VALUES (?,?)",
+                    [f"{nova_data_n} 12:00:00", nova_dose_n],
+                )
+                st.cache_data.clear()
+                _notif(f"Tirzepatida {nova_dose_n:.1f} mg registrada")
+                st.rerun()
 
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 5 — EVOLUÇÃO DE MEDIDAS (largura total — 11 colunas cabem melhor)
