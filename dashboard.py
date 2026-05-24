@@ -229,6 +229,13 @@ section[data-testid="stSidebar"] ::-webkit-scrollbar-thumb{background:#1a2035;bo
    injetadas via st.html() + fallback media queries
    ══════════════════════════════════════════════════════════ */
 
+/* Suaviza o escurecimento durante rerun (padrão Streamlit) */
+[data-testid="stApp"][data-stale="true"]{
+  opacity:0.75!important;
+  transition:opacity 0.15s ease!important}
+[data-testid="stApp"]{
+  transition:opacity 0.15s ease!important}
+
 /* Mobile hint: oculto por padrão */
 .sh-mobile-hint{display:none!important}
 
@@ -461,28 +468,103 @@ hoje_pt  = datetime.now(_BR).strftime("%d/%m/%Y")
 hora_now = datetime.now(_BR).strftime("%H:%M")
 dia_sem  = ["SEG","TER","QUA","QUI","SEX","SAB","DOM"][datetime.now(_BR).weekday()]
 
-# ── DADOS ────────────────────────────────────────────────────────────────────
-_dp = db("SELECT peso FROM medidas WHERE peso IS NOT NULL ORDER BY date(data) DESC LIMIT 1")
+# ── DADOS — funções com cache (TTL 60s, invalidadas por st.cache_data.clear()) ──
+
+@st.cache_data(ttl=60)
+def _q_peso():
+    return DB.query("SELECT peso FROM medidas WHERE peso IS NOT NULL ORDER BY date(data) DESC LIMIT 1")
+
+@st.cache_data(ttl=60)
+def _q_agua(dia: str):
+    return DB.query(
+        "SELECT COALESCE(SUM(quantidade_ml),0) as t FROM agua "
+        "WHERE date(data_hora,'localtime')=?", [dia])
+
+@st.cache_data(ttl=60)
+def _q_macros(dia: str):
+    return DB.query(
+        "SELECT COALESCE(SUM(calorias),0) as cal, COALESCE(SUM(proteinas),0) as prot,"
+        "COALESCE(SUM(carboidratos),0) as carb, COALESCE(SUM(gorduras),0) as gord "
+        "FROM refeicoes WHERE date(data_hora,'localtime')=?", [dia])
+
+@st.cache_data(ttl=60)
+def _q_amazfit():
+    return DB.query("SELECT * FROM amazfit_dados ORDER BY date(data_hora) DESC LIMIT 1")
+
+@st.cache_data(ttl=60)
+def _q_refeicoes(dia: str):
+    return DB.query(
+        "SELECT id, time(datetime(data_hora,'localtime')) as hora, "
+        "COALESCE(categoria,'Lanche') as cat, descricao as alimento, "
+        "COALESCE(calorias,0) as kcal, COALESCE(proteinas,0) as prot, "
+        "COALESCE(carboidratos,0) as carb, COALESCE(gorduras,0) as gord "
+        "FROM refeicoes WHERE date(data_hora,'localtime')=? "
+        "ORDER BY data_hora DESC LIMIT 20", [dia])
+
+@st.cache_data(ttl=60)
+def _q_supp_check(dia: str):
+    return DB.query(
+        "SELECT descricao, COUNT(*) as qtd FROM refeicoes "
+        "WHERE date(data_hora,'localtime')=? GROUP BY descricao", [dia])
+
+@st.cache_data(ttl=60)
+def _q_peso_historico():
+    return DB.query("SELECT date(data) as dt, peso FROM medidas ORDER BY date(data) ASC")
+
+@st.cache_data(ttl=60)
+def _q_medicacao():
+    return DB.query(
+        "SELECT strftime('%d/%m/%Y', datetime(data_hora,'localtime')) as data, "
+        "dose_mg FROM medicacao ORDER BY date(data_hora) DESC")
+
+@st.cache_data(ttl=60)
+def _q_medidas():
+    return DB.query(
+        "SELECT strftime('%d/%m/%Y',data) as data, "
+        "cintura, quadril, peito, braco, coxa FROM medidas "
+        "WHERE cintura IS NOT NULL ORDER BY date(data) DESC LIMIT 10")
+
+@st.cache_data(ttl=60)
+def _q_biometria():
+    return DB.query("""
+        SELECT date(data) as data_ord,
+               strftime('%d/%m/%Y',data) as data_fmt,
+               MAX(peso)            as peso,
+               MAX(cintura)         as cintura,
+               MAX(abdomen)         as abdomen,
+               MAX(peitoral)        as peitoral,
+               MAX(quadril)         as quadril,
+               MAX(coxa_dir)        as coxa_dir,
+               MAX(coxa_esq)        as coxa_esq,
+               MAX(panturrilha_dir) as panturrilha_dir,
+               MAX(biceps_dir)      as biceps_dir,
+               MAX(biceps_esq)      as biceps_esq
+        FROM medidas
+        WHERE peso IS NOT NULL OR cintura IS NOT NULL OR coxa_dir IS NOT NULL
+        GROUP BY date(data)
+        ORDER BY date(data) ASC
+    """)
+
+# Garante que as tabelas existem — UMA vez por sessão
+if "db_init_done" not in st.session_state:
+    DB.init_tables()
+    st.session_state["db_init_done"] = True
+
+# ── Leitura dos dados com cache ───────────────────────────────────────────────
+_dp = _q_peso()
 _dp_val = _dp["peso"].iloc[0] if not _dp.empty else None
 peso = float(_dp_val) if _dp_val is not None else 93.0
 
-_da = db(f"SELECT COALESCE(SUM(quantidade_ml),0) as t FROM agua WHERE date(data_hora,'localtime')='{hoje_sql}'")
+_da    = _q_agua(hoje_sql)
 agua_l = float(_da["t"].iloc[0] or 0) / 1000
 
-_dr = db(
-    f"SELECT COALESCE(SUM(calorias),0) as cal, COALESCE(SUM(proteinas),0) as prot,"
-    f"COALESCE(SUM(carboidratos),0) as carb, COALESCE(SUM(gorduras),0) as gord "
-    f"FROM refeicoes WHERE date(data_hora,'localtime')='{hoje_sql}'"
-)
+_dr    = _q_macros(hoje_sql)
 cal_h  = float(_dr["cal"].iloc[0]  or 0)
 prot_h = float(_dr["prot"].iloc[0] or 0)
 carb_h = float(_dr["carb"].iloc[0] or 0)
 gord_h = float(_dr["gord"].iloc[0] or 0)
 
-# Garante que as tabelas existem (Supabase ou SQLite)
-DB.init_tables()
-
-_az = db("SELECT * FROM amazfit_dados ORDER BY date(data_hora) DESC LIMIT 1")
+_az       = _q_amazfit()
 passos    = int(_az["passos"].iloc[0])            if not _az.empty else 0
 cal_gasta = int(_az["calorias_gastas"].iloc[0])   if not _az.empty else 0
 dist_km   = float(_az["distancia_km"].iloc[0])    if not _az.empty else 0.0
@@ -1346,7 +1428,7 @@ st.markdown(sec("Evolução", "Peso histórico · Macros do dia"), unsafe_allow_
 c1, c2 = st.columns([2, 1])
 
 with c1:
-    df_p = db("SELECT date(data) as dt, peso FROM medidas ORDER BY date(data) ASC")
+    df_p = _q_peso_historico()
     if not df_p.empty:
         # Converte dt para string antes de qualquer operação
         df_p["dt"] = df_p["dt"].apply(lambda x: str(x)[:10] if x else "")
@@ -1448,15 +1530,7 @@ with col_m:
     _is_hoje    = _hist_sql == hoje_sql
     _titulo_ref = "Refeições de hoje" if _is_hoje else f"Refeições de {_hist_sel.strftime('%d/%m')}"
 
-    df_ref_hoje = db(
-        "SELECT id, time(datetime(data_hora,'localtime')) as hora, "
-        "COALESCE(categoria,'Lanche') as cat, descricao as alimento, "
-        "COALESCE(calorias,0) as kcal, COALESCE(proteinas,0) as prot, "
-        "COALESCE(carboidratos,0) as carb, COALESCE(gorduras,0) as gord "
-        "FROM refeicoes WHERE date(data_hora,'localtime')=? "
-        "ORDER BY data_hora DESC LIMIT 20",
-        [_hist_sql],
-    )
+    df_ref_hoje = _q_refeicoes(_hist_sql)
 
     _CAT_ICON = {
         "Café da Manhã":   "☕",
@@ -1572,13 +1646,8 @@ with col_m:
                         _notif("Refeição removida", "err")
                         st.rerun()
 
-# Busca refeições de hoje para checar suplementos registrados
-df_supp_check = db(
-    "SELECT descricao, COUNT(*) as qtd FROM refeicoes "
-    "WHERE date(data_hora,'localtime')=? "
-    "GROUP BY descricao",
-    [hoje_sql],
-)
+# Busca refeições de hoje para checar suplementos registrados (cached)
+df_supp_check = _q_supp_check(hoje_sql)
 # Monta dicionário: keyword → quantidade registrada hoje
 supp_registrados = {}
 for _, r in df_supp_check.iterrows():
@@ -1662,10 +1731,7 @@ st.markdown(sec("Biometria", "Evolução de medidas · Tirzepatida"), unsafe_all
 col_med, col_bio = st.columns([1, 2.5])
 
 with col_med:
-    df_med = db(
-        "SELECT strftime('%d/%m/%Y', datetime(data_hora,'localtime')) as data, "
-        "dose_mg FROM medicacao ORDER BY date(data_hora) DESC"
-    )
+    df_med = _q_medicacao()
     med_rows = ""
     for i, (_, r) in enumerate(df_med.iterrows()):
         dose = float(r["dose_mg"])
@@ -1694,24 +1760,7 @@ with col_med:
     )
 
 with col_bio:
-    df_bio = db("""
-        SELECT date(data) as data_ord,
-               strftime('%d/%m/%Y',data) as data_fmt,
-               MAX(peso)            as peso,
-               MAX(cintura)         as cintura,
-               MAX(abdomen)         as abdomen,
-               MAX(peitoral)        as peitoral,
-               MAX(quadril)         as quadril,
-               MAX(coxa_dir)        as coxa_dir,
-               MAX(coxa_esq)        as coxa_esq,
-               MAX(panturrilha_dir) as panturrilha_dir,
-               MAX(biceps_dir)      as biceps_dir,
-               MAX(biceps_esq)      as biceps_esq
-        FROM medidas
-        WHERE peso IS NOT NULL OR cintura IS NOT NULL OR coxa_dir IS NOT NULL
-        GROUP BY date(data)
-        ORDER BY date(data) ASC
-    """)
+    df_bio = _q_biometria()
 
     if not df_bio.empty:
         df_bio = df_bio.sort_values("data_ord", ascending=True)
