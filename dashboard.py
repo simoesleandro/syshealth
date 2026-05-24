@@ -1503,7 +1503,7 @@ with c2:
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown(sec("Registros do dia", "Refeições · Suplementação"), unsafe_allow_html=True)
 
-col_m, col_s = st.columns([1.4, 2.6])
+col_m, col_s = st.columns([1.6, 1.4])
 
 BADGE_STYLE = {
     "Café da Manhã":   f"background:rgba(0,212,255,0.08);color:{CYAN};border:1px solid rgba(0,212,255,0.2)",
@@ -1715,23 +1715,17 @@ with col_s:
             f'</div>'
         )
 
+    # ── Suplementação ─────────────────────────────────────────────────────────
     st.markdown(
         panel(
             ptitl("Suplementação do dia") +
-            f'<div class="sh-supp-grid" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px">{cards}</div>'
+            f'<div class="sh-supp-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">{cards}</div>'
         ),
         unsafe_allow_html=True,
     )
 
-# ════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 5 — BIOMETRIA + MEDICAÇÃO
-# ════════════════════════════════════════════════════════════════════════════
-st.markdown(sec("Biometria", "Evolução de medidas · Tirzepatida"), unsafe_allow_html=True)
-
-col_med, col_bio = st.columns([1, 2.5])
-
-with col_med:
-    df_med = _q_medicacao()
+    # ── Tirzepatida — empilhada abaixo dos suplementos ────────────────────────
+    df_med   = _q_medicacao()
     med_rows = ""
     for i, (_, r) in enumerate(df_med.iterrows()):
         dose = float(r["dose_mg"])
@@ -1759,7 +1753,12 @@ with col_med:
         unsafe_allow_html=True,
     )
 
-with col_bio:
+# ════════════════════════════════════════════════════════════════════════════
+# SEÇÃO 5 — EVOLUÇÃO DE MEDIDAS (largura total — 11 colunas cabem melhor)
+# ════════════════════════════════════════════════════════════════════════════
+st.markdown(sec("Biometria", "Evolução de medidas — histórico completo"), unsafe_allow_html=True)
+
+if True:  # bloco de escopo para df_bio
     df_bio = _q_biometria()
 
     if not df_bio.empty:
