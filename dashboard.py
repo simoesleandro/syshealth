@@ -449,22 +449,75 @@ def _cat_hora():
     else:               return "Lanche da Noite"
 
 
+def _extrair_json(texto: str):
+    """
+    Extrai o primeiro objeto ou array JSON de uma resposta do Gemini,
+    ignorando texto de explicação ao redor.
+    Tenta várias estratégias em ordem de robustez.
+    """
+    # 1. Remove blocos de código markdown (```json ... ``` ou ``` ... ```)
+    texto = re.sub(r"```(?:json)?\s*", "", texto)
+    texto = texto.strip()
+
+    # 2. Tenta parse direto
+    try:
+        return json.loads(texto)
+    except json.JSONDecodeError:
+        pass
+
+    # 3. Extrai o primeiro { ... } ou [ ... ] completo com contagem de chaves
+    for inicio_char, fim_char in [('{', '}'), ('[', ']')]:
+        idx = texto.find(inicio_char)
+        if idx == -1:
+            continue
+        profundidade = 0
+        in_string = False
+        escape = False
+        for i, c in enumerate(texto[idx:], start=idx):
+            if escape:
+                escape = False
+                continue
+            if c == '\\' and in_string:
+                escape = True
+                continue
+            if c == '"' and not escape:
+                in_string = not in_string
+                continue
+            if not in_string:
+                if c == inicio_char:
+                    profundidade += 1
+                elif c == fim_char:
+                    profundidade -= 1
+                    if profundidade == 0:
+                        try:
+                            return json.loads(texto[idx:i + 1])
+                        except json.JSONDecodeError:
+                            break
+    raise ValueError(f"Gemini não retornou JSON válido. Resposta recebida:\n{texto[:300]}")
+
+
 def _analisar_texto_macros(descricao: str) -> dict:
     """Usa Gemini para estimar macros de uma descrição textual."""
     cat      = _cat_hora()
     hora_txt = datetime.now(_BR).strftime("%H:%M")
     prompt = (
-        f"Você é um nutricionista. Estime os macronutrientes para: '{descricao}'.\n"
-        f"Hora: {hora_txt} (Brasília). Categoria sugerida: {cat}.\n\n"
-        "Retorne APENAS JSON puro, sem markdown:\n"
-        '{"categoria":"<cat>","descricao_resumida":"<nome normalizado e porção>",'
-        '"calorias":<int>,"proteinas":<float>,"carboidratos":<float>,"gorduras":<float>}\n\n'
-        "Use valores realistas baseados em tabelas nutricionais brasileiras.\n"
-        "Se houver múltiplos alimentos separados por vírgula ou '+', some os macros e descreva tudo."
+        f"Você é um nutricionista registrado. Estime os macronutrientes para: '{descricao}'.\n"
+        f"Hora atual: {hora_txt} (Brasília). Categoria sugerida: {cat}.\n\n"
+        "IMPORTANTE: Responda SOMENTE com o JSON abaixo, sem nenhum texto antes ou depois, "
+        "sem markdown, sem explicações:\n"
+        '{"categoria":"<cat>","descricao_resumida":"<nome normalizado e porção estimada>",'
+        '"calorias":<numero inteiro>,"proteinas":<numero decimal>,'
+        '"carboidratos":<numero decimal>,"gorduras":<numero decimal>}\n\n'
+        "Regras:\n"
+        "- Use valores realistas das tabelas nutricionais brasileiras (TACO/IBGE).\n"
+        "- Se a descrição incluir quantidade (ex: '6 conchas', '200g', '1 prato'), '
+        'use essa quantidade para calcular.\n"
+        "- Se houver múltiplos alimentos (vírgula ou '+'), some os macros e descreva tudo na descrição.\n"
+        "- Números devem ser decimais com ponto (não vírgula). Ex: 12.5 não 12,5"
     )
     vision = _gemini_model()
     resp   = vision.generate_content(prompt)
-    return json.loads(re.sub(r"```json|```", "", resp.text).strip())
+    return _extrair_json(resp.text)
 
 
 def _analisar_foto_gemini(uploaded_file):
@@ -475,17 +528,21 @@ def _analisar_foto_gemini(uploaded_file):
     cat        = _cat_hora()
     agora_txt  = datetime.now(_BR).strftime("%H:%M")
     prompt = (
-        f"Você é um nutricionista. Analise esta foto de alimento e estime macronutrientes.\n"
+        f"Você é um nutricionista. Analise esta foto e estime macronutrientes.\n"
         f"Hora: {agora_txt} (Brasília). Categoria sugerida: {cat}.\n\n"
-        "Retorne APENAS JSON puro, sem markdown, sem ```json:\n"
+        "IMPORTANTE: Responda SOMENTE com o JSON abaixo, sem texto antes ou depois, "
+        "sem markdown, sem explicações.\n\n"
+        "Para um único prato:\n"
         '{"tipo":"refeicao","categoria":"<cat>","descricao_resumida":"<nome e porção estimada>",'
-        '"calorias":<int>,"proteinas":<float>,"carboidratos":<float>,"gorduras":<float>}\n\n'
-        "Se houver múltiplos alimentos, retorne lista JSON.\n"
-        "Seja realista com as porções visíveis na foto."
+        '"calorias":<int>,"proteinas":<decimal>,"carboidratos":<decimal>,"gorduras":<decimal>}\n\n'
+        "Para múltiplos alimentos distintos, retorne uma lista JSON:\n"
+        '[{"tipo":"refeicao","categoria":"<cat>","descricao_resumida":"<item>",'
+        '"calorias":<int>,"proteinas":<decimal>,"carboidratos":<decimal>,"gorduras":<decimal>},...]\n\n"
+        "Números devem usar ponto decimal (não vírgula). Seja realista com as porções visíveis."
     )
     vision = _gemini_model()
     resp   = vision.generate_content([prompt, img])
-    dados  = json.loads(re.sub(r"```json|```", "", resp.text).strip())
+    dados  = _extrair_json(resp.text)
     if isinstance(dados, dict):
         dados = [dados]
     return dados
@@ -511,11 +568,16 @@ def _painel_entrada():
                 st.image(foto_up, width=220)
             with cb:
                 if st.button("🔍 Analisar", key="btn_foto_analisar", width="stretch"):
-                    with st.spinner("IA analisando..."):
-                        try:
-                            st.session_state["foto_resultado"] = _analisar_foto_gemini(foto_up)
-                        except Exception as e:
-                            st.error(f"Erro: {e}")
+                    if not _GEMINI_KEY:
+                        st.error("❌ Chave GEMINI_API_KEY não configurada.")
+                    else:
+                        with st.spinner("🔍 IA analisando foto..."):
+                            try:
+                                st.session_state["foto_resultado"] = _analisar_foto_gemini(foto_up)
+                            except ValueError as e:
+                                st.error(f"❌ A IA não retornou formato válido.\n\n{e}")
+                            except Exception as e:
+                                st.error(f"❌ Erro ao analisar foto: {e}")
 
         if "foto_resultado" in st.session_state:
             itens = st.session_state["foto_resultado"]
@@ -571,12 +633,16 @@ def _painel_entrada():
             label_visibility="collapsed",
         )
         if st.button("🤖 Analisar macros com IA", key="btn_ia_text", width="stretch"):
-            if desc_ia.strip():
-                with st.spinner("IA calculando..."):
+            if not _GEMINI_KEY:
+                st.error("❌ Chave GEMINI_API_KEY não configurada nos Secrets do Streamlit.")
+            elif desc_ia.strip():
+                with st.spinner("🤖 IA calculando macros..."):
                     try:
                         st.session_state["ia_text_result"] = _analisar_texto_macros(desc_ia.strip())
+                    except ValueError as e:
+                        st.error(f"❌ A IA não retornou um formato válido. Tente reformular a descrição.\n\nDetalhe: {e}")
                     except Exception as e:
-                        st.error(f"Erro: {e}")
+                        st.error(f"❌ Erro ao chamar a IA: {e}")
             else:
                 st.warning("Digite o que comeu antes de analisar.")
 
