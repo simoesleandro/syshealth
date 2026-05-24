@@ -142,7 +142,30 @@ section[data-testid="stSidebar"] > div:first-child{padding:0.75rem 1rem 1rem!imp
 [aria-selected="true"][data-baseweb="option"]{
   background:rgba(0,212,255,0.08)!important;color:#00d4ff!important}
 
-/* ── Buttons (regular) ── */
+/* ── Botões regulares (secondary) ── */
+[data-testid="stBaseButton-secondary"]{
+  background:#0c1525!important;border:1px solid #1e2840!important;
+  color:#7a8a9a!important;font-family:'Space Mono',monospace!important;font-size:10px!important;
+  font-weight:700!important;letter-spacing:1.2px!important;text-transform:uppercase!important;
+  border-radius:8px!important;padding:10px 12px!important;min-height:44px!important;
+  transition:border-color 0.15s,color 0.15s,background 0.15s!important}
+[data-testid="stBaseButton-secondary"]:hover{
+  border-color:#2a3448!important;color:#e8edf5!important;background:#0d1628!important}
+[data-testid="stBaseButton-secondary"]:active{
+  background:rgba(0,212,255,0.05)!important}
+
+/* ── Botão nav ATIVO (primary) — destaque ciano ── */
+[data-testid="stBaseButton-primary"]{
+  background:rgba(0,212,255,0.10)!important;border:1.5px solid #00d4ff!important;
+  color:#00d4ff!important;font-family:'Space Mono',monospace!important;font-size:10px!important;
+  font-weight:700!important;letter-spacing:1.5px!important;text-transform:uppercase!important;
+  border-radius:8px!important;padding:10px 12px!important;min-height:44px!important;
+  box-shadow:0 0 18px rgba(0,212,255,0.18)!important;
+  transition:all 0.15s ease!important}
+[data-testid="stBaseButton-primary"]:hover{
+  background:rgba(0,212,255,0.17)!important;box-shadow:0 0 26px rgba(0,212,255,0.28)!important}
+
+/* ── Sidebar buttons (mantidos) ── */
 section[data-testid="stSidebar"] .stButton button{
   background:transparent!important;border:1px solid #1a2035!important;
   color:#e8edf5!important;font-family:'Space Mono',monospace!important;font-size:10px!important;
@@ -154,6 +177,13 @@ section[data-testid="stSidebar"] .stButton button:hover{
   background:rgba(0,212,255,0.04)!important}
 section[data-testid="stSidebar"] .stButton button:active{
   background:rgba(0,212,255,0.08)!important}
+
+/* ── Painel de conteúdo (container com borda) ── */
+[data-testid="stVerticalBlockBorderWrapper"]{
+  background:#070b15!important;border:1px solid rgba(0,212,255,0.22)!important;
+  border-radius:12px!important;padding:6px 4px!important;
+  box-shadow:0 4px 32px rgba(0,0,0,0.45),0 0 30px rgba(0,212,255,0.04)!important;
+  margin-top:4px!important}
 
 /* ── Form submit button ── */
 [data-testid="stFormSubmitButton"] button{
@@ -607,296 +637,327 @@ def _analisar_foto_gemini(uploaded_file):
 
 
 def _painel_entrada():
-    """Painel de entrada inline — substituiu a sidebar."""
-    st.markdown('<div class="sh-painel">', unsafe_allow_html=True)
+    """Nav bar colapsável com session_state — sem tabs."""
+    PAINEIS = [
+        ("➕", "Refeição",    "refeicao"),
+        ("💊", "Suplem.",     "suplemento"),
+        ("💧", "Água / Peso", "agua"),
+        ("✏️", "Editar",      "editar"),
+    ]
+    atual = st.session_state.get("painel_aberto", None)
 
-    # ── Tabs do painel ────────────────────────────────────────────────────────
-    tp1, tp2, tp3, tp4 = st.tabs(["➕ Refeição", "💊 Suplem.", "💧 Água · ⚖️ Peso · 💓 HRV", "✏️ Editar"])
+    # ── Barra de navegação ────────────────────────────────────────────────────
+    _nav_cols = st.columns([1, 1, 1, 1, 0.28])
+    for i, (icon, label, key) in enumerate(PAINEIS):
+        with _nav_cols[i]:
+            ativo = (atual == key)
+            lbl   = f"{icon}  {label}" + ("  ▲" if ativo else "")
+            if st.button(lbl, key=f"nav_{key}", width="stretch",
+                         type="primary" if ativo else "secondary"):
+                st.session_state["painel_aberto"] = None if ativo else key
+                st.rerun()
+    with _nav_cols[4]:
+        if atual:
+            if st.button("✕", key="nav_fechar", width="stretch"):
+                st.session_state["painel_aberto"] = None
+                st.rerun()
 
-    with tp1:
-        # ── Análise por foto ─────────────────────────────────────────────────────
-        foto_up = st.file_uploader(
-            "📸 Envie uma foto do prato para análise automática de macros",
-            type=["jpg", "jpeg", "png", "webp"],
-            key="foto_refeicao",
-        )
-        if foto_up is not None:
-            ci, cb = st.columns([3, 1])
-            with ci:
-                st.image(foto_up, width=220)
-            with cb:
-                if st.button("🔍 Analisar", key="btn_foto_analisar", width="stretch"):
-                    if not _GEMINI_KEY:
-                        st.error("❌ Chave GEMINI_API_KEY não configurada.")
-                    else:
-                        with st.spinner("🔍 IA analisando foto..."):
-                            try:
-                                st.session_state["foto_resultado"] = _analisar_foto_gemini(foto_up)
-                            except ValueError as e:
-                                st.error(f"❌ A IA não retornou formato válido.\n\n{e}")
-                            except Exception as e:
-                                st.error(f"❌ Erro ao analisar foto: {e}")
+    # ── Conteúdo do painel ativo ──────────────────────────────────────────────
+    if atual is None:
+        return  # nada aberto → dashboard renderiza normalmente
 
-        if "foto_resultado" in st.session_state:
-            itens = st.session_state["foto_resultado"]
-            for item in itens:
-                st.markdown(
-                    f'<div style="background:rgba(0,212,255,0.07);border:1px solid rgba(0,212,255,0.22);'
-                    f'border-radius:6px;padding:10px 14px;margin:6px 0">'
-                    f'<div style="font-size:13px;font-weight:600;color:{TEXT}">'
-                    f'{item.get("descricao_resumida","")}</div>'
-                    f'<div style="font-size:11px;color:{MUTED};margin-top:5px">'
-                    f'🔥 {item.get("calorias",0)} kcal &nbsp;·&nbsp; '
-                    f'🥩 {item.get("proteinas",0)}g prot &nbsp;·&nbsp; '
-                    f'🌾 {item.get("carboidratos",0)}g carb &nbsp;·&nbsp; '
-                    f'🫒 {item.get("gorduras",0)}g gord</div>'
-                    f'<div style="font-size:10px;color:{CYAN};margin-top:3px;font-family:{MONO}">'
-                    f'{item.get("categoria","")}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-            cs, cd = st.columns(2)
-            with cs:
-                if st.button("✅ Salvar tudo", key="salvar_foto", width="stretch"):
-                    for item in itens:
-                        DB.execute(
-                            "INSERT INTO refeicoes "
-                            "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
-                            "VALUES (?,?,?,?,?,?)",
-                            [item.get("categoria", "Lanche"),
-                             item.get("descricao_resumida", ""),
-                             item.get("calorias", 0), item.get("proteinas", 0),
-                             item.get("carboidratos", 0), item.get("gorduras", 0)],
-                        )
-                    del st.session_state["foto_resultado"]
-                    st.cache_data.clear()
-                    _notif("Foto registrada com sucesso!")
-                    st.rerun()
-            with cd:
-                if st.button("✗ Descartar", key="desc_foto", width="stretch"):
-                    del st.session_state["foto_resultado"]
-                    st.rerun()
+    with st.container(border=True):
+        if atual == "refeicao":
+            _tab_refeicao()
+        elif atual == "suplemento":
+            _tab_suplemento()
+        elif atual == "agua":
+            _tab_agua()
+        elif atual == "editar":
+            _tab_editar()
 
-        # ── IA por texto ─────────────────────────────────────────────────────────
-        st.markdown(
-            f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
-            f'letter-spacing:1.5px;text-align:center;margin:14px 0 8px">'
-            f'── OU DESCREVA E DEIXE A IA CALCULAR ──</div>',
-            unsafe_allow_html=True,
-        )
-        desc_ia = st.text_input(
-            "Descrição",
-            placeholder="Ex: frango grelhado 200g + arroz integral 150g",
-            key="ia_text_input",
-            label_visibility="collapsed",
-        )
-        if st.button("🤖 Analisar macros com IA", key="btn_ia_text", width="stretch"):
-            if not _GEMINI_KEY:
-                st.error("❌ Chave GEMINI_API_KEY não configurada nos Secrets do Streamlit.")
-            elif desc_ia.strip():
-                with st.spinner("🤖 IA calculando macros..."):
-                    try:
-                        st.session_state["ia_text_result"] = _analisar_texto_macros(desc_ia.strip())
-                    except ValueError as e:
-                        st.error(f"❌ A IA não retornou um formato válido. Tente reformular a descrição.\n\nDetalhe: {e}")
-                    except Exception as e:
-                        st.error(f"❌ Erro ao chamar a IA: {e}")
-            else:
-                st.warning("Digite o que comeu antes de analisar.")
 
-        if "ia_text_result" in st.session_state:
-            r = st.session_state["ia_text_result"]
+def _tab_refeicao():
+    # ── Análise por foto ─────────────────────────────────────────────────────
+    foto_up = st.file_uploader(
+        "📸 Envie uma foto do prato para análise automática de macros",
+        type=["jpg", "jpeg", "png", "webp"],
+        key="foto_refeicao",
+    )
+    if foto_up is not None:
+        ci, cb = st.columns([3, 1])
+        with ci:
+            st.image(foto_up, width=220)
+        with cb:
+            if st.button("🔍 Analisar", key="btn_foto_analisar", width="stretch"):
+                if not _GEMINI_KEY:
+                    st.error("❌ Chave GEMINI_API_KEY não configurada.")
+                else:
+                    with st.spinner("🔍 IA analisando foto..."):
+                        try:
+                            st.session_state["foto_resultado"] = _analisar_foto_gemini(foto_up)
+                        except ValueError as e:
+                            st.error(f"❌ A IA não retornou formato válido.\n\n{e}")
+                        except Exception as e:
+                            st.error(f"❌ Erro ao analisar foto: {e}")
+
+    if "foto_resultado" in st.session_state:
+        itens = st.session_state["foto_resultado"]
+        for item in itens:
             st.markdown(
-                f'<div style="background:rgba(0,230,118,0.07);border:1px solid rgba(0,230,118,0.22);'
+                f'<div style="background:rgba(0,212,255,0.07);border:1px solid rgba(0,212,255,0.22);'
                 f'border-radius:6px;padding:10px 14px;margin:6px 0">'
                 f'<div style="font-size:13px;font-weight:600;color:{TEXT}">'
-                f'{r.get("descricao_resumida","")}</div>'
+                f'{item.get("descricao_resumida","")}</div>'
                 f'<div style="font-size:11px;color:{MUTED};margin-top:5px">'
-                f'🔥 {r.get("calorias",0)} kcal &nbsp;·&nbsp; '
-                f'🥩 {r.get("proteinas",0)}g prot &nbsp;·&nbsp; '
-                f'🌾 {r.get("carboidratos",0)}g carb &nbsp;·&nbsp; '
-                f'🫒 {r.get("gorduras",0)}g gord</div>'
-                f'<div style="font-size:10px;color:{GREEN};margin-top:3px;font-family:{MONO}">'
-                f'{r.get("categoria","")}</div>'
+                f'🔥 {item.get("calorias",0)} kcal &nbsp;·&nbsp; '
+                f'🥩 {item.get("proteinas",0)}g prot &nbsp;·&nbsp; '
+                f'🌾 {item.get("carboidratos",0)}g carb &nbsp;·&nbsp; '
+                f'🫒 {item.get("gorduras",0)}g gord</div>'
+                f'<div style="font-size:10px;color:{CYAN};margin-top:3px;font-family:{MONO}">'
+                f'{item.get("categoria","")}</div>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
-            cs2, cd2 = st.columns(2)
-            with cs2:
-                if st.button("✅ Salvar", key="salvar_ia_text", width="stretch"):
+        cs, cd = st.columns(2)
+        with cs:
+            if st.button("✅ Salvar tudo", key="salvar_foto", width="stretch"):
+                for item in itens:
                     DB.execute(
                         "INSERT INTO refeicoes "
                         "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
                         "VALUES (?,?,?,?,?,?)",
-                        [r.get("categoria", "Lanche"), r.get("descricao_resumida", ""),
-                         r.get("calorias", 0), r.get("proteinas", 0),
-                         r.get("carboidratos", 0), r.get("gorduras", 0)],
+                        [item.get("categoria", "Lanche"),
+                         item.get("descricao_resumida", ""),
+                         item.get("calorias", 0), item.get("proteinas", 0),
+                         item.get("carboidratos", 0), item.get("gorduras", 0)],
                     )
-                    del st.session_state["ia_text_result"]
-                    st.cache_data.clear()
-                    _notif(f"Refeicao salva · {r.get('calorias',0)} kcal")
-                    st.rerun()
-            with cd2:
-                if st.button("✗ Descartar", key="desc_ia_text", width="stretch"):
-                    del st.session_state["ia_text_result"]
-                    st.rerun()
+                del st.session_state["foto_resultado"]
+                st.cache_data.clear()
+                _notif("Foto registrada com sucesso!")
+                st.rerun()
+        with cd:
+            if st.button("✗ Descartar", key="desc_foto", width="stretch"):
+                del st.session_state["foto_resultado"]
+                st.rerun()
 
+    # ── IA por texto ─────────────────────────────────────────────────────────
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
+        f'letter-spacing:1.5px;text-align:center;margin:14px 0 8px">'
+        f'── OU DESCREVA E DEIXE A IA CALCULAR ──</div>',
+        unsafe_allow_html=True,
+    )
+    desc_ia = st.text_input(
+        "Descrição",
+        placeholder="Ex: frango grelhado 200g + arroz integral 150g",
+        key="ia_text_input",
+        label_visibility="collapsed",
+    )
+    if st.button("🤖 Analisar macros com IA", key="btn_ia_text", width="stretch"):
+        if not _GEMINI_KEY:
+            st.error("❌ Chave GEMINI_API_KEY não configurada nos Secrets do Streamlit.")
+        elif desc_ia.strip():
+            with st.spinner("🤖 IA calculando macros..."):
+                try:
+                    st.session_state["ia_text_result"] = _analisar_texto_macros(desc_ia.strip())
+                except ValueError as e:
+                    st.error(f"❌ A IA não retornou um formato válido. Tente reformular a descrição.\n\nDetalhe: {e}")
+                except Exception as e:
+                    st.error(f"❌ Erro ao chamar a IA: {e}")
+        else:
+            st.warning("Digite o que comeu antes de analisar.")
+
+    if "ia_text_result" in st.session_state:
+        r = st.session_state["ia_text_result"]
         st.markdown(
-            f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
-            f'letter-spacing:1.5px;text-align:center;margin:14px 0 6px">'
-            f'── OU PREENCHA MANUALMENTE ──</div>',
+            f'<div style="background:rgba(0,230,118,0.07);border:1px solid rgba(0,230,118,0.22);'
+            f'border-radius:6px;padding:10px 14px;margin:6px 0">'
+            f'<div style="font-size:13px;font-weight:600;color:{TEXT}">'
+            f'{r.get("descricao_resumida","")}</div>'
+            f'<div style="font-size:11px;color:{MUTED};margin-top:5px">'
+            f'🔥 {r.get("calorias",0)} kcal &nbsp;·&nbsp; '
+            f'🥩 {r.get("proteinas",0)}g prot &nbsp;·&nbsp; '
+            f'🌾 {r.get("carboidratos",0)}g carb &nbsp;·&nbsp; '
+            f'🫒 {r.get("gorduras",0)}g gord</div>'
+            f'<div style="font-size:10px;color:{GREEN};margin-top:3px;font-family:{MONO}">'
+            f'{r.get("categoria","")}</div>'
+            f'</div>',
             unsafe_allow_html=True,
         )
-
-        # ── Form manual ──────────────────────────────────────────────────────────
-        with st.form("form_add_refeicao", clear_on_submit=True):
-            cat_sel = st.selectbox("Categoria", CATEGORIAS)
-            desc_in = st.text_input("Descrição do alimento")
-            c1, c2  = st.columns(2)
-            with c1:
-                kcal_in = st.number_input("Kcal", min_value=0.0, step=1.0, format="%.0f")
-                carb_in = st.number_input("Carb (g)", min_value=0.0, step=0.5, format="%.1f")
-            with c2:
-                prot_in = st.number_input("Prot (g)", min_value=0.0, step=0.5, format="%.1f")
-                gord_in = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f")
-            if st.form_submit_button("SALVAR REFEIÇÃO", width="stretch"):
-                if desc_in.strip():
-                    DB.execute(
-                        "INSERT INTO refeicoes "
-                        "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
-                        "VALUES (?,?,?,?,?,?)",
-                        [cat_sel, desc_in.strip(), kcal_in, prot_in, carb_in, gord_in],
-                    )
-                    st.cache_data.clear()
-                    _notif(f"Refeicao salva · {int(kcal_in)} kcal")
-                    st.rerun()
-                else:
-                    st.error("Descrição obrigatória.")
-
-    with tp2:
-        st.markdown(
-            f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;'
-            f'margin-bottom:10px">Marque um ou mais e clique em Registrar:</div>',
-            unsafe_allow_html=True,
-        )
-        cols_s = st.columns(3)
-        _sel_supps = []
-        for i, (label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s) in enumerate(SUPP_REGISTER):
-            with cols_s[i % 3]:
-                if st.checkbox(label, key=f"chk_supp_{label}"):
-                    _sel_supps.append((label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s))
-        _btn_label = (f"✅ Registrar {len(_sel_supps)} selecionado(s)"
-                      if _sel_supps else "Selecione suplementos acima")
-        if st.button(_btn_label, key="btn_reg_supps", width="stretch",
-                     disabled=not _sel_supps):
-            cat_agora = _cat_hora()
-            for label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s in _sel_supps:
+        cs2, cd2 = st.columns(2)
+        with cs2:
+            if st.button("✅ Salvar", key="salvar_ia_text", width="stretch"):
                 DB.execute(
                     "INSERT INTO refeicoes "
                     "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
                     "VALUES (?,?,?,?,?,?)",
-                    [cat_agora, desc_s, kcal_s, prot_s, carb_s, gord_s],
+                    [r.get("categoria", "Lanche"), r.get("descricao_resumida", ""),
+                     r.get("calorias", 0), r.get("proteinas", 0),
+                     r.get("carboidratos", 0), r.get("gorduras", 0)],
                 )
-            # Limpa checkboxes
-            for label, *_ in _sel_supps:
-                if f"chk_supp_{label}" in st.session_state:
-                    del st.session_state[f"chk_supp_{label}"]
-            nomes = " + ".join(l for l, *_ in _sel_supps)
-            st.cache_data.clear()
-            _notif(f"{nomes} registrado(s)!")
-            st.rerun()
+                del st.session_state["ia_text_result"]
+                st.cache_data.clear()
+                _notif(f"Refeicao salva · {r.get('calorias',0)} kcal")
+                st.rerun()
+        with cd2:
+            if st.button("✗ Descartar", key="desc_ia_text", width="stretch"):
+                del st.session_state["ia_text_result"]
+                st.rerun()
 
-    with tp3:
-        # ── Trigger de animação: meta de água atingida ───────────────────────────
-        if st.session_state.pop("_agua_meta_atingida", False):
-            st.balloons()
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
+        f'letter-spacing:1.5px;text-align:center;margin:14px 0 6px">'
+        f'── OU PREENCHA MANUALMENTE ──</div>',
+        unsafe_allow_html=True,
+    )
 
-        cA, cB, cC = st.columns(3)
-
-        def _registrar_agua(ml: int):
-            """Insere ml de água e dispara animação se meta for atingida."""
-            DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [ml])
-            st.cache_data.clear()
-            nova = agua_l + ml / 1000
-            if nova >= META_AGUA and agua_l < META_AGUA:
-                st.session_state["_agua_meta_atingida"] = True
-                _notif(f"META DE AGUA ATINGIDA!  {nova:.1f}L", "ok")
+    # ── Form manual ──────────────────────────────────────────────────────────
+    with st.form("form_add_refeicao", clear_on_submit=True):
+        cat_sel = st.selectbox("Categoria", CATEGORIAS)
+        desc_in = st.text_input("Descrição do alimento")
+        c1, c2  = st.columns(2)
+        with c1:
+            kcal_in = st.number_input("Kcal", min_value=0.0, step=1.0, format="%.0f")
+            carb_in = st.number_input("Carb (g)", min_value=0.0, step=0.5, format="%.1f")
+        with c2:
+            prot_in = st.number_input("Prot (g)", min_value=0.0, step=0.5, format="%.1f")
+            gord_in = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f")
+        if st.form_submit_button("SALVAR REFEIÇÃO", width="stretch"):
+            if desc_in.strip():
+                DB.execute(
+                    "INSERT INTO refeicoes "
+                    "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
+                    "VALUES (?,?,?,?,?,?)",
+                    [cat_sel, desc_in.strip(), kcal_in, prot_in, carb_in, gord_in],
+                )
+                st.cache_data.clear()
+                _notif(f"Refeicao salva · {int(kcal_in)} kcal")
+                st.rerun()
             else:
-                _notif(f"+{ml} ml  agua  {nova:.1f} / {META_AGUA}L", "info")
-            st.rerun()
+                st.error("Descrição obrigatória.")
 
-        with cA:
-            st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💧 Água · {agua_l:.1f}L / {META_AGUA}L</div>', unsafe_allow_html=True)
-            wa1, wa2 = st.columns(2)
-            with wa1:
-                if st.button("+ 200ml", key="agua_200", width="stretch"): _registrar_agua(200)
-                if st.button("+ 500ml", key="agua_500", width="stretch"): _registrar_agua(500)
-            with wa2:
-                if st.button("+ 350ml", key="agua_350", width="stretch"): _registrar_agua(350)
-                if st.button("+ 750ml", key="agua_750", width="stretch"): _registrar_agua(750)
-            with st.form("form_agua_custom", clear_on_submit=True):
-                ml_in = st.number_input("Outro (ml)", min_value=50, max_value=2000, value=300, step=50)
-                if st.form_submit_button("+ Registrar", width="stretch"):
-                    DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [int(ml_in)])
-                    nova = agua_l + int(ml_in) / 1000
-                    st.cache_data.clear()
-                    if nova >= META_AGUA and agua_l < META_AGUA:
-                        st.session_state["_agua_meta_atingida"] = True
-                    st.rerun()
-        with cB:
-            st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">⚖️ Peso de hoje</div>', unsafe_allow_html=True)
-            with st.form("form_peso_hoje"):
-                peso_in = st.number_input("kg", min_value=40.0, max_value=200.0, value=round(peso,1), step=0.1, format="%.1f")
-                if st.form_submit_button("SALVAR", width="stretch"):
-                    _ex = DB.query("SELECT id FROM medidas WHERE date(data)=?", [hoje_sql])
-                    if not _ex.empty:
-                        DB.execute("UPDATE medidas SET peso=? WHERE date(data)=?", [float(peso_in), hoje_sql])
-                    else:
-                        DB.execute("INSERT INTO medidas (data, peso) VALUES (?, ?)", [hoje_sql, float(peso_in)])
-                    st.cache_data.clear(); _notif(f"Peso {peso_in:.1f} kg salvo"); st.rerun()
-        with cC:
-            st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💓 HRV / PAI</div>', unsafe_allow_html=True)
-            with st.form("form_hrv_pai"):
-                hrv_in = st.number_input("HRV (ms)", min_value=0, max_value=200, value=int(hrv) if hrv else 0, step=1)
-                pai_in = st.number_input("PAI", min_value=0, max_value=300, value=int(pai) if pai else 0, step=1)
-                if st.form_submit_button("SALVAR", width="stretch"):
-                    DB.execute("INSERT INTO amazfit_dados (data_hora,passos,calorias_gastas,distancia_km,sono_total_min,sono_profundo_min,hrv_ms,pai) VALUES (?,0,0,0,0,0,0,0) ON CONFLICT(data_hora) DO NOTHING", [f"{hoje_sql} 00:00:00"])
-                    DB.execute("UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?", [hrv_in, pai_in, f"{hoje_sql} 00:00:00"])
-                    hrv_status = "BOM" if hrv_in >= 35 else ("MED" if hrv_in >= 25 else "BAIXO")
-                    st.cache_data.clear()
-                    _notif(f"HRV {hrv_in}ms [{hrv_status}]  PAI {pai_in}", "info")
-                    st.rerun()
+def _tab_suplemento():
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;'
+        f'margin-bottom:10px">Marque um ou mais e clique em Registrar:</div>',
+        unsafe_allow_html=True,
+    )
+    cols_s = st.columns(3)
+    _sel_supps = []
+    for i, (label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s) in enumerate(SUPP_REGISTER):
+        with cols_s[i % 3]:
+            if st.checkbox(label, key=f"chk_supp_{label}"):
+                _sel_supps.append((label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s))
+    _btn_label = (f"✅ Registrar {len(_sel_supps)} selecionado(s)"
+                  if _sel_supps else "Selecione suplementos acima")
+    if st.button(_btn_label, key="btn_reg_supps", width="stretch",
+                 disabled=not _sel_supps):
+        cat_agora = _cat_hora()
+        for label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s in _sel_supps:
+            DB.execute(
+                "INSERT INTO refeicoes "
+                "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
+                "VALUES (?,?,?,?,?,?)",
+                [cat_agora, desc_s, kcal_s, prot_s, carb_s, gord_s],
+            )
+        for label, *_ in _sel_supps:
+            if f"chk_supp_{label}" in st.session_state:
+                del st.session_state[f"chk_supp_{label}"]
+        nomes = " + ".join(l for l, *_ in _sel_supps)
+        st.cache_data.clear()
+        _notif(f"{nomes} registrado(s)!")
+        st.rerun()
 
-    with tp4:
-        df_edit = DB.query(
-            "SELECT id, COALESCE(categoria,'Lanche') as cat, descricao, "
-            "time(datetime(data_hora,'localtime')) as hora "
-            "FROM refeicoes WHERE date(data_hora,'localtime')=? "
-            "ORDER BY data_hora DESC LIMIT 15",
-            [hoje_sql],
-        )
-        if df_edit.empty:
-            st.markdown(f'<p style="color:{GHOST};font-size:12px;margin-top:8px">Nenhuma refeição registrada hoje.</p>', unsafe_allow_html=True)
+
+def _tab_agua():
+    if st.session_state.pop("_agua_meta_atingida", False):
+        st.balloons()
+
+    def _reg_agua(ml: int):
+        DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [ml])
+        st.cache_data.clear()
+        nova = agua_l + ml / 1000
+        if nova >= META_AGUA and agua_l < META_AGUA:
+            st.session_state["_agua_meta_atingida"] = True
+            _notif(f"META DE AGUA ATINGIDA!  {nova:.1f}L", "ok")
         else:
-            for _, row in df_edit.iterrows():
-                rid  = int(row["id"])
-                hora = str(row["hora"])[:5]
-                nome = str(row["descricao"])[:32]
-                st.markdown(f'<div style="font-size:9px;color:{GHOST};margin:10px 0 4px;font-family:{MONO};border-top:1px solid #111c2e;padding-top:8px">{hora} — {nome}</div>', unsafe_allow_html=True)
-                with st.form(f"edit_ref_{rid}"):
-                    idx = CATEGORIAS.index(row["cat"]) if row["cat"] in CATEGORIAS else 0
-                    nova_cat = st.selectbox("Categoria", CATEGORIAS, index=idx, key=f"sel_{rid}")
-                    ba, bd = st.columns([3, 1])
-                    with ba: atualizar = st.form_submit_button("✓ ATUALIZAR", width="stretch")
-                    with bd: deletar   = st.form_submit_button("🗑", width="stretch")
-                    if atualizar:
-                        DB.execute("UPDATE refeicoes SET categoria=? WHERE id=?", [nova_cat, rid])
-                        st.cache_data.clear(); _notif("Categoria atualizada"); st.rerun()
-                    if deletar:
-                        DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
-                        st.cache_data.clear(); _notif("Refeicao removida", "err"); st.rerun()
+            _notif(f"+{ml} ml  |  {nova:.1f} / {META_AGUA}L", "info")
+        st.rerun()
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    cA, cB, cC = st.columns(3)
+    with cA:
+        st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💧 Água · {agua_l:.1f}L / {META_AGUA}L</div>', unsafe_allow_html=True)
+        wa1, wa2 = st.columns(2)
+        with wa1:
+            if st.button("+ 200ml", key="agua_200", width="stretch"): _reg_agua(200)
+            if st.button("+ 500ml", key="agua_500", width="stretch"): _reg_agua(500)
+        with wa2:
+            if st.button("+ 350ml", key="agua_350", width="stretch"): _reg_agua(350)
+            if st.button("+ 750ml", key="agua_750", width="stretch"): _reg_agua(750)
+        with st.form("form_agua_custom", clear_on_submit=True):
+            ml_in = st.number_input("Outro (ml)", min_value=50, max_value=2000, value=300, step=50)
+            if st.form_submit_button("+ Registrar", width="stretch"):
+                DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [int(ml_in)])
+                nova = agua_l + int(ml_in) / 1000
+                st.cache_data.clear()
+                if nova >= META_AGUA and agua_l < META_AGUA:
+                    st.session_state["_agua_meta_atingida"] = True
+                _notif(f"+{int(ml_in)} ml  |  {nova:.1f} / {META_AGUA}L", "info")
+                st.rerun()
+    with cB:
+        st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">⚖️ Peso de hoje</div>', unsafe_allow_html=True)
+        with st.form("form_peso_hoje"):
+            peso_in = st.number_input("kg", min_value=40.0, max_value=200.0, value=round(peso,1), step=0.1, format="%.1f")
+            if st.form_submit_button("SALVAR", width="stretch"):
+                _ex = DB.query("SELECT id FROM medidas WHERE date(data)=?", [hoje_sql])
+                if not _ex.empty:
+                    DB.execute("UPDATE medidas SET peso=? WHERE date(data)=?", [float(peso_in), hoje_sql])
+                else:
+                    DB.execute("INSERT INTO medidas (data, peso) VALUES (?, ?)", [hoje_sql, float(peso_in)])
+                st.cache_data.clear(); _notif(f"Peso {peso_in:.1f} kg salvo"); st.rerun()
+    with cC:
+        st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💓 HRV / PAI</div>', unsafe_allow_html=True)
+        with st.form("form_hrv_pai"):
+            hrv_in = st.number_input("HRV (ms)", min_value=0, max_value=200, value=int(hrv) if hrv else 0, step=1)
+            pai_in = st.number_input("PAI", min_value=0, max_value=300, value=int(pai) if pai else 0, step=1)
+            if st.form_submit_button("SALVAR", width="stretch"):
+                DB.execute("INSERT INTO amazfit_dados (data_hora,passos,calorias_gastas,distancia_km,sono_total_min,sono_profundo_min,hrv_ms,pai) VALUES (?,0,0,0,0,0,0,0) ON CONFLICT(data_hora) DO NOTHING", [f"{hoje_sql} 00:00:00"])
+                DB.execute("UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?", [hrv_in, pai_in, f"{hoje_sql} 00:00:00"])
+                hrv_status = "BOM" if hrv_in >= 35 else ("MED" if hrv_in >= 25 else "BAIXO")
+                st.cache_data.clear()
+                _notif(f"HRV {hrv_in}ms [{hrv_status}]  PAI {pai_in}", "info")
+                st.rerun()
+
+
+def _tab_editar():
+    df_edit = DB.query(
+        "SELECT id, COALESCE(categoria,'Lanche') as cat, descricao, "
+        "time(datetime(data_hora,'localtime')) as hora "
+        "FROM refeicoes WHERE date(data_hora,'localtime')=? "
+        "ORDER BY data_hora DESC LIMIT 15",
+        [hoje_sql],
+    )
+    if df_edit.empty:
+        st.markdown(f'<p style="color:{GHOST};font-size:12px;margin-top:8px">Nenhuma refeição registrada hoje.</p>', unsafe_allow_html=True)
+    else:
+        for _, row in df_edit.iterrows():
+            rid  = int(row["id"])
+            hora = str(row["hora"])[:5]
+            nome = str(row["descricao"])[:32]
+            st.markdown(f'<div style="font-size:9px;color:{GHOST};margin:10px 0 4px;font-family:{MONO};border-top:1px solid #111c2e;padding-top:8px">{hora} — {nome}</div>', unsafe_allow_html=True)
+            with st.form(f"edit_ref_{rid}"):
+                idx = CATEGORIAS.index(row["cat"]) if row["cat"] in CATEGORIAS else 0
+                nova_cat = st.selectbox("Categoria", CATEGORIAS, index=idx, key=f"sel_{rid}")
+                ba, bd = st.columns([3, 1])
+                with ba: atualizar = st.form_submit_button("✓ ATUALIZAR", width="stretch")
+                with bd: deletar   = st.form_submit_button("🗑", width="stretch")
+                if atualizar:
+                    DB.execute("UPDATE refeicoes SET categoria=? WHERE id=?", [nova_cat, rid])
+                    st.cache_data.clear(); _notif("Categoria atualizada"); st.rerun()
+                if deletar:
+                    DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
+                    st.cache_data.clear(); _notif("Refeicao removida", "err"); st.rerun()
 
 
 # ── Auto-sync Zepp na primeira abertura da sessão ────────────────────────────
