@@ -18,9 +18,27 @@ except Exception:
 import db as DB
 
 # ── Gemini Vision (análise de fotos) ─────────────────────────────────────────
-_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
+# Lê a chave diretamente dos secrets do Streamlit Cloud primeiro,
+# depois fallback para variável de ambiente local.
+_GEMINI_KEY = ""
+try:
+    _GEMINI_KEY = (st.secrets.get("GEMINI_API_KEY") or "").strip()
+except Exception:
+    pass
+if not _GEMINI_KEY:
+    _GEMINI_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+
 if _GEMINI_KEY:
+    # Define GOOGLE_API_KEY para evitar fallback para GCP ADC
+    os.environ["GOOGLE_API_KEY"] = _GEMINI_KEY
     genai.configure(api_key=_GEMINI_KEY)
+
+
+def _gemini_model(nome: str = "gemini-2.5-flash"):
+    """Retorna GenerativeModel garantindo que a API key está configurada."""
+    if _GEMINI_KEY:
+        genai.configure(api_key=_GEMINI_KEY)
+    return genai.GenerativeModel(nome)
 
 # ── PAGE CONFIG ─────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -444,7 +462,7 @@ def _analisar_texto_macros(descricao: str) -> dict:
         "Use valores realistas baseados em tabelas nutricionais brasileiras.\n"
         "Se houver múltiplos alimentos separados por vírgula ou '+', some os macros e descreva tudo."
     )
-    vision = genai.GenerativeModel("gemini-2.5-flash")
+    vision = _gemini_model()
     resp   = vision.generate_content(prompt)
     return json.loads(re.sub(r"```json|```", "", resp.text).strip())
 
@@ -465,7 +483,7 @@ def _analisar_foto_gemini(uploaded_file):
         "Se houver múltiplos alimentos, retorne lista JSON.\n"
         "Seja realista com as porções visíveis na foto."
     )
-    vision = genai.GenerativeModel("gemini-2.5-flash")
+    vision = _gemini_model()
     resp   = vision.generate_content([prompt, img])
     dados  = json.loads(re.sub(r"```json|```", "", resp.text).strip())
     if isinstance(dados, dict):
@@ -647,21 +665,43 @@ def _painel_entrada():
                     st.rerun()
 
     with tp3:
+        # ── Trigger de animação: meta de água atingida ───────────────────────────
+        if st.session_state.pop("_agua_meta_atingida", False):
+            st.balloons()
+            st.toast("🎉 Meta de água atingida! Parabéns!", icon="🏆")
+
         cA, cB, cC = st.columns(3)
+
+        def _registrar_agua(ml: int):
+            """Insere ml de água e dispara animação se meta for atingida."""
+            DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [ml])
+            st.cache_data.clear()
+            nova = agua_l + ml / 1000
+            if nova >= META_AGUA and agua_l < META_AGUA:
+                st.session_state["_agua_meta_atingida"] = True
+                st.toast(f"💧 +{ml} ml · 🎉 {nova:.1f}L — meta atingida!")
+            else:
+                st.toast(f"💧 +{ml} ml · {nova:.1f}L / {META_AGUA}L")
+            st.rerun()
+
         with cA:
             st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💧 Água · {agua_l:.1f}L / {META_AGUA}L</div>', unsafe_allow_html=True)
             wa1, wa2 = st.columns(2)
             with wa1:
-                if st.button("+ 200ml", key="agua_200", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [200]); st.cache_data.clear(); st.toast("💧 +200 ml"); st.rerun()
-                if st.button("+ 500ml", key="agua_500", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [500]); st.cache_data.clear(); st.toast("💧 +500 ml"); st.rerun()
+                if st.button("+ 200ml", key="agua_200", width="stretch"): _registrar_agua(200)
+                if st.button("+ 500ml", key="agua_500", width="stretch"): _registrar_agua(500)
             with wa2:
-                if st.button("+ 350ml", key="agua_350", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [350]); st.cache_data.clear(); st.toast("💧 +350 ml"); st.rerun()
-                if st.button("+ 750ml", key="agua_750", width="stretch"): DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [750]); st.cache_data.clear(); st.toast("💧 +750 ml"); st.rerun()
+                if st.button("+ 350ml", key="agua_350", width="stretch"): _registrar_agua(350)
+                if st.button("+ 750ml", key="agua_750", width="stretch"): _registrar_agua(750)
             with st.form("form_agua_custom", clear_on_submit=True):
                 ml_in = st.number_input("Outro (ml)", min_value=50, max_value=2000, value=300, step=50)
                 if st.form_submit_button("+ Registrar", width="stretch"):
                     DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [int(ml_in)])
-                    st.cache_data.clear(); st.rerun()
+                    nova = agua_l + int(ml_in) / 1000
+                    st.cache_data.clear()
+                    if nova >= META_AGUA and agua_l < META_AGUA:
+                        st.session_state["_agua_meta_atingida"] = True
+                    st.rerun()
         with cB:
             st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">⚖️ Peso de hoje</div>', unsafe_allow_html=True)
             with st.form("form_peso_hoje"):
@@ -681,7 +721,11 @@ def _painel_entrada():
                 if st.form_submit_button("SALVAR", width="stretch"):
                     DB.execute("INSERT INTO amazfit_dados (data_hora,passos,calorias_gastas,distancia_km,sono_total_min,sono_profundo_min,hrv_ms,pai) VALUES (?,0,0,0,0,0,0,0) ON CONFLICT(data_hora) DO NOTHING", [f"{hoje_sql} 00:00:00"])
                     DB.execute("UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?", [hrv_in, pai_in, f"{hoje_sql} 00:00:00"])
-                    st.cache_data.clear(); st.toast(f"💓 HRV {hrv_in}ms · PAI {pai_in}"); st.rerun()
+                    hrv_ok = "✅" if hrv_in >= 35 else ("⚠️" if hrv_in >= 25 else "❌")
+                    pai_ok = "✅" if pai_in >= META_PAI else ("⚠️" if pai_in >= 70 else "❌")
+                    st.cache_data.clear()
+                    st.toast(f"💓 HRV {hrv_in}ms {hrv_ok} · PAI {pai_in} {pai_ok}")
+                    st.rerun()
 
     with tp4:
         df_edit = DB.query(
@@ -963,32 +1007,67 @@ BADGE_STYLE = {
 }
 
 with col_m:
+    # ── Seletor de data para histórico ────────────────────────────────────────
+    from datetime import date as _date
+    _hist_sel = st.date_input(
+        "📅 Consultar dia",
+        value=_date.fromisoformat(hoje_sql),
+        max_value=_date.fromisoformat(hoje_sql),
+        key="ref_hist_date",
+        label_visibility="collapsed",
+        format="DD/MM/YYYY",
+    )
+    _hist_sql = _hist_sel.strftime("%Y-%m-%d")
+    _is_hoje = _hist_sql == hoje_sql
+    _titulo_ref = "Refeições de hoje" if _is_hoje else f"Refeições de {_hist_sel.strftime('%d/%m')}"
+
     df_ref_hoje = db(
         "SELECT time(datetime(data_hora,'localtime')) as hora, "
-        "COALESCE(categoria,'Lanche') as cat, descricao as alimento "
+        "COALESCE(categoria,'Lanche') as cat, descricao as alimento, "
+        "COALESCE(calorias,0) as kcal, COALESCE(proteinas,0) as prot, "
+        "COALESCE(carboidratos,0) as carb, COALESCE(gorduras,0) as gord "
         "FROM refeicoes WHERE date(data_hora,'localtime')=? "
-        "ORDER BY data_hora DESC LIMIT 6",
-        [hoje_sql],
+        "ORDER BY data_hora DESC LIMIT 20",
+        [_hist_sql],
     )
     rows = ""
     if not df_ref_hoje.empty:
         for _, r in df_ref_hoje.iterrows():
             bsty = BADGE_STYLE.get(r["cat"], BADGE_STYLE["Lanche"])
+            kcal_v = int(r["kcal"]) if r["kcal"] else 0
+            prot_v = float(r["prot"]) if r["prot"] else 0
+            carb_v = float(r["carb"]) if r["carb"] else 0
+            gord_v = float(r["gord"]) if r["gord"] else 0
+            # Só mostra linha de macros se houver algum valor
+            macro_html = ""
+            if kcal_v or prot_v or carb_v or gord_v:
+                macro_html = (
+                    f'<div style="font-size:10px;color:{GHOST};margin-top:3px;'
+                    f'font-family:{MONO};letter-spacing:0.5px">'
+                    f'🔥<b style="color:{AMBER}">{kcal_v}</b> kcal&nbsp;'
+                    f'🥩<b style="color:{GREEN}">{prot_v:.0f}</b>g&nbsp;'
+                    f'🌾<b style="color:{CYAN}">{carb_v:.0f}</b>g&nbsp;'
+                    f'🫒<b style="color:{PURPLE}">{gord_v:.0f}</b>g'
+                    f'</div>'
+                )
             rows += (
-                f'<div style="display:flex;align-items:center;gap:9px;padding:8px 0;'
-                f'border-bottom:1px solid {BG3}">'
+                f'<div style="padding:8px 0;border-bottom:1px solid {BG3}">'
+                f'<div style="display:flex;align-items:center;gap:9px">'
                 f'<span style="font-family:{MONO};font-size:12px;font-weight:700;'
-                f'color:{CYAN};min-width:36px">{r["hora"][:5]}</span>'
+                f'color:{CYAN};min-width:36px">{str(r["hora"])[:5]}</span>'
                 f'<span style="font-size:9px;font-weight:700;letter-spacing:1px;'
                 f'text-transform:uppercase;padding:2px 7px;border-radius:3px;'
                 f'white-space:nowrap;{bsty}">{r["cat"]}</span>'
-                f'<span style="font-size:14px;color:{MUTED};flex:1">{r["alimento"]}</span>'
+                f'<span style="font-size:13px;color:{MUTED};flex:1;overflow:hidden;'
+                f'text-overflow:ellipsis;white-space:nowrap">{r["alimento"]}</span>'
+                f'</div>'
+                f'{macro_html}'
                 f'</div>'
             )
     else:
-        rows = f'<p style="color:{GHOST};font-size:12px;margin-top:8px">Nenhuma refeição registrada hoje.</p>'
+        rows = f'<p style="color:{GHOST};font-size:12px;margin-top:8px">Nenhuma refeição registrada neste dia.</p>'
 
-    st.markdown(panel(ptitl("Refeições de hoje") + rows), unsafe_allow_html=True)
+    st.markdown(panel(ptitl(_titulo_ref) + rows), unsafe_allow_html=True)
 
 # Busca refeições de hoje para checar suplementos registrados
 df_supp_check = db(
