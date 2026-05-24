@@ -642,11 +642,14 @@ def _analisar_texto_macros(descricao: str) -> dict:
         '"restaurante":<true se for prato de rede/restaurante, false se caseiro>,'
         '"componentes":['
         '{"nome_en":"<nome em ingles para busca>","nome_pt":"<nome em portugues>",'
-        '"gramas":<peso estimado em gramas, inteiro>}]}\n\n'
-        "Regras:\n"
+        '"gramas":<peso em gramas, inteiro>}]}\n\n'
+        "Regras — PRIORIDADE ALTA:\n"
+        "- QUANTIDADE EXPLÍCITA: se o usuario informou peso/quantidade (ex: '18g', '200ml',\n"
+        "  '2 fatias', '1 colher', '6 conchas'), converta para gramas e use EXATAMENTE esse valor.\n"
+        "  Nao substitua pela porcao tipica. Ex: '18g de parmesao' -> gramas: 18.\n"
+        "- SEM QUANTIDADE: se nenhuma quantidade foi informada, use porcao tipica realista.\n"
         "- Decomponha cada ingrediente/prato separadamente.\n"
-        "- Gramas realistas: porcao de restaurante tipica (nao miniaturize).\n"
-        "- nome_en: termo simples em ingles para busca nutricional (ex: 'pork ribs', 'french fries').\n"
+        "- nome_en: termo simples em ingles para busca nutricional (ex: 'parmesan cheese', 'pork ribs').\n"
         "- Use ponto decimal. Resposta so JSON."
     )
     vision   = _gemini_model()
