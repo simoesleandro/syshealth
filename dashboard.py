@@ -1441,12 +1441,12 @@ with col_m:
         label_visibility="collapsed",
         format="DD/MM/YYYY",
     )
-    _hist_sql = _hist_sel.strftime("%Y-%m-%d")
-    _is_hoje = _hist_sql == hoje_sql
+    _hist_sql   = _hist_sel.strftime("%Y-%m-%d")
+    _is_hoje    = _hist_sql == hoje_sql
     _titulo_ref = "Refeições de hoje" if _is_hoje else f"Refeições de {_hist_sel.strftime('%d/%m')}"
 
     df_ref_hoje = db(
-        "SELECT time(datetime(data_hora,'localtime')) as hora, "
+        "SELECT id, time(datetime(data_hora,'localtime')) as hora, "
         "COALESCE(categoria,'Lanche') as cat, descricao as alimento, "
         "COALESCE(calorias,0) as kcal, COALESCE(proteinas,0) as prot, "
         "COALESCE(carboidratos,0) as carb, COALESCE(gorduras,0) as gord "
@@ -1454,44 +1454,120 @@ with col_m:
         "ORDER BY data_hora DESC LIMIT 20",
         [_hist_sql],
     )
-    rows = ""
-    if not df_ref_hoje.empty:
-        for _, r in df_ref_hoje.iterrows():
-            bsty = BADGE_STYLE.get(r["cat"], BADGE_STYLE["Lanche"])
-            kcal_v = int(r["kcal"]) if r["kcal"] else 0
-            prot_v = float(r["prot"]) if r["prot"] else 0
-            carb_v = float(r["carb"]) if r["carb"] else 0
-            gord_v = float(r["gord"]) if r["gord"] else 0
-            # Só mostra linha de macros se houver algum valor
-            macro_html = ""
-            if kcal_v or prot_v or carb_v or gord_v:
-                macro_html = (
-                    f'<div style="font-size:10px;color:{GHOST};margin-top:3px;'
-                    f'font-family:{MONO};letter-spacing:0.5px">'
-                    f'🔥<b style="color:{AMBER}">{kcal_v}</b> kcal&nbsp;'
-                    f'🥩<b style="color:{GREEN}">{prot_v:.0f}</b>g&nbsp;'
-                    f'🌾<b style="color:{CYAN}">{carb_v:.0f}</b>g&nbsp;'
-                    f'🫒<b style="color:{PURPLE}">{gord_v:.0f}</b>g'
-                    f'</div>'
-                )
-            rows += (
-                f'<div style="padding:8px 0;border-bottom:1px solid {BG3}">'
-                f'<div style="display:flex;align-items:center;gap:9px">'
-                f'<span style="font-family:{MONO};font-size:12px;font-weight:700;'
-                f'color:{CYAN};min-width:36px">{str(r["hora"])[:5]}</span>'
-                f'<span style="font-size:9px;font-weight:700;letter-spacing:1px;'
-                f'text-transform:uppercase;padding:2px 7px;border-radius:3px;'
-                f'white-space:nowrap;{bsty}">{r["cat"]}</span>'
-                f'<span style="font-size:13px;color:{MUTED};flex:1;overflow:hidden;'
-                f'text-overflow:ellipsis;white-space:nowrap">{r["alimento"]}</span>'
-                f'</div>'
-                f'{macro_html}'
-                f'</div>'
-            )
-    else:
-        rows = f'<p style="color:{GHOST};font-size:12px;margin-top:8px">Nenhuma refeição registrada neste dia.</p>'
 
-    st.markdown(panel(ptitl(_titulo_ref) + rows), unsafe_allow_html=True)
+    _CAT_ICON = {
+        "Café da Manhã":   "☕",
+        "Lanche da Manhã": "🍎",
+        "Almoço":          "🍽️",
+        "Lanche da Tarde": "🥪",
+        "Jantar":          "🌙",
+        "Lanche da Noite": "🌜",
+        "Lanche":          "🥤",
+    }
+
+    # Título da seção
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;'
+        f'letter-spacing:1.5px;text-transform:uppercase;color:{TEXT};'
+        f'margin-bottom:8px">{_titulo_ref}</div>',
+        unsafe_allow_html=True,
+    )
+
+    if df_ref_hoje.empty:
+        st.markdown(
+            f'<p style="color:{GHOST};font-size:12px;margin-top:4px">'
+            f'Nenhuma refeição registrada neste dia.</p>',
+            unsafe_allow_html=True,
+        )
+    else:
+        for _, r in df_ref_hoje.iterrows():
+            rid    = int(r["id"])
+            hora   = str(r["hora"])[:5]
+            cat    = str(r["cat"])
+            food   = str(r["alimento"])
+            kcal_v = int(r["kcal"])   if r["kcal"] else 0
+            prot_v = float(r["prot"]) if r["prot"] else 0.0
+            carb_v = float(r["carb"]) if r["carb"] else 0.0
+            gord_v = float(r["gord"]) if r["gord"] else 0.0
+            icon   = _CAT_ICON.get(cat, "🍴")
+
+            # Label colapsado: hora  ícone Categoria  ·  Descrição
+            lbl_expand = f"{hora}  {icon} {cat}  ·  {food[:40]}"
+
+            with st.expander(lbl_expand):
+                # ── Linha de macros ───────────────────────────────────────────
+                if kcal_v or prot_v or carb_v or gord_v:
+                    st.markdown(
+                        f'<div style="display:flex;gap:18px;flex-wrap:wrap;'
+                        f'padding:6px 0 10px;border-bottom:1px solid {BORDER};margin-bottom:10px">'
+                        f'<span style="font-family:{MONO};font-size:13px;font-weight:700;'
+                        f'color:{AMBER}">🔥 {kcal_v} kcal</span>'
+                        f'<span style="font-size:12px;color:{MUTED}">'
+                        f'🥩 <b style="color:{GREEN}">{prot_v:.1f}g</b> prot</span>'
+                        f'<span style="font-size:12px;color:{MUTED}">'
+                        f'🌾 <b style="color:{CYAN}">{carb_v:.1f}g</b> carb</span>'
+                        f'<span style="font-size:12px;color:{MUTED}">'
+                        f'🫒 <b style="color:{PURPLE}">{gord_v:.1f}g</b> gord</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    st.markdown(
+                        f'<div style="font-size:11px;color:{GHOST};font-style:italic;'
+                        f'padding:4px 0 10px;border-bottom:1px solid {BORDER};'
+                        f'margin-bottom:10px">Macros não registrados</div>',
+                        unsafe_allow_html=True,
+                    )
+
+                # ── Form de edição completa + deletar ─────────────────────────
+                with st.form(f"form_edit_ref_{rid}"):
+                    _ec, _ed = st.columns([1, 2])
+                    with _ec:
+                        idx_cat  = CATEGORIAS.index(cat) if cat in CATEGORIAS else 0
+                        nova_cat = st.selectbox("Categoria", CATEGORIAS, index=idx_cat,
+                                                key=f"ecat_{rid}")
+                    with _ed:
+                        nova_desc = st.text_input("Descrição", value=food, key=f"edesc_{rid}")
+
+                    _em1, _em2, _em3, _em4 = st.columns(4)
+                    with _em1:
+                        nova_kcal = st.number_input("Kcal", value=float(kcal_v),
+                                                    min_value=0.0, step=1.0, format="%.0f",
+                                                    key=f"ekcal_{rid}")
+                    with _em2:
+                        nova_prot = st.number_input("Prot g", value=prot_v,
+                                                    min_value=0.0, step=0.5, format="%.1f",
+                                                    key=f"eprot_{rid}")
+                    with _em3:
+                        nova_carb = st.number_input("Carb g", value=carb_v,
+                                                    min_value=0.0, step=0.5, format="%.1f",
+                                                    key=f"ecarb_{rid}")
+                    with _em4:
+                        nova_gord = st.number_input("Gord g", value=gord_v,
+                                                    min_value=0.0, step=0.5, format="%.1f",
+                                                    key=f"egord_{rid}")
+
+                    _ba, _bd = st.columns([3, 1])
+                    with _ba:
+                        _salvar  = st.form_submit_button("✓ SALVAR", width="stretch")
+                    with _bd:
+                        _deletar = st.form_submit_button("🗑", width="stretch")
+
+                    if _salvar:
+                        DB.execute(
+                            "UPDATE refeicoes SET categoria=?, descricao=?, calorias=?, "
+                            "proteinas=?, carboidratos=?, gorduras=? WHERE id=?",
+                            [nova_cat, nova_desc.strip(), nova_kcal,
+                             nova_prot, nova_carb, nova_gord, rid],
+                        )
+                        st.cache_data.clear()
+                        _notif(f"Refeição atualizada · {int(nova_kcal)} kcal")
+                        st.rerun()
+                    if _deletar:
+                        DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
+                        st.cache_data.clear()
+                        _notif("Refeição removida", "err")
+                        st.rerun()
 
 # Busca refeições de hoje para checar suplementos registrados
 df_supp_check = db(
