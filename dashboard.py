@@ -510,10 +510,9 @@ def _analisar_texto_macros(descricao: str) -> dict:
         '"carboidratos":<numero decimal>,"gorduras":<numero decimal>}\n\n'
         "Regras:\n"
         "- Use valores realistas das tabelas nutricionais brasileiras (TACO/IBGE).\n"
-        "- Se a descrição incluir quantidade (ex: '6 conchas', '200g', '1 prato'), '
-        'use essa quantidade para calcular.\n"
-        "- Se houver múltiplos alimentos (vírgula ou '+'), some os macros e descreva tudo na descrição.\n"
-        "- Números devem ser decimais com ponto (não vírgula). Ex: 12.5 não 12,5"
+        "- Se a descricao incluir quantidade (ex: 6 conchas, 200g, 1 prato), use essa quantidade para calcular.\n"
+        "- Se houver multiplos alimentos (virgula ou +), some os macros e descreva tudo na descricao.\n"
+        "- Numeros devem ser decimais com ponto (nao virgula). Ex: 12.5 nao 12,5"
     )
     vision = _gemini_model()
     resp   = vision.generate_content(prompt)
@@ -537,8 +536,8 @@ def _analisar_foto_gemini(uploaded_file):
         '"calorias":<int>,"proteinas":<decimal>,"carboidratos":<decimal>,"gorduras":<decimal>}\n\n'
         "Para múltiplos alimentos distintos, retorne uma lista JSON:\n"
         '[{"tipo":"refeicao","categoria":"<cat>","descricao_resumida":"<item>",'
-        '"calorias":<int>,"proteinas":<decimal>,"carboidratos":<decimal>,"gorduras":<decimal>},...]\n\n"
-        "Números devem usar ponto decimal (não vírgula). Seja realista com as porções visíveis."
+        '"calorias":<int>,"proteinas":<decimal>,"carboidratos":<decimal>,"gorduras":<decimal>},...]\n\n'
+        "Numeros devem usar ponto decimal (nao virgula). Seja realista com as porcoes visiveis."
     )
     vision = _gemini_model()
     resp   = vision.generate_content([prompt, img])
