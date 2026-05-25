@@ -553,14 +553,11 @@ def processar_mensagem(message):
                 meal_data['componentes_json'] = json.dumps(meal_data.get('detalhes', []))
                 salvar_refeicao(meal_data)
                 
-                # Obtém a crítica qualitativa do Nutricionista de Elite
-                critica = NE.obter_critica_nutricional(model, meal_data, categoria)
-                
+                # Salva no banco de dados e adiciona resposta
                 respostas.append(
                     f"🍽️ *{categoria}:* {meal_data['descricao_resumida']}\n"
                     f"🔥 {meal_data['calorias']} kcal · 🥩 {meal_data['proteinas']}g Prot · "
-                    f"🌾 {meal_data['carboidratos']}g Carb · 🫒 {meal_data['gorduras']}g Gord\n\n"
-                    f"🩺 *Crítica do Nutricionista:*\n{critica}"
+                    f"🌾 {meal_data['carboidratos']}g Carb · 🫒 {meal_data['gorduras']}g Gord"
                 )
             elif tipo == 'agua':
                 salvar_agua(item['quantidade_ml'])
