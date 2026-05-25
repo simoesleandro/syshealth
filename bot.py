@@ -11,6 +11,12 @@ from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 import db as DB
 import nutri_engine as NE
+import sys
+import io
+
+# Força a saída do console para UTF-8 no Windows para evitar crashes ao imprimir emojis
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
