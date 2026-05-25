@@ -127,7 +127,8 @@ _TABLES_PG = [
     """CREATE TABLE IF NOT EXISTS refeicoes (
         id SERIAL PRIMARY KEY, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         categoria TEXT, descricao TEXT, calorias REAL DEFAULT 0,
-        proteinas REAL DEFAULT 0, carboidratos REAL DEFAULT 0, gorduras REAL DEFAULT 0)""",
+        proteinas REAL DEFAULT 0, carboidratos REAL DEFAULT 0, gorduras REAL DEFAULT 0,
+        componentes_json TEXT)""",
     """CREATE TABLE IF NOT EXISTS agua (
         id SERIAL PRIMARY KEY, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         quantidade_ml INTEGER DEFAULT 0)""",
@@ -153,7 +154,8 @@ _TABLES_SQLITE = [
     """CREATE TABLE IF NOT EXISTS refeicoes (
         id INTEGER PRIMARY KEY AUTOINCREMENT, data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
         categoria TEXT, descricao TEXT, calorias REAL DEFAULT 0,
-        proteinas REAL DEFAULT 0, carboidratos REAL DEFAULT 0, gorduras REAL DEFAULT 0)""",
+        proteinas REAL DEFAULT 0, carboidratos REAL DEFAULT 0, gorduras REAL DEFAULT 0,
+        componentes_json TEXT)""",
     """CREATE TABLE IF NOT EXISTS agua (
         id INTEGER PRIMARY KEY AUTOINCREMENT, data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
         quantidade_ml INTEGER DEFAULT 0)""",
@@ -181,12 +183,32 @@ def init_tables():
         conn = _get_pg()
         for sql in _TABLES_PG:
             conn.run(sql)
+        try:
+            # Check and migrate Supabase column if needed
+            cols = conn.run("SELECT column_name FROM information_schema.columns WHERE table_name='refeicoes' AND column_name='componentes_json'")
+            if not cols:
+                conn.run("ALTER TABLE refeicoes ADD COLUMN componentes_json TEXT")
+                print("✅ Supabase: Coluna 'componentes_json' adicionada à tabela 'refeicoes'.")
+        except Exception as e:
+            print(f"⚠️ Erro ao verificar/adicionar coluna no Supabase: {e}")
     else:
         conn = sqlite3.connect(DB_PATH)
         for sql in _TABLES_SQLITE:
             conn.execute(sql)
         conn.commit()
-        conn.close()
+        try:
+            # Check and migrate SQLite column if needed
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(refeicoes)")
+            columns = [info[1] for info in cursor.fetchall()]
+            if 'componentes_json' not in columns:
+                conn.execute("ALTER TABLE refeicoes ADD COLUMN componentes_json TEXT")
+                conn.commit()
+                print("✅ SQLite: Coluna 'componentes_json' adicionada à tabela 'refeicoes'.")
+        except Exception as e:
+            print(f"⚠️ Erro ao verificar/adicionar coluna no SQLite: {e}")
+        finally:
+            conn.close()
 
 
 def backend():

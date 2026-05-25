@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 import db as DB
+import nutri_engine as NE
 
 FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
@@ -40,10 +41,22 @@ def executar_query(query, params=()):
     DB.execute(query, list(params) if params else [])
 
 def salvar_refeicao(dados):
+    comp_json = dados.get('componentes_json')
+    if not comp_json:
+        comp_json = json.dumps([{
+            "nome": dados.get('descricao_resumida', 'Item'),
+            "gramas": 0,
+            "kcal": dados.get('calorias', 0),
+            "prot": dados.get('proteinas', 0),
+            "carb": dados.get('carboidratos', 0),
+            "gord": dados.get('gorduras', 0),
+            "fonte": "IA (Foto)"
+        }])
     DB.execute(
-        'INSERT INTO refeicoes (categoria, descricao, calorias, proteinas, carboidratos, gorduras) VALUES (?, ?, ?, ?, ?, ?)',
-        [dados.get('categoria', 'Lanche'), dados['descricao_resumida'],
-         dados['calorias'], dados['proteinas'], dados['carboidratos'], dados['gorduras']]
+        'INSERT INTO refeicoes (categoria, descricao, calorias, proteinas, carboidratos, gorduras, componentes_json) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [dados.get('categoria', 'Lanche'), dados.get('descricao_resumida', ''),
+         dados.get('calorias', 0), dados.get('proteinas', 0), dados.get('carboidratos', 0), dados.get('gorduras', 0),
+         comp_json]
     )
 
 def salvar_agua(ml):
@@ -237,32 +250,27 @@ def analisar_texto_com_ia(texto):
         'Retorne um objeto ou lista de objetos se houver múltiplas ações.\n\n'
         'O campo "tipo" é OBRIGATÓRIO. Valores: "refeicao", "agua", "peso", "medicacao".\n\n'
         'REFEIÇÃO (tipo="refeicao"):\n'
-        '{"tipo":"refeicao","categoria":"<valor>","descricao_resumida":"<texto>",'
-        '"calorias":<n>,"proteinas":<g>,"carboidratos":<g>,"gorduras":<g>}\n\n'
+        'Retorne a categoria correspondente e a descrição exata do que foi comido (sem calcular macros ou calorias):\n'
+        '{"tipo":"refeicao","categoria":"<valor>","descricao":"<descricao do alimento com quantidades digitadas pelo usuario>"}\n\n'
         'ÁGUA: {"tipo":"agua","quantidade_ml":<n>}\n'
         'PESO: {"tipo":"peso","peso_kg":<n>}\n'
         'MEDICAÇÃO (só Tirzepatida): {"tipo":"medicacao","dose_mg":<n>}\n\n'
-        f'CATEGORIA OBRIGATÓRIA para esta mensagem: "{cat_horario}"\n'
+        f'CATEGORIA OBRIGATÓRIA para refeição: "{cat_horario}"\n'
         'Use EXATAMENTE este valor no campo categoria, a menos que o usuário mencione\n'
         'explicitamente outro nome de refeição no texto.\n\n'
-        'Horários de referência (use apenas se o usuário forçar outra categoria):\n'
-        '06:00-09:30 → Café da Manhã\n'
-        '09:31-11:30 → Lanche da Manhã\n'
-        '11:31-14:30 → Almoço\n'
-        '14:31-17:30 → Lanche da Tarde\n'
-        '17:31-20:30 → Jantar\n'
-        '20:31-23:59 → Lanche da Noite\n\n'
         'REGRAS ESPECIAIS (rotina do Leandro):\n'
-        '- Whey de manhã → categoria "Café da Manhã", cal 118, prot 24, carb 2, gord 1.5\n'
-        '- Whey à noite/pós-treino/com creatina → LISTA com 2 objetos (Whey + Creatina 0cal)\n'
-        '- Ômega 3/Omegafor → tipo "refeicao", cal 9, prot 0, carb 0, gord 1, desc "Ômega 3 Omegafor Plus"\n'
-        '- Magnésio/quelato/Vitha → tipo "refeicao", cal 0, prot 0, carb 0, gord 0, desc "Magnésio Quelato Trio Vitha"\n'
-        '- D3/K2/BioVit/vitamina D → tipo "refeicao", cal 0, prot 0, carb 0, gord 0, desc "Vit. D3+K2 BioVit"\n'
-        '- Para qualquer alimento, estime macros pelo peso/quantidade informado.\n'
-        'NUNCA omita o campo "tipo":"refeicao" para comidas.'
+        '- Whey de manhã → categoria "Café da Manhã", desc "Whey Protein Isolado Dux (30g)"\n'
+        '- Whey à noite/pós-treino/com creatina → LISTA com 2 objetos (Whey + Creatina)\n'
+        '- Ômega 3/Omegafor → tipo "refeicao", desc "Ômega 3 Omegafor Plus"\n'
+        '- Magnésio/quelato/Vitha → tipo "refeicao", desc "Magnésio Quelato Trio Vitha"\n'
+        '- D3/K2/BioVit/vitamina D → tipo "refeicao", desc "Vit. D3+K2 BioVit"\n'
+        'NUNCA estime macros ou calorias, apenas extraia a intenção e classifique.'
     )
     resposta    = model.generate_content(prompt)
     texto_limpo = re.sub(r'```json|```', '', resposta.text).strip()
+    match = re.search(r"(\{.*\}|\[.*\])", texto_limpo, re.DOTALL)
+    if match:
+        texto_limpo = match.group(0)
     return json.loads(texto_limpo)
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -507,10 +515,46 @@ def processar_mensagem(message):
         for item in dados:
             tipo = item.get('tipo')
             if tipo == 'refeicao':
-                salvar_refeicao(item)
+                # Chama o nutri_engine para calcular macros deterministicamente
+                desc_meal = item.get('descricao', item.get('descricao_resumida', ''))
+                
+                # Se for um suplemento específico com preset definido no bot
+                if "whey protein isolado dux" in desc_meal.lower() or "whey dux" in desc_meal.lower():
+                    meal_data = {
+                        "descricao_resumida": MACROS_WHEY["descricao_resumida"],
+                        "calorias": MACROS_WHEY["calorias"],
+                        "proteinas": MACROS_WHEY["proteinas"],
+                        "carboidratos": MACROS_WHEY["carboidratos"],
+                        "gorduras": MACROS_WHEY["gorduras"],
+                        "detalhes": [{"nome": MACROS_WHEY["descricao_resumida"], "gramas": 30, "kcal": MACROS_WHEY["calorias"], "prot": MACROS_WHEY["proteinas"], "carb": MACROS_WHEY["carboidratos"], "gord": MACROS_WHEY["gorduras"], "fonte": "Preset"}]
+                    }
+                elif "creatina" in desc_meal.lower():
+                    meal_data = {
+                        "descricao_resumida": MACROS_CREATINA["descricao_resumida"],
+                        "calorias": MACROS_CREATINA["calorias"],
+                        "proteinas": MACROS_CREATINA["proteinas"],
+                        "carboidratos": MACROS_CREATINA["carboidratos"],
+                        "gorduras": MACROS_CREATINA["gorduras"],
+                        "detalhes": [{"nome": MACROS_CREATINA["descricao_resumida"], "gramas": 6, "kcal": 0, "prot": 0, "carb": 0, "gord": 0, "fonte": "Preset"}]
+                    }
+                else:
+                    meal_data = NE.calcular_macros_refeicao(model, desc_meal)
+                
+                categoria = item.get('categoria', 'Lanche')
+                meal_data['categoria'] = categoria
+                
+                # Adiciona componentes_json para salvar no banco
+                meal_data['componentes_json'] = json.dumps(meal_data.get('detalhes', []))
+                salvar_refeicao(meal_data)
+                
+                # Obtém a crítica qualitativa do Nutricionista de Elite
+                critica = NE.obter_critica_nutricional(model, meal_data, categoria)
+                
                 respostas.append(
-                    f"🍽️ *{item.get('categoria', 'Refeição')}:* "
-                    f"{item['descricao_resumida']} (+{item['proteinas']}g Prot)"
+                    f"🍽️ *{categoria}:* {meal_data['descricao_resumida']}\n"
+                    f"🔥 {meal_data['calorias']} kcal · 🥩 {meal_data['proteinas']}g Prot · "
+                    f"🌾 {meal_data['carboidratos']}g Carb · 🫒 {meal_data['gorduras']}g Gord\n\n"
+                    f"🩺 *Crítica do Nutricionista:*\n{critica}"
                 )
             elif tipo == 'agua':
                 salvar_agua(item['quantidade_ml'])
@@ -523,9 +567,8 @@ def processar_mensagem(message):
                 respostas.append(f"💉 *Medicação:* {item['dose_mg']}mg")
 
         if respostas:
-            bot.reply_to(message,
-                "✅ *Registros salvos!*\n\n" + "\n".join(respostas),
-                parse_mode='Markdown')
+            for resp in respostas:
+                bot.send_message(message.chat.id, resp, parse_mode='Markdown')
         else:
             bot.reply_to(message, "❓ Não entendi. Tente descrever sua refeição ou use /sync, /hrv, /pai.")
     except Exception as e:

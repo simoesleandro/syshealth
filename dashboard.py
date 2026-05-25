@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import google.generativeai as genai
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import nutri_engine as NE
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -497,7 +498,8 @@ def _q_refeicoes(dia: str):
         "SELECT id, time(datetime(data_hora,'localtime')) as hora, "
         "COALESCE(categoria,'Lanche') as cat, descricao as alimento, "
         "COALESCE(calorias,0) as kcal, COALESCE(proteinas,0) as prot, "
-        "COALESCE(carboidratos,0) as carb, COALESCE(gorduras,0) as gord "
+        "COALESCE(carboidratos,0) as carb, COALESCE(gorduras,0) as gord, "
+        "componentes_json "
         "FROM refeicoes WHERE date(data_hora,'localtime')=? "
         "ORDER BY data_hora DESC LIMIT 20", [dia])
 
@@ -729,129 +731,24 @@ def _buscar_usda(query: str) -> dict | None:
 
 def _analisar_texto_macros(descricao: str) -> dict:
     """
-    Análise híbrida: Gemini decompõe em componentes + gramas,
-    USDA fornece valores por 100 g, Gemini cobre o que o USDA não encontrar.
-    Retorna macros + kcal_min/max + fonte + detalhes por componente.
+    Análise híbrida determinística delegada ao nutri_engine.
     """
-    cat      = _cat_hora()
-    hora_txt = datetime.now(_BR).strftime("%H:%M")
-
-    # ── Passo 1: Gemini decompõe a descrição ─────────────────────────────────
-    parse_prompt = (
-        f"Você é um nutricionista. Analise: '{descricao}'.\n"
-        f"Hora: {hora_txt} (Brasilia). Categoria sugerida: {cat}.\n\n"
-        "IMPORTANTE: responda SOMENTE com JSON puro, sem texto antes/depois.\n\n"
-        '{"categoria":"<cat>","descricao_resumida":"<desc normalizada>",'
-        '"restaurante":<true se for prato de rede/restaurante, false se caseiro>,'
-        '"componentes":['
-        '{"nome_en":"<nome em ingles para busca>","nome_pt":"<nome em portugues>",'
-        '"gramas":<peso em gramas, inteiro>}]}\n\n'
-        "Regras — PRIORIDADE ALTA:\n"
-        "- QUANTIDADE EXPLÍCITA: se o usuario informou peso/quantidade (ex: '18g', '200ml',\n"
-        "  '2 fatias', '1 colher', '6 conchas'), converta para gramas e use EXATAMENTE esse valor.\n"
-        "  Nao substitua pela porcao tipica. Ex: '18g de parmesao' -> gramas: 18.\n"
-        "- SEM QUANTIDADE: se nenhuma quantidade foi informada, use porcao tipica realista.\n"
-        "- Decomponha cada ingrediente/prato separadamente.\n"
-        "- nome_en: termo simples em ingles para busca nutricional (ex: 'parmesan cheese', 'pork ribs').\n"
-        "- Use ponto decimal. Resposta so JSON."
-    )
-    vision   = _gemini_model()
-    resp_dec = vision.generate_content(parse_prompt)
-    parsed   = _extrair_json(resp_dec.text)
-
-    componentes  = parsed.get("componentes", [])
-    restaurante  = parsed.get("restaurante", False)
-
-    # ── Passo 2: USDA para cada componente ───────────────────────────────────
-    total_kcal = total_prot = total_carb = total_gord = 0.0
-    detalhes   = []
-    sem_usda   = []
-
-    for comp in componentes:
-        gramas    = float(comp.get("gramas", 100))
-        nome_en   = comp.get("nome_en", comp.get("nome_pt", ""))
-        nome_pt   = comp.get("nome_pt", nome_en)
-        usda      = _buscar_usda(nome_en)
-
-        if usda and usda["kcal"] > 0:
-            fator  = gramas / 100.0
-            k = round(usda["kcal"] * fator, 1)
-            p = round(usda["prot"] * fator, 1)
-            c = round(usda["carb"] * fator, 1)
-            g = round(usda["gord"] * fator, 1)
-            total_kcal += k; total_prot += p
-            total_carb += c; total_gord += g
-            detalhes.append({
-                "nome": nome_pt, "gramas": int(gramas),
-                "kcal": int(k), "prot": p, "carb": c, "gord": g,
-                "fonte": "USDA", "nome_usda": usda["nome_usda"],
-            })
-        else:
-            sem_usda.append(comp)
-
-    # ── Passo 3: Gemini cobre o que o USDA não encontrou ─────────────────────
-    if sem_usda:
-        lista_sem = ", ".join(
-            f"{c.get('nome_pt','?')} {c.get('gramas',100)}g" for c in sem_usda
-        )
-        estima_prompt = (
-            f"Nutricionista: estime macros para: {lista_sem}.\n"
-            f"{'Itens de restaurante — use porcoes e preparo tipicos de rede.' if restaurante else ''}\n\n"
-            "Responda SOMENTE com JSON puro:\n"
-            '{"itens":[{"nome":"<nome>","gramas":<int>,"kcal_min":<int>,"kcal":<int>,"kcal_max":<int>,'
-            '"proteinas":<decimal>,"carboidratos":<decimal>,"gorduras":<decimal>}]}\n\n'
-            "kcal_min = estimativa conservadora, kcal_max = estimativa generosa (±15-25%).\n"
-            "Use ponto decimal."
-        )
-        resp_est = vision.generate_content(estima_prompt)
-        est_data = _extrair_json(resp_est.text)
-        for item in est_data.get("itens", []):
-            k = float(item.get("kcal", 0))
-            total_kcal += k
-            total_prot += float(item.get("proteinas", 0))
-            total_carb += float(item.get("carboidratos", 0))
-            total_gord += float(item.get("gorduras", 0))
-            detalhes.append({
-                "nome":     item.get("nome", "?"),
-                "gramas":   int(item.get("gramas", 0)),
-                "kcal":     int(k),
-                "kcal_min": int(item.get("kcal_min", k * 0.85)),
-                "kcal_max": int(item.get("kcal_max", k * 1.15)),
-                "prot":     float(item.get("proteinas", 0)),
-                "carb":     float(item.get("carboidratos", 0)),
-                "gord":     float(item.get("gorduras", 0)),
-                "fonte":    "IA",
-            })
-
-    # ── Passo 4: Montar resultado final ──────────────────────────────────────
-    fontes      = {d["fonte"] for d in detalhes}
-    fonte_label = ("USDA" if fontes == {"USDA"} else
-                   "IA"   if fontes == {"IA"}   else "USDA + IA")
-    # Faixa de confiança: ±10% se tudo USDA, ±20% se tem IA
-    margem      = 0.10 if fonte_label == "USDA" else 0.20
-    kcal_tot    = int(round(total_kcal))
-    # Substitui kcal_min/max dos itens IA pelo total com margem
-    kcal_min_ai = min((d.get("kcal_min", d["kcal"]) for d in detalhes if d["fonte"] == "IA"),
-                      default=kcal_tot)
-    kcal_max_ai = max((d.get("kcal_max", d["kcal"]) for d in detalhes if d["fonte"] == "IA"),
-                      default=kcal_tot)
-    usda_sum    = sum(d["kcal"] for d in detalhes if d["fonte"] == "USDA")
-    kcal_min    = int(usda_sum + kcal_min_ai * (1 - margem)) if sem_usda else int(kcal_tot * (1 - margem))
-    kcal_max    = int(usda_sum + kcal_max_ai * (1 + margem)) if sem_usda else int(kcal_tot * (1 + margem))
-
-    return {
-        "categoria":         parsed.get("categoria", cat),
-        "descricao_resumida": parsed.get("descricao_resumida", descricao),
-        "calorias":          kcal_tot,
-        "kcal_min":          kcal_min,
-        "kcal_max":          kcal_max,
-        "proteinas":         round(total_prot, 1),
-        "carboidratos":      round(total_carb, 1),
-        "gorduras":          round(total_gord, 1),
-        "fonte":             fonte_label,
-        "restaurante":       restaurante,
-        "detalhes":          detalhes,
-    }
+    vision = _gemini_model()
+    # Calcula os macros de forma determinística
+    res = NE.calcular_macros_refeicao(vision, descricao)
+    
+    # Adiciona a crítica qualitativa usando a nova engenharia de prompt
+    cat = _cat_hora()
+    res["categoria"] = cat
+    res["critica"] = NE.obter_critica_nutricional(vision, res, cat, peso_usuario=peso)
+    
+    # Mapeia faixas de kcal para exibição
+    kcal_tot = int(round(res["calorias"]))
+    res["kcal_min"] = int(kcal_tot * 0.95)
+    res["kcal_max"] = int(kcal_tot * 1.05)
+    res["fonte"] = "TACO / USDA"
+    
+    return res
 
 
 def _analisar_foto_gemini(uploaded_file):
@@ -960,6 +857,15 @@ def _card_resultado(item: dict, cor: str = "#00d4ff"):
       </div>"""
         html_card += "\n    </div>\n  </details>"
 
+    # Crítica do nutricionista (se disponível)
+    critica = item.get("critica", "")
+    if critica:
+        html_card += f"""
+  <div style="margin-top:12px;padding-top:10px;border-top:1px dashed {cor}33">
+    <div style="font-family:{MONO};font-size:10px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">🩺 Crítica do Nutricionista de Elite</div>
+    <div style="font-size:12px;color:#cbd5e1;line-height:1.5;background:#060a13;padding:10px;border-radius:6px;border:1px solid #1a2035;white-space:pre-wrap">{critica}</div>
+  </div>"""
+
     html_card += "\n</div>"
     st.markdown(html_card, unsafe_allow_html=True)
 
@@ -1039,12 +945,21 @@ def _tab_refeicao():
                 for item in itens:
                     DB.execute(
                         "INSERT INTO refeicoes "
-                        "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
-                        "VALUES (?,?,?,?,?,?)",
+                        "(categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) "
+                        "VALUES (?,?,?,?,?,?,?)",
                         [item.get("categoria", "Lanche"),
                          item.get("descricao_resumida", ""),
                          item.get("calorias", 0), item.get("proteinas", 0),
-                         item.get("carboidratos", 0), item.get("gorduras", 0)],
+                         item.get("carboidratos", 0), item.get("gorduras", 0),
+                         json.dumps([{
+                             "nome": item.get("descricao_resumida", ""),
+                             "gramas": 0,
+                             "kcal": item.get("calorias", 0),
+                             "prot": item.get("proteinas", 0),
+                             "carb": item.get("carboidratos", 0),
+                             "gord": item.get("gorduras", 0),
+                             "fonte": "IA"
+                         }])],
                     )
                 del st.session_state["foto_resultado"]
                 st.cache_data.clear()
@@ -1090,11 +1005,12 @@ def _tab_refeicao():
             if st.button("✅ Salvar", key="salvar_ia_text", width="stretch"):
                 DB.execute(
                     "INSERT INTO refeicoes "
-                    "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
-                    "VALUES (?,?,?,?,?,?)",
+                    "(categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) "
+                    "VALUES (?,?,?,?,?,?,?)",
                     [r.get("categoria", "Lanche"), r.get("descricao_resumida", ""),
                      r.get("calorias", 0), r.get("proteinas", 0),
-                     r.get("carboidratos", 0), r.get("gorduras", 0)],
+                     r.get("carboidratos", 0), r.get("gorduras", 0),
+                     json.dumps(r.get("detalhes", []))],
                 )
                 del st.session_state["ia_text_result"]
                 st.cache_data.clear()
@@ -1127,9 +1043,18 @@ def _tab_refeicao():
             if desc_in.strip():
                 DB.execute(
                     "INSERT INTO refeicoes "
-                    "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
-                    "VALUES (?,?,?,?,?,?)",
-                    [cat_sel, desc_in.strip(), kcal_in, prot_in, carb_in, gord_in],
+                    "(categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    [cat_sel, desc_in.strip(), kcal_in, prot_in, carb_in, gord_in,
+                     json.dumps([{
+                         "nome": desc_in.strip(),
+                         "gramas": 0,
+                         "kcal": kcal_in,
+                         "prot": prot_in,
+                         "carb": carb_in,
+                         "gord": gord_in,
+                         "fonte": "Manual"
+                     }])],
                 )
                 st.cache_data.clear()
                 _notif(f"Refeicao salva · {int(kcal_in)} kcal")
@@ -1157,9 +1082,18 @@ def _tab_suplemento():
         for label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s in _sel_supps:
             DB.execute(
                 "INSERT INTO refeicoes "
-                "(categoria,descricao,calorias,proteinas,carboidratos,gorduras) "
-                "VALUES (?,?,?,?,?,?)",
-                [cat_agora, desc_s, kcal_s, prot_s, carb_s, gord_s],
+                "(categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) "
+                "VALUES (?,?,?,?,?,?,?)",
+                [cat_agora, desc_s, kcal_s, prot_s, carb_s, gord_s,
+                 json.dumps([{
+                     "nome": label,
+                     "gramas": 0,
+                     "kcal": kcal_s,
+                     "prot": prot_s,
+                     "carb": carb_s,
+                     "gord": gord_s,
+                     "fonte": "Suplemento"
+                 }])],
             )
         for label, *_ in _sel_supps:
             if f"chk_supp_{label}" in st.session_state:
@@ -1359,11 +1293,17 @@ with k3:
     ), unsafe_allow_html=True)
 
 with k4:
+    pct_agua = agua_l / META_AGUA
+    # Cor dinâmica: roxo sob déficit, ciano ao se aproximar e verde esmeralda ao bater
+    cor_agua = "#a78bfa" if pct_agua < 0.50 else ("#00d4ff" if pct_agua < 1.0 else "#00e676")
+    badge_agua = "⚠️ Desidratado" if pct_agua < 0.50 else ("⚡ Em Progresso" if pct_agua < 1.0 else "✓ Hidratado")
+    
     st.markdown(kpi_card(
-        PURPLE, "Hidratação", f"{agua_l:.1f}", "L",
-        pbar(agua_l / META_AGUA, PURPLE) +
-        f'<div style="font-family:{MONO};font-size:13px;color:{MUTED};margin-top:6px">'
-        f'{int(agua_l / META_AGUA * 100)}% · meta {META_AGUA} L</div>',
+        cor_agua, "Hidratação", f"{agua_l:.1f}", "L",
+        pbar(pct_agua, cor_agua) +
+        f'<div style="font-family:{MONO};font-size:13px;color:{cor_agua};margin-top:6px;font-weight:700">'
+        f'{badge_agua} · {int(pct_agua * 100)}%</div>'
+        f'<div style="font-size:12px;color:{MUTED};margin-top:3px">Meta: {META_AGUA}L · Faltam {max(0.0, META_AGUA - agua_l):.1f}L</div>',
     ), unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1488,15 +1428,26 @@ with c1:
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 with c2:
-    def mrow(nome, val, meta, cor):
-        p = min(100, int(val / meta * 100)) if meta else 0
+    def mrow_dinamico(nome, val, meta):
+        if not meta: return ""
+        pct = val / meta
+        # Proteínas: quanto mais próximo da meta, melhor (laranja -> verde)
+        # Carboidratos e Gorduras: se passarem de 100%, alertar com vermelho/laranja
+        if nome == "Proteínas":
+            cor = "#fbbf24" if pct < 0.70 else ("#00e676" if pct <= 1.10 else "#00d4ff")
+        elif nome == "Carboidratos":
+            cor = "#00d4ff" if pct <= 1.0 else ("#fbbf24" if pct <= 1.15 else "#ff6b6b")
+        else:  # Gorduras
+            cor = "#a78bfa" if pct <= 1.0 else ("#fbbf24" if pct <= 1.10 else "#ff6b6b")
+            
+        p = min(100, int(pct * 100))
         return (
             f'<div style="margin-bottom:10px">'
             f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
             f'<span style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1px;'
             f'text-transform:uppercase;color:{MUTED}">{nome}</span>'
             f'<span style="font-size:10px;color:{GHOST}">'
-            f'<b style="color:{TEXT}">{int(val)}</b> / {int(meta)} g</span>'
+            f'<b style="color:{TEXT}">{int(val)}</b> / {int(meta)} g ({int(pct * 100)}%)</span>'
             f'</div>'
             f'<div style="background:{BORDER};border-radius:3px;height:5px;overflow:hidden">'
             f'<div style="width:{p}%;height:5px;border-radius:3px;background:{cor}"></div>'
@@ -1505,9 +1456,9 @@ with c2:
     st.markdown(
         panel(
             ptitl("Macronutrientes") +
-            mrow("Proteínas",    prot_h, META_PROT, GREEN)  +
-            mrow("Carboidratos", carb_h, META_CARB, CYAN)   +
-            mrow("Gorduras",     gord_h, META_GORD, PURPLE) +
+            mrow_dinamico("Proteínas",    prot_h, META_PROT)  +
+            mrow_dinamico("Carboidratos", carb_h, META_CARB)   +
+            mrow_dinamico("Gorduras",     gord_h, META_GORD) +
             f'<div style="border-top:1px solid {BORDER2};padding-top:10px;display:flex;'
             f'justify-content:space-between;align-items:center">'
             f'<span style="font-family:{MONO};font-size:9px;text-transform:uppercase;'
@@ -1617,6 +1568,30 @@ with col_m:
                     f'<span style="font-size:11px;color:{MUTED}">🫒<b style="color:{PURPLE}"> {gord_v:.0f}g</b></span>'
                     f'</div>'
                 )
+            comp_json = r.get("componentes_json")
+            detalhes_list = []
+            if comp_json:
+                try:
+                    detalhes_list = json.loads(comp_json)
+                except Exception:
+                    pass
+            
+            details_html = ""
+            if detalhes_list:
+                details_html += f"""
+<details style="margin-top:6px;cursor:pointer">
+  <summary style="font-family:{MONO};font-size:9px;color:{MUTED};letter-spacing:1px;text-transform:uppercase;list-style:none;padding:2px 0">▸ Ver ingredientes</summary>
+  <div style="margin-top:4px;display:flex;flex-direction:column;gap:3px;padding-left:10px">"""
+                for d in detalhes_list:
+                    d_fonte = d.get("fonte", "LOCAL")
+                    d_cor = {"LOCAL": GREEN, "USDA": CYAN, "IA (100g)": AMBER}.get(d_fonte, AMBER)
+                    details_html += f"""
+    <div style="background:#070b15;border-radius:4px;padding:3px 8px;display:flex;justify-content:space-between;align-items:center;border:1px solid {cor}11">
+      <span style="font-size:11px;color:{TEXT}">{d.get('nome','?')} <span style="color:{MUTED}">{d.get('gramas',0)}g</span></span>
+      <span style="font-size:11px;font-family:{MONO};color:{d_cor}">{int(d.get('kcal',0))} kcal</span>
+    </div>"""
+                details_html += "\n  </div>\n</details>"
+
             _cc, _ce = st.columns([1, 0.1])
             with _cc:
                 st.markdown(
@@ -1630,9 +1605,10 @@ with col_m:
                     f'text-transform:uppercase;padding:2px 6px;border-radius:3px;'
                     f'white-space:nowrap;{bsty}">{icon} {cat}</span>'
                     f'<span style="font-size:12px;color:{TEXT};overflow:hidden;'
-                    f'text-overflow:ellipsis;white-space:nowrap;flex:1">{food[:36]}</span>'
+                    f'text-overflow:ellipsis;white-space:nowrap;flex:1">{food}</span>'
                     f'</div>'
                     f'{macro_row}'
+                    f'{details_html}'
                     f'</div>',
                     unsafe_allow_html=True,
                 )
