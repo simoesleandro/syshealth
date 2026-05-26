@@ -213,6 +213,15 @@ section[data-testid="stSidebar"] .stButton button:active{
   padding:6px 10px!important;cursor:pointer!important}
 [data-testid="stDateInput"] > div > div{cursor:pointer!important}
 
+/* ── Tirzepatida — botões compactos (+ DOSE e ✏ editar) ── */
+[data-testid="stHorizontalBlock"]:has(.sh-med-hdr) button,
+[data-testid="stHorizontalBlock"]:has(.sh-med-row) button{
+  min-height:24px!important;
+  padding:1px 6px!important;
+  font-size:9px!important;
+  line-height:1!important;
+  border-radius:4px!important}
+
 /* ── Sync buttons compactos (topbar direito) ── */
 /* Targetamos o stHorizontalBlock que contém .sh-topbar (topbar) → última coluna → botões */
 [data-testid="stHorizontalBlock"]:has(.sh-topbar) [data-testid="column"]:last-child [data-testid="stBaseButton-secondary"]{
@@ -2347,15 +2356,15 @@ with col_s:
     )
 
     # ── Histórico de doses: título + botão ───────────────────────────────────
-    _th, _tn = st.columns([1, 0.18])
+    _th, _tn = st.columns([1, 0.12])
     with _th:
         st.markdown(
-            f'<div style="font-family:{MONO};font-size:9px;font-weight:700;'
-            f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin:4px 0 6px">Histórico de doses</div>',
+            f'<div class="sh-med-hdr" style="font-family:{MONO};font-size:9px;font-weight:700;'
+            f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin:4px 0 4px">Histórico de doses</div>',
             unsafe_allow_html=True,
         )
     with _tn:
-        if st.button("＋ DOSE", key="btn_med_nova_toggle", use_container_width=True):
+        if st.button("＋", key="btn_med_nova_toggle", use_container_width=True):
             st.session_state["med_nova_open"] = not st.session_state.get("med_nova_open", False)
             st.rerun()
 
@@ -2391,37 +2400,36 @@ with col_s:
             edit_key   = f"med_edit_{mid}"
             is_editing = st.session_state.get(edit_key, False)
 
-            _mc, _me = st.columns([1, 0.07])
+            _mc, _me = st.columns([1, 0.06])
             with _mc:
                 if is_atual:
                     st.markdown(
-                        f'<div style="display:flex;align-items:center;gap:10px;'
-                        f'padding:5px 10px;border-radius:6px;margin-bottom:2px;'
+                        f'<div class="sh-med-row" style="display:flex;align-items:center;gap:8px;'
+                        f'padding:4px 8px;border-radius:5px;margin-bottom:1px;'
                         f'background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.15)">'
-                        f'<span style="width:7px;height:7px;border-radius:50%;background:{GREEN};'
-                        f'box-shadow:0 0 6px rgba(0,230,118,0.5);flex-shrink:0"></span>'
-                        f'<span style="font-family:{MONO};font-size:10px;color:{MUTED};flex:1">{data_fmt}</span>'
-                        f'<span style="font-size:14px;font-weight:800;color:{GREEN};letter-spacing:-0.3px">{dose:.1f} mg</span>'
+                        f'<span style="width:6px;height:6px;border-radius:50%;background:{GREEN};'
+                        f'box-shadow:0 0 5px rgba(0,230,118,0.5);flex-shrink:0"></span>'
+                        f'<span style="font-family:{MONO};font-size:9px;color:{MUTED};flex:1">{data_fmt}</span>'
+                        f'<span style="font-size:13px;font-weight:800;color:{GREEN};letter-spacing:-0.3px">{dose:.1f} mg</span>'
                         f'<span style="font-family:{MONO};font-size:7px;font-weight:700;'
                         f'color:{GREEN};background:rgba(0,230,118,0.12);'
-                        f'border:1px solid rgba(0,230,118,0.25);padding:1px 6px;'
-                        f'border-radius:10px;letter-spacing:1px">ATUAL</span>'
+                        f'border:1px solid rgba(0,230,118,0.25);padding:1px 5px;'
+                        f'border-radius:8px;letter-spacing:1px">ATUAL</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
                 else:
                     st.markdown(
-                        f'<div style="display:flex;align-items:center;gap:10px;'
-                        f'padding:3px 10px;margin-bottom:1px;opacity:0.55">'
-                        f'<span style="width:4px;height:4px;border-radius:50%;'
+                        f'<div class="sh-med-row" style="display:flex;align-items:center;gap:8px;'
+                        f'padding:2px 8px;margin-bottom:0;opacity:0.5">'
+                        f'<span style="width:3px;height:3px;border-radius:50%;'
                         f'background:{GHOST};flex-shrink:0"></span>'
                         f'<span style="font-family:{MONO};font-size:9px;color:{GHOST};flex:1">{data_fmt}</span>'
-                        f'<span style="font-size:12px;font-weight:600;color:{MUTED}">{dose:.1f} mg</span>'
+                        f'<span style="font-size:11px;font-weight:600;color:{MUTED}">{dose:.1f} mg</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
             with _me:
-                st.markdown('<div style="margin-top:2px"></div>', unsafe_allow_html=True)
                 _edit_lbl = "✕" if is_editing else "✏"
                 if st.button(_edit_lbl, key=f"tog_med_{mid}", use_container_width=True):
                     st.session_state[edit_key] = not is_editing
