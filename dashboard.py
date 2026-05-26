@@ -737,10 +737,10 @@ def _analisar_texto_macros(descricao: str) -> dict:
     # Calcula os macros de forma determinística
     res = NE.calcular_macros_refeicao(vision, descricao)
     
-    # Adiciona a crítica qualitativa usando a nova engenharia de prompt
+    # Categoria por horário
     cat = _cat_hora()
     res["categoria"] = cat
-    res["critica"] = NE.obter_critica_nutricional(vision, res, cat, peso_usuario=peso)
+    res["critica"] = ""
     
     # Mapeia faixas de kcal para exibição
     kcal_tot = int(round(res["calorias"]))
@@ -2115,7 +2115,7 @@ if not df_hist.empty:
 
     # ── Linha 3: Nutrição ─────────────────────────────────────────────────────
     if not df_macro_hist.empty:
-        h3a, h3b = st.columns(2)
+        h3a, h3b, h3c = st.columns(3)
 
         with h3a:
             st.markdown(panel(ptitl("🔥 Calorias diárias")), unsafe_allow_html=True)
@@ -2139,6 +2139,26 @@ if not df_hist.empty:
             fig.update_layout(**chart_layout(180))
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
+        with h3c:
+            st.markdown(panel(ptitl("📉 Déficit Calórico")), unsafe_allow_html=True)
+            df_h = df_hist.copy() if not df_hist.empty else pd.DataFrame(columns=["dia", "calorias_gastas"])
+            df_m = df_macro_hist.copy() if not df_macro_hist.empty else pd.DataFrame(columns=["dia", "cal"])
+            if "calorias_gastas" not in df_h.columns:
+                df_h["calorias_gastas"] = 0.0
+            if "cal" not in df_m.columns:
+                df_m["cal"] = 0.0
+            df_merged = pd.merge(df_h, df_m, on="dia", how="outer").fillna(0)
+            df_merged["deficit"] = (TMB + df_merged["calorias_gastas"]) - df_merged["cal"]
+            
+            fig = go.Figure()
+            fig.add_trace(barra(df_merged, "deficit", PURPLE, "Déficit"))
+            fig.add_hline(y=500, line_dash="dash", line_color=CYAN,
+                          line_width=1, opacity=0.5,
+                          annotation_text="Meta 500",
+                          annotation_font_color=CYAN, annotation_font_size=9)
+            fig.update_layout(**chart_layout(180))
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
     # ── Tabela resumo semanal ─────────────────────────────────────────────────
     st.markdown(sec("Resumo", f"Médias dos últimos {n_dias} dias"), unsafe_allow_html=True)
 
@@ -2149,6 +2169,19 @@ if not df_hist.empty:
         if pd.isna(val) or val == 0:
             return "—"
         return f"{val:.{decimais}f}{sufixo}"
+
+    # Calcular déficit calórico médio para o resumo
+    media_deficit = 0.0
+    if not df_hist.empty or not df_macro_hist.empty:
+        df_h = df_hist.copy() if not df_hist.empty else pd.DataFrame(columns=["dia", "calorias_gastas"])
+        df_m = df_macro_hist.copy() if not df_macro_hist.empty else pd.DataFrame(columns=["dia", "cal"])
+        if "calorias_gastas" not in df_h.columns:
+            df_h["calorias_gastas"] = 0.0
+        if "cal" not in df_m.columns:
+            df_m["cal"] = 0.0
+        df_merged = pd.merge(df_h, df_m, on="dia", how="outer").fillna(0)
+        df_merged["deficit"] = (TMB + df_merged["calorias_gastas"]) - df_merged["cal"]
+        media_deficit = df_merged["deficit"].mean()
 
     medias = [
         ("👟", "Passos/dia",       fmt_val(media(df_hist, "passos"), "", 0),
@@ -2170,6 +2203,8 @@ if not df_hist.empty:
              f"meta {TMB}"),
             ("🥩", "Proteínas/dia", fmt_val(media(df_macro_hist, "prot"), " g", 0),
              f"meta {META_PROT}g"),
+            ("📉", "Déficit/dia",    fmt_val(media_deficit, " kcal", 0),
+             "meta 500 kcal"),
         ]
 
     # Grid 4 colunas
@@ -2187,6 +2222,88 @@ if not df_hist.empty:
                 f'{ref_html}</div>',
                 unsafe_allow_html=True,
             )
+
+    # ── IA Coach ─────────────────────────────────────────────────────────────
+    st.markdown(sec("IA Coach", "Análise de Emagrecimento & Performance"), unsafe_allow_html=True)
+    
+    coach_html = f"""
+    <div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;padding:16px 20px;margin-bottom:15px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <span style="font-family:{MONO};font-size:11px;font-weight:700;color:{CYAN};letter-spacing:1px">📋 PROTOCOLO & METAS METABÓLICAS</span>
+            <span style="background:rgba(167,139,250,0.1);border:1px solid {PURPLE}55;border-radius:4px;padding:2px 8px;font-family:{MONO};font-size:9px;color:{PURPLE};font-weight:700;letter-spacing:0.5px">TIRZEPATIDA</span>
+        </div>
+        <div style="display:grid;grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));gap:12px">
+            <div style="font-size:12px;color:{MUTED}">Evolução de Peso: <br><span style="font-size:13px;font-weight:700;color:{TEXT}">115.3 kg (Jan/2026) ➔ {peso:.1f} kg atual</span></div>
+            <div style="font-size:12px;color:{MUTED}">Rotina de Exercícios: <br><span style="font-size:13px;font-weight:700;color:{TEXT}">Musculação + Cardio (6x/sem)</span></div>
+            <div style="font-size:12px;color:{MUTED}">Treinos HIIT (Ter & Sex): <br><span style="font-size:13px;font-weight:700;color:{TEXT}">Alta Intensidade / EPOC</span></div>
+            <div style="font-size:12px;color:{MUTED}">Treinos Zona 2 (Seg, Qua, Qui, Sáb): <br><span style="font-size:13px;font-weight:700;color:{TEXT}">Corrida BPM 120-140 max</span></div>
+        </div>
+    </div>
+    """
+    st.markdown(coach_html, unsafe_allow_html=True)
+
+    if st.button("🔄 Executar Análise Clínica de Emagrecimento IA", key="btn_ia_coach", width="stretch"):
+        with st.spinner("🧠 IA Coach analisando dados clínicos, metabólicos e rotinas..."):
+            try:
+                # Obter médias
+                media_passos = media(df_hist, "passos")
+                media_cal_gastas = media(df_hist, "calorias_gastas")
+                media_sono = media(df_hist, "sono_total_min")
+                media_sono_prof = media(df_hist, "sono_profundo_min")
+                media_hrv = media(df_hist, "hrv_ms")
+                media_pai = media(df_hist, "pai")
+                
+                media_cal_ingestao = media(df_macro_hist, "cal")
+                media_prot = media(df_macro_hist, "prot")
+                media_carb = media(df_macro_hist, "carb")
+                media_gord = media(df_macro_hist, "gord")
+                
+                # Prompt clínico
+                prompt = (
+                    "Você é o IA Coach de Elite do Leandro — atuando como Arquiteto de Performance Humana, Nutricionista Esportivo de Elite e Endocrinologista de Alta Performance.\\n"
+                    "Sua missão é realizar uma análise clínica e metabólica extremamente crítica e sem rodeios sobre a evolução do Leandro.\\n\\n"
+                    "PARÂMETROS DE EVOLUÇÃO E ROTINA:\\n"
+                    "- Peso Inicial (Janeiro/2026): 115,3 kg\\n"
+                    f"- Peso Atual: {peso:.1f} kg (Evolução: -{115.3 - peso:.1f} kg)\\n"
+                    "- Protocolo Farmacológico: Tirzepatida (injetável semanal)\\n"
+                    "- Frequência de Treino: 6x por semana (Musculação + Cardio)\\n"
+                    "- Terça & Sexta: Cardio HIIT\\n"
+                    "- Segunda, Quarta, Quinta & Sábado: Corrida em Zona 2 (BPM entre 120 e 140 no máximo)\\n\\n"
+                    f"MÉDIAS REAIS REGISTRADAS NOS ÚLTIMOS {n_dias} DIAS:\\n"
+                    f"- Consumo de Calorias: {fmt_val(media_cal_ingestao, ' kcal', 0)}\\n"
+                    f"- Consumo de Proteínas: {fmt_val(media_prot, ' g', 0)}\\n"
+                    f"- Consumo de Carboidratos: {fmt_val(media_carb, ' g', 0)}\\n"
+                    f"- Consumo de Gorduras: {fmt_val(media_gord, ' g', 0)}\\n"
+                    f"- Gasto Calórico de Atividade (Amazfit): {fmt_val(media_cal_gastas, ' kcal', 0)}\\n"
+                    f"- Déficit Calórico Médio Estimado: {fmt_val(media_deficit, ' kcal', 0)}\\n"
+                    f"- Média de Passos Diários: {fmt_val(media_passos, '', 0)}\\n"
+                    f"- Média de Sono Total: {fmt_val(media_sono, ' min', 0)}\\n"
+                    f"- Média de Sono Profundo: {fmt_val(media_sono_prof, ' min', 0)}\\n"
+                    f"- Média de HRV: {fmt_val(media_hrv, ' ms', 0)}\\n"
+                    f"- Média de PAI: {fmt_val(media_pai, '', 0)}\\n\\n"
+                    "Forneça um parecer crítico estruturado EXATAMENTE nos 4 tópicos abaixo:\\n"
+                    "1. 🔬 AJUSTE DE METABOLISMO & TIRZEPATIDA: Avalie o impacto metabólico da medicação associado ao déficit calórico atual e ingestão de proteínas (evitando perda de massa muscular).\\n"
+                    "2. 🏃 ANÁLISE DE CARDIO (ZONE 2 & HIIT): Avalie se o estímulo de Zone 2 (bpm 120-140) e HIIT nas terças/sextas está correto para otimização da lipólise, recuperação e melhora do HRV/PAI.\\n"
+                    "3. 📊 BALANÇO ENERGÉTICO & MACROS: Crítica sobre os números de ingestão x gasto energético.\\n"
+                    "4. ⚡ PLANO DE AÇÃO PRÁTICO: Próximos passos clínicos/alimentares para manter o emagrecimento saudável e quebrar platôs.\\n\\n"
+                    "Escreva com tom técnico, extremamente sênior e clínico, sem rodeios ou parágrafos introdutórios/conclusivos genéricos. Vá direto à análise de cada ponto."
+                )
+                
+                vision = _gemini_model()
+                res = vision.generate_content(prompt)
+                st.session_state["ia_coach_result"] = res.text
+            except Exception as e:
+                st.error(f"❌ Erro ao chamar a IA: {e}")
+
+    if "ia_coach_result" in st.session_state:
+        st.markdown(f"""
+        <div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;padding:20px;margin-top:10px;margin-bottom:15px;line-height:1.6">
+            <div style="font-family:{MONO};font-size:11px;font-weight:700;color:{GREEN};letter-spacing:1.5px;margin-bottom:15px;text-transform:uppercase">🩺 DIAGNÓSTICO CLÍNICO DA IA</div>
+            
+        {st.session_state["ia_coach_result"]}
+        
+        </div>
+        """, unsafe_allow_html=True)
 
 else:
     st.markdown(
