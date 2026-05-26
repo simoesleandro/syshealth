@@ -80,6 +80,10 @@ def zepp_sync(day=None):
         rem  = int(slp.get("dt", 0) or 0)
         tot  = deep + lt + rem or int(slp.get("ebt", 0) or 0)
         prev = _get_existing(day)
+        
+        run_dist_m = float(stp.get("runDist", 0) or 0)
+        run_cal = int(stp.get("runCal", 0) or 0)
+        
         return {
             "data_hora":         f"{day} 00:00:00",
             "passos":            int(stp.get("ttl", 0) or 0),
@@ -89,6 +93,8 @@ def zepp_sync(day=None):
             "sono_profundo_min": deep,
             "hrv_ms":            prev.get("hrv_ms", 0),
             "pai":               prev.get("pai", 0),
+            "corrida_km":        round(run_dist_m / 1000.0, 2),
+            "corrida_cal":       run_cal,
         }
     except requests.Timeout:
         log.error(f"Zepp timeout para {day}")
@@ -107,9 +113,10 @@ def save(path_or_row, row=None):
         row = path_or_row
     DB.execute("DELETE FROM amazfit_dados WHERE data_hora=?", [row["data_hora"]])
     DB.execute(
-        "INSERT INTO amazfit_dados VALUES (?,?,?,?,?,?,?,?)",
+        "INSERT INTO amazfit_dados (data_hora, passos, calorias_gastas, distancia_km, sono_total_min, sono_profundo_min, hrv_ms, pai, corrida_km, corrida_cal) VALUES (?,?,?,?,?,?,?,?,?,?)",
         [row["data_hora"], row["passos"], row["calorias_gastas"], row["distancia_km"],
-         row["sono_total_min"], row["sono_profundo_min"], row["hrv_ms"], row["pai"]]
+         row["sono_total_min"], row["sono_profundo_min"], row["hrv_ms"], row["pai"],
+         row.get("corrida_km", 0.0), row.get("corrida_cal", 0)]
     )
 
 

@@ -453,6 +453,62 @@ def _zepp_sync_dashboard(day: str | None = None) -> str:
         return f"Erro sync: {e}"
 
 
+def _hevy_sync_dashboard() -> str:
+    """
+    Sincroniza os treinos do Hevy API e salva no banco de dados.
+    """
+    hevy_key = os.getenv("HEVY_API_KEY", "").strip()
+    if not hevy_key:
+        return "⚠️ HEVY_API_KEY não configurada no .env ou Secrets."
+    try:
+        url = "https://api.hevyapp.com/v1/workouts"
+        headers = {
+            "api-key": hevy_key,
+            "Content-Type": "application/json"
+        }
+        r = requests.get(url, headers=headers, params={"page": 1, "pageSize": 10}, timeout=10)
+        if r.status_code != 200:
+            return f"Erro Hevy (HTTP {r.status_code}): {r.text[:100]}"
+        data = r.json()
+        workouts = data.get("workouts", [])
+        if not workouts:
+            return "Hevy: Nenhum treino encontrado."
+        count = 0
+        for w in workouts:
+            w_id = w.get("workout_id")
+            title = w.get("title", "Treino de Musculação")
+            desc = w.get("description", "")
+            start_iso = w.get("start_time")
+            end_iso = w.get("end_time")
+            dt_formatted = start_iso.replace("T", " ").replace("Z", "") if start_iso else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            duracao = 0
+            if start_iso and end_iso:
+                try:
+                    start_dt = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
+                    end_dt = datetime.fromisoformat(end_iso.replace("Z", "+00:00"))
+                    duracao = int((end_dt - start_dt).total_seconds() / 60)
+                except Exception:
+                    pass
+            volume_kg = 0.0
+            exercises = w.get("exercises", [])
+            for ex in exercises:
+                sets = ex.get("sets", [])
+                for s in sets:
+                    w_kg = float(s.get("weight_kg") or 0.0)
+                    reps = int(s.get("reps") or 0)
+                    volume_kg += w_kg * reps
+            exercicios_json = json.dumps(exercises)
+            DB.execute("DELETE FROM hevy_treinos WHERE id=?", [w_id])
+            DB.execute(
+                "INSERT INTO hevy_treinos (id, data_hora, titulo, descricao, exercicios_json, duracao_min, volume_kg) VALUES (?,?,?,?,?,?,?)",
+                [w_id, dt_formatted, title, desc, exercicios_json, duracao, volume_kg]
+            )
+            count += 1
+        return f"Hevy sincronizado — {count} treinos atualizados."
+    except Exception as e:
+        return f"Erro Hevy: {e}"
+
+
 # ── METAS ────────────────────────────────────────────────────────────────────
 TMB       = 1863  # Taxa Metabólica Basal — meta calórica é calculada dinamicamente
 META_PROT = 190
@@ -595,6 +651,8 @@ sono_tot  = int(_az["sono_total_min"].iloc[0])    if not _az.empty else 0
 sono_prof = int(_az["sono_profundo_min"].iloc[0]) if not _az.empty else 0
 hrv       = int(_az["hrv_ms"].iloc[0])            if not _az.empty else 0
 pai       = int(_az["pai"].iloc[0])               if not _az.empty else 0
+corrida_km  = float(_az["corrida_km"].iloc[0])  if not _az.empty and "corrida_km" in _az.columns else 0.0
+corrida_cal = int(_az["corrida_cal"].iloc[0])   if not _az.empty and "corrida_cal" in _az.columns else 0
 
 # Derivações — Método Dinâmico
 gasto_total_dia   = TMB + cal_gasta                    # TMB + atividade registrada
@@ -1200,7 +1258,7 @@ _zepp_status_cor = GREEN
 if "zepp_auto_synced" not in st.session_state:
     st.session_state["zepp_auto_synced"] = True
     _sync_result = _zepp_sync_dashboard(hoje_sql)
-    if "passos" in _sync_result:
+    if "passos" in _sync_result or "sincronizado" in _sync_result.lower():
         DB.init_tables()
         st.cache_data.clear()
     elif "Erro" in _sync_result:
@@ -1210,10 +1268,28 @@ if "zepp_auto_synced" not in st.session_state:
         _zepp_status_txt = "sem dados novos"
         _zepp_status_cor = AMBER
 
+# ── Auto-sync Hevy na primeira abertura da sessão ────────────────────────────
+_hevy_status_txt = "sincronizado"
+_hevy_status_cor = GREEN
+if "hevy_auto_synced" not in st.session_state:
+    st.session_state["hevy_auto_synced"] = True
+    _h_sync_result = _hevy_sync_dashboard()
+    if "sincronizado" in _h_sync_result.lower() or "atualizados" in _h_sync_result.lower():
+        st.cache_data.clear()
+    elif "não configurada" in _h_sync_result.lower():
+        _hevy_status_txt = "não configurado"
+        _hevy_status_cor = MUTED
+    elif "Erro" in _h_sync_result:
+        _hevy_status_txt = "erro de sync"
+        _hevy_status_cor = RED
+    else:
+        _hevy_status_txt = "sem dados novos"
+        _hevy_status_cor = AMBER
+
 # ════════════════════════════════════════════════════════════════════════════
 # TOPBAR
 # ════════════════════════════════════════════════════════════════════════════
-_tb_left, _tb_right = st.columns([3, 1])
+_tb_left, _tb_right = st.columns([3, 1.2])
 with _tb_left:
     st.markdown(
         f'<div class="sh-topbar" style="padding-bottom:14px;border-bottom:1px solid {BORDER2};margin-bottom:6px">'
@@ -1227,19 +1303,32 @@ with _tb_right:
     st.markdown(
         f'<div class="sh-topbar-right" style="text-align:right;padding-bottom:6px;border-bottom:1px solid {BORDER2};margin-bottom:6px">'
         f'<div style="font-family:{MONO};font-size:13px;color:{GHOST}">{dia_sem} · {hoje_pt} · {hora_now}</div>'
-        f'<div style="font-family:{MONO};font-size:12px;color:{_zepp_status_cor};font-weight:700;margin-top:3px">'
-        f'<span style="display:inline-block;width:6px;height:6px;border-radius:50%;'
+        f'<div style="font-family:{MONO};font-size:11px;color:{_zepp_status_cor};font-weight:700;margin-top:3px">'
+        f'<span style="display:inline-block;width:5px;height:5px;border-radius:50%;'
         f'background:{_zepp_status_cor};margin-right:5px;vertical-align:middle"></span>'
-        f'Amazfit Bip 6 — {_zepp_status_txt}</div>'
+        f'Amazfit — {_zepp_status_txt}</div>'
+        f'<div style="font-family:{MONO};font-size:11px;color:{_hevy_status_cor};font-weight:700;margin-top:1px">'
+        f'<span style="display:inline-block;width:5px;height:5px;border-radius:50%;'
+        f'background:{_hevy_status_cor};margin-right:5px;vertical-align:middle"></span>'
+        f'Hevy — {_hevy_status_txt}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
-    if st.button("🔄 Sync Zepp", key="btn_zepp_sync_top", width="stretch"):
-        with st.spinner("Sincronizando Zepp..."):
-            _sync_result = _zepp_sync_dashboard(hoje_sql)
-        st.cache_data.clear()
-        _notif(_sync_result, "ok" if "passos" in _sync_result else "info")
-        st.rerun()
+    col_sync1, col_sync2 = st.columns(2)
+    with col_sync1:
+        if st.button("🔄 Sync Zepp", key="btn_zepp_sync_top", width="stretch"):
+            with st.spinner("Sincronizando Zepp..."):
+                _sync_result = _zepp_sync_dashboard(hoje_sql)
+            st.cache_data.clear()
+            _notif(_sync_result, "ok" if "passos" in _sync_result or "sincronizado" in _sync_result.lower() else "info")
+            st.rerun()
+    with col_sync2:
+        if st.button("💪 Sync Hevy", key="btn_hevy_sync_top", width="stretch"):
+            with st.spinner("Sincronizando Hevy..."):
+                _h_sync_result = _hevy_sync_dashboard()
+            st.cache_data.clear()
+            _notif(_h_sync_result, "ok" if "sincronizado" in _h_sync_result.lower() or "atualizados" in _h_sync_result.lower() else "info")
+            st.rerun()
 
 # ── Notificação animada pendente (roda UMA vez por ação) ─────────────────────
 _render_notif_pendente()
@@ -1322,9 +1411,9 @@ def az_card(icon, lbl, val, unit, extra=""):
         f'{extra}'
     )
 
-a1, a2, a3, a4, a5, a6 = st.columns(6)
+a_col1, a_col2, a_col3, a_col4 = st.columns(4)
 
-with a1:
+with a_col1:
     pct_p = passos / META_PASS if META_PASS else 0
     st.markdown(az_card(
         "👟", "Passos", f"{passos:,}", f"meta {META_PASS:,}",
@@ -1333,7 +1422,7 @@ with a1:
         f'{int(pct_p * 100)}%</div>',
     ), unsafe_allow_html=True)
 
-with a2:
+with a_col2:
     st.markdown(az_card(
         "🔥", "Gasto Total", f"{gasto_total_dia:,}", "kcal (TMB + Atividade)",
         f'<div style="font-size:14px;font-weight:700;color:{def_cor};margin-top:7px;text-align:center">'
@@ -1342,11 +1431,11 @@ with a2:
         f'Só atividade: {cal_gasta:,} kcal</div>',
     ), unsafe_allow_html=True)
 
-with a3:
-    st.markdown(az_card("📍", "Distância", f"{dist_km:.1f}", "km hoje"),
+with a_col3:
+    st.markdown(az_card("📍", "Distância Total", f"{dist_km:.1f}", "km hoje"),
                 unsafe_allow_html=True)
 
-with a4:
+with a_col4:
     pct_sp = sono_prof / META_SONO if META_SONO else 0
     st.markdown(az_card(
         "🌙", "Sono total", sono_h_fmt, "Sono profundo",
@@ -1355,7 +1444,9 @@ with a4:
         f'{sono_prof} min · meta {META_SONO}</div>',
     ), unsafe_allow_html=True)
 
-with a5:
+a_col5, a_col6, a_col7, a_col8 = st.columns(4)
+
+with a_col5:
     pct_hrv = min(1.0, max(0, (hrv - 20) / 60)) if hrv else 0  # escala 20-80ms (range real masculino)
     st.markdown(az_card(
         "💓", "HRV", str(hrv), "ms",
@@ -1367,7 +1458,7 @@ with a5:
         f'<div style="font-size:15px;font-weight:700;color:{hrv_cor};margin-top:5px;text-align:center">{hrv_txt}</div>',
     ), unsafe_allow_html=True)
 
-with a6:
+with a_col6:
     svg_pai = (
         f'<div style="position:relative;width:60px;height:60px;margin:4px auto 2px">'
         f'<svg width="60" height="60" viewBox="0 0 60 60" style="transform:rotate(-90deg)">'
@@ -1380,6 +1471,55 @@ with a6:
         f'letter-spacing:1px;text-align:center">meta >= {META_PAI}</div>'
     )
     st.markdown(az_card("⚡", "PAI", "", "", svg_pai), unsafe_allow_html=True)
+
+with a_col7:
+    corrida_info = f'<div style="font-size:14px;font-weight:700;color:{CYAN};margin-top:7px;text-align:center">{corrida_cal} kcal gastas</div>' if corrida_cal > 0 else f'<div style="font-size:13px;color:{MUTED};margin-top:7px;text-align:center">Sem corrida registrada</div>'
+    st.markdown(az_card(
+        "🏃", "Corrida (Amazfit)", f"{corrida_km:.2f} km", "distância hoje",
+        corrida_info
+    ), unsafe_allow_html=True)
+
+with a_col8:
+    df_hevy_hoje = db("""
+        SELECT titulo, duracao_min, volume_kg
+        FROM hevy_treinos
+        WHERE date(data_hora, 'localtime') = ?
+        ORDER BY data_hora DESC LIMIT 1
+    """, [hoje_sql])
+    if not df_hevy_hoje.empty:
+        h_title = df_hevy_hoje["titulo"].iloc[0]
+        h_dur = int(df_hevy_hoje["duracao_min"].iloc[0])
+        h_vol = float(df_hevy_hoje["volume_kg"].iloc[0])
+        hevy_val = f"🏋️ {h_dur} min"
+        hevy_extra = (
+            f'<div style="font-size:12px;font-weight:700;color:{GREEN};margin-top:6px;text-align:center;text-overflow:ellipsis;overflow:hidden;white-space:nowrap">{h_title}</div>'
+            f'<div style="font-size:11px;color:{MUTED};margin-top:2px;text-align:center">Vol: {h_vol:,.0f} kg</div>'
+        )
+    else:
+        df_hevy_last = db("""
+            SELECT titulo, date(data_hora, 'localtime') as data_treino, duracao_min, volume_kg
+            FROM hevy_treinos
+            ORDER BY data_hora DESC LIMIT 1
+        """)
+        if not df_hevy_last.empty:
+            l_title = df_hevy_last["titulo"].iloc[0]
+            l_date = df_hevy_last["data_treino"].iloc[0]
+            try:
+                l_date_fmt = datetime.strptime(l_date, "%Y-%m-%d").strftime("%d/%m")
+            except Exception:
+                l_date_fmt = l_date
+            hevy_val = "Descanso"
+            hevy_extra = (
+                f'<div style="font-size:11px;color:{MUTED};margin-top:6px;text-align:center">Último: {l_date_fmt}</div>'
+                f'<div style="font-size:11px;font-weight:700;color:{TEXT};margin-top:2px;text-align:center;text-overflow:ellipsis;overflow:hidden;white-space:nowrap">{l_title}</div>'
+            )
+        else:
+            hevy_val = "Sem treinos"
+            hevy_extra = f'<div style="font-size:11px;color:{MUTED};margin-top:6px;text-align:center">Nenhum treino sincronizado</div>'
+    st.markdown(az_card(
+        "💪", "Musculação (Hevy)", hevy_val, "volume / tempo",
+        hevy_extra
+    ), unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 3 — EVOLUÇÃO
@@ -2010,7 +2150,8 @@ df_hist = db(f"""
         date(data_hora) as dia,
         passos, calorias_gastas, distancia_km,
         sono_total_min, sono_profundo_min,
-        hrv_ms, pai
+        hrv_ms, pai,
+        corrida_km, corrida_cal
     FROM amazfit_dados
     WHERE date(data_hora) >= date('now', '-{n_dias} days')
     ORDER BY dia ASC
@@ -2258,6 +2399,24 @@ if not df_hist.empty:
                 media_carb = media(df_macro_hist, "carb")
                 media_gord = media(df_macro_hist, "gord")
                 
+                # Hevy history query
+                df_hevy_hist = db(f"""
+                    SELECT 
+                        COUNT(*) as count_treino,
+                        SUM(duracao_min) as dur,
+                        SUM(volume_kg) as vol
+                    FROM hevy_treinos
+                    WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
+                """)
+                total_treinos = int(df_hevy_hist["count_treino"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["count_treino"].iloc[0] is not None else 0
+                total_vol = float(df_hevy_hist["vol"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["vol"].iloc[0] is not None else 0.0
+                total_dur = int(df_hevy_hist["dur"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["dur"].iloc[0] is not None else 0
+                media_vol_treino = total_vol / total_treinos if total_treinos > 0 else 0.0
+                media_dur_treino = total_dur / total_treinos if total_treinos > 0 else 0.0
+                
+                media_corrida_km = media(df_hist, "corrida_km")
+                media_corrida_cal = media(df_hist, "corrida_cal")
+                
                 # Prompt clínico
                 prompt = (
                     "Você é o IA Coach de Elite do Leandro — atuando como Arquiteto de Performance Humana, Nutricionista Esportivo de Elite e Endocrinologista de Alta Performance.\\n"
@@ -2275,6 +2434,10 @@ if not df_hist.empty:
                     f"- Consumo de Carboidratos: {fmt_val(media_carb, ' g', 0)}\\n"
                     f"- Consumo de Gorduras: {fmt_val(media_gord, ' g', 0)}\\n"
                     f"- Gasto Calórico de Atividade (Amazfit): {fmt_val(media_cal_gastas, ' kcal', 0)}\\n"
+                    f"- Média de Corrida (Amazfit): {fmt_val(media_corrida_km, ' km/dia', 2)} ({fmt_val(media_corrida_cal, ' kcal/dia', 0)})\\n"
+                    f"- Treinos de Musculação (Hevy): {total_treinos} treinos realizados no período\\n"
+                    f"- Média de Volume de Treino: {fmt_val(media_vol_treino, ' kg', 0)}\\n"
+                    f"- Média de Duração de Treino: {fmt_val(media_dur_treino, ' min', 0)}\\n"
                     f"- Déficit Calórico Médio Estimado: {fmt_val(media_deficit, ' kcal', 0)}\\n"
                     f"- Média de Passos Diários: {fmt_val(media_passos, '', 0)}\\n"
                     f"- Média de Sono Total: {fmt_val(media_sono, ' min', 0)}\\n"

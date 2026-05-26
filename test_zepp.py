@@ -97,6 +97,7 @@ try:
             print(f"\n   → Salvando no banco de dados...")
             try:
                 import db as DB
+                DB.init_tables()
                 day_key = f"{TODAY} 00:00:00"
                 # Preserva HRV/PAI existentes
                 df_ex = DB.query(
@@ -105,6 +106,9 @@ try:
                 )
                 hrv_ex = int(df_ex["hrv_ms"].iloc[0]) if not df_ex.empty else 0
                 pai_ex = int(df_ex["pai"].iloc[0])    if not df_ex.empty else 0
+
+                run_dist_m = float(stp.get("runDist", 0) or 0)
+                run_cal = int(stp.get("runCal", 0) or 0)
 
                 row = {
                     "data_hora":         day_key,
@@ -115,15 +119,17 @@ try:
                     "sono_profundo_min": deep,
                     "hrv_ms":            hrv_ex,
                     "pai":               pai_ex,
+                    "corrida_km":        round(run_dist_m / 1000.0, 2),
+                    "corrida_cal":       run_cal,
                 }
                 DB.execute("DELETE FROM amazfit_dados WHERE data_hora=?", [day_key])
                 DB.execute(
-                    "INSERT INTO amazfit_dados VALUES (?,?,?,?,?,?,?,?)",
+                    "INSERT INTO amazfit_dados (data_hora, passos, calorias_gastas, distancia_km, sono_total_min, sono_profundo_min, hrv_ms, pai, corrida_km, corrida_cal) VALUES (?,?,?,?,?,?,?,?,?,?)",
                     [row["data_hora"], row["passos"], row["calorias_gastas"],
                      row["distancia_km"], row["sono_total_min"], row["sono_profundo_min"],
-                     row["hrv_ms"], row["pai"]]
+                     row["hrv_ms"], row["pai"], row["corrida_km"], row["corrida_cal"]]
                 )
-                print(f"   ✅ Salvo no banco! HRV/PAI preservados: {hrv_ex}ms / {pai_ex}")
+                print(f"   ✅ Salvo no banco! Corrida: {row['corrida_km']}km ({row['corrida_cal']} kcal) | HRV/PAI preservados: {hrv_ex}ms / {pai_ex}")
                 print(f"\n   → Dashboard já vai mostrar os dados atualizados.")
             except Exception as db_err:
                 print(f"   ❌ Erro ao salvar no banco: {db_err}")

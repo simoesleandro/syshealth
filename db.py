@@ -144,7 +144,12 @@ _TABLES_PG = [
         data_hora TEXT PRIMARY KEY, passos INTEGER DEFAULT 0,
         calorias_gastas INTEGER DEFAULT 0, distancia_km REAL DEFAULT 0,
         sono_total_min INTEGER DEFAULT 0, sono_profundo_min INTEGER DEFAULT 0,
-        hrv_ms INTEGER DEFAULT 0, pai INTEGER DEFAULT 0)""",
+        hrv_ms INTEGER DEFAULT 0, pai INTEGER DEFAULT 0,
+        corrida_km REAL DEFAULT 0, corrida_cal INTEGER DEFAULT 0)""",
+    """CREATE TABLE IF NOT EXISTS hevy_treinos (
+        id TEXT PRIMARY KEY, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        titulo TEXT, descricao TEXT, exercicios_json TEXT,
+        duracao_min INTEGER, volume_kg REAL)""",
     "CREATE INDEX IF NOT EXISTS idx_refeicoes_data ON refeicoes(data_hora)",
     "CREATE INDEX IF NOT EXISTS idx_agua_data ON agua(data_hora)",
     "CREATE INDEX IF NOT EXISTS idx_medicacao_data ON medicacao(data_hora)",
@@ -171,7 +176,12 @@ _TABLES_SQLITE = [
         data_hora TEXT PRIMARY KEY, passos INTEGER DEFAULT 0,
         calorias_gastas INTEGER DEFAULT 0, distancia_km REAL DEFAULT 0,
         sono_total_min INTEGER DEFAULT 0, sono_profundo_min INTEGER DEFAULT 0,
-        hrv_ms INTEGER DEFAULT 0, pai INTEGER DEFAULT 0)""",
+        hrv_ms INTEGER DEFAULT 0, pai INTEGER DEFAULT 0,
+        corrida_km REAL DEFAULT 0, corrida_cal INTEGER DEFAULT 0)""",
+    """CREATE TABLE IF NOT EXISTS hevy_treinos (
+        id TEXT PRIMARY KEY, data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+        titulo TEXT, descricao TEXT, exercicios_json TEXT,
+        duracao_min INTEGER, volume_kg REAL)""",
     "CREATE INDEX IF NOT EXISTS idx_refeicoes_data ON refeicoes(data_hora)",
     "CREATE INDEX IF NOT EXISTS idx_agua_data ON agua(data_hora)",
     "CREATE INDEX IF NOT EXISTS idx_medicacao_data ON medicacao(data_hora)",
@@ -184,20 +194,27 @@ def init_tables():
         for sql in _TABLES_PG:
             conn.run(sql)
         try:
-            # Check and migrate Supabase column if needed
+            # Check and migrate Supabase column components_json
             cols = conn.run("SELECT column_name FROM information_schema.columns WHERE table_name='refeicoes' AND column_name='componentes_json'")
             if not cols:
                 conn.run("ALTER TABLE refeicoes ADD COLUMN componentes_json TEXT")
                 print("✅ Supabase: Coluna 'componentes_json' adicionada à tabela 'refeicoes'.")
+            
+            # Check and migrate Supabase columns corrida_km and corrida_cal
+            cols_corrida = conn.run("SELECT column_name FROM information_schema.columns WHERE table_name='amazfit_dados' AND column_name='corrida_km'")
+            if not cols_corrida:
+                conn.run("ALTER TABLE amazfit_dados ADD COLUMN corrida_km REAL DEFAULT 0")
+                conn.run("ALTER TABLE amazfit_dados ADD COLUMN corrida_cal INTEGER DEFAULT 0")
+                print("✅ Supabase: Colunas 'corrida_km' e 'corrida_cal' adicionadas à tabela 'amazfit_dados'.")
         except Exception as e:
-            print(f"⚠️ Erro ao verificar/adicionar coluna no Supabase: {e}")
+            print(f"⚠️ Erro ao verificar/adicionar colunas no Supabase: {e}")
     else:
         conn = sqlite3.connect(DB_PATH)
         for sql in _TABLES_SQLITE:
             conn.execute(sql)
         conn.commit()
         try:
-            # Check and migrate SQLite column if needed
+            # Check and migrate SQLite column components_json
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(refeicoes)")
             columns = [info[1] for info in cursor.fetchall()]
@@ -205,8 +222,17 @@ def init_tables():
                 conn.execute("ALTER TABLE refeicoes ADD COLUMN componentes_json TEXT")
                 conn.commit()
                 print("✅ SQLite: Coluna 'componentes_json' adicionada à tabela 'refeicoes'.")
+            
+            # Check and migrate SQLite columns corrida_km and corrida_cal
+            cursor.execute("PRAGMA table_info(amazfit_dados)")
+            columns_az = [info[1] for info in cursor.fetchall()]
+            if 'corrida_km' not in columns_az:
+                conn.execute("ALTER TABLE amazfit_dados ADD COLUMN corrida_km REAL DEFAULT 0")
+                conn.execute("ALTER TABLE amazfit_dados ADD COLUMN corrida_cal INTEGER DEFAULT 0")
+                conn.commit()
+                print("✅ SQLite: Colunas 'corrida_km' e 'corrida_cal' adicionadas à tabela 'amazfit_dados'.")
         except Exception as e:
-            print(f"⚠️ Erro ao verificar/adicionar coluna no SQLite: {e}")
+            print(f"⚠️ Erro ao verificar/adicionar colunas no SQLite: {e}")
         finally:
             conn.close()
 
