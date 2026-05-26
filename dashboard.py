@@ -1570,11 +1570,13 @@ def kpi_card(acento, lbl, val, unit, extra=""):
     return panel(
         f'<div style="position:absolute;top:0;left:0;right:0;height:3px;'
         f'border-radius:10px 10px 0 0;background:{acento}"></div>'
+        f'<div style="text-align:center">'
         f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1.5px;'
         f'text-transform:uppercase;color:{MUTED};margin-bottom:10px">{lbl}</div>'
         f'<div><span style="font-size:36px;font-weight:800;color:{TEXT};line-height:1;'
         f'letter-spacing:-1px">{val}</span>'
         f'<span style="font-size:18px;color:{MUTED};margin-left:5px">{unit}</span></div>'
+        f'</div>'
         f'{extra}',
         extra="position:relative;overflow:hidden;min-height:210px"
     )
@@ -1829,28 +1831,28 @@ else:
             _horario_html = ""
             if _ev["dia_todo"]:
                 _horario_html = (
-                    f'<span style="font-family:{MONO};font-size:10px;font-weight:700;'
+                    f'<span style="font-family:{MONO};font-size:11px;font-weight:700;'
                     f'color:{MUTED};background:{BORDER};border-radius:3px;'
-                    f'padding:1px 6px">DIA TODO</span>'
+                    f'padding:2px 8px">DIA TODO</span>'
                 )
             elif _ev["inicio"]:
                 _horario_html = (
-                    f'<span style="font-family:{MONO};font-size:12px;font-weight:700;'
+                    f'<span style="font-family:{MONO};font-size:15px;font-weight:700;'
                     f'color:{_ev_cor}">{_ev["inicio"]}</span>'
-                    + (f'<span style="font-size:11px;color:{GHOST}"> → {_ev["fim"]}</span>'
+                    + (f'<span style="font-size:13px;color:{GHOST}"> → {_ev["fim"]}</span>'
                        if _ev["fim"] else "")
                 )
 
             _local_html = ""
             if _ev["local"]:
                 _local_html = (
-                    f'<div style="font-size:10px;color:{GHOST};margin-top:5px;'
+                    f'<div style="font-size:12px;color:{GHOST};margin-top:7px;'
                     f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
                     f'📍 {_ev["local"]}</div>'
                 )
 
             _treino_badge = (
-                f'<span style="font-family:{MONO};font-size:8px;font-weight:700;'
+                f'<span style="font-family:{MONO};font-size:9px;font-weight:700;'
                 f'background:rgba(0,230,118,0.12);color:{GREEN};'
                 f'border:1px solid rgba(0,230,118,0.3);padding:1px 6px;'
                 f'border-radius:3px;letter-spacing:1px;margin-left:6px">TREINO</span>'
@@ -1860,11 +1862,12 @@ else:
             _card_ag = (
                 f'<div style="background:{_ev_bg};border:1px solid {_ev_border};'
                 f'border-top:3px solid {_ev_cor};border-radius:8px;'
-                f'padding:12px 14px;height:100%">'
-                f'<div style="margin-bottom:8px">{_horario_html}</div>'
-                f'<div style="font-size:13px;font-weight:700;color:{TEXT};'
-                f'line-height:1.3;margin-bottom:4px">'
-                f'{_ev["titulo"]}{_treino_badge}</div>'
+                f'padding:18px 18px 16px;height:100%">'
+                f'<div style="margin-bottom:10px">{_horario_html}</div>'
+                f'<div style="font-size:15px;font-weight:700;color:{TEXT};'
+                f'line-height:1.35;margin-bottom:6px">'
+                f'{_ev["titulo"]}</div>'
+                f'<div style="margin-top:4px">{_treino_badge}</div>'
                 f'{_local_html}'
                 f'</div>'
             )
@@ -1907,13 +1910,16 @@ with c1:
         fig.add_hline(y=83, line_dash="dash", line_color=RED, line_width=1, opacity=0.4,
                       annotation_text="Meta 83 kg", annotation_font_color=RED,
                       annotation_font_size=10)
+        _y_min = max(80, df_p["peso"].min() - 3)
+        _y_max = df_p["peso"].max() + 3
         fig.update_layout(
-            height=210, margin=dict(t=8, b=8, l=0, r=0),
+            height=300, margin=dict(t=12, b=8, l=0, r=0),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
             xaxis=dict(gridcolor=BORDER, title=None, tickformat="%d/%m/%y",
                        tickfont=dict(color=GHOST, size=9, family="monospace")),
             yaxis=dict(gridcolor=BORDER, title=None,
-                       tickfont=dict(color=GHOST, size=9)),
+                       tickfont=dict(color=GHOST, size=9),
+                       range=[_y_min, _y_max]),
             showlegend=False,
         )
         st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
@@ -2337,22 +2343,22 @@ with col_s:
             is_editing = st.session_state.get(edit_key, False)
 
             # ── Card da dose ──────────────────────────────────────────────────
-            _mc, _me = st.columns([1, 0.13])
+            _mc, _me = st.columns([1, 0.10])
             with _mc:
                 if is_atual:
-                    # Dose atual — card destacado verde
+                    # Dose atual — pill compacta verde
                     st.markdown(
-                        f'<div style="background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.28);'
-                        f'border-left:3px solid {GREEN};border-radius:0 8px 8px 0;'
-                        f'padding:10px 14px;margin-bottom:3px;'
+                        f'<div style="background:rgba(0,230,118,0.06);border:1px solid rgba(0,230,118,0.25);'
+                        f'border-left:3px solid {GREEN};border-radius:0 6px 6px 0;'
+                        f'padding:7px 12px;margin-bottom:3px;'
                         f'display:flex;align-items:center;gap:10px">'
-                        f'<span style="width:8px;height:8px;border-radius:50%;'
+                        f'<span style="width:7px;height:7px;border-radius:50%;'
                         f'background:{GREEN};flex-shrink:0;display:inline-block"></span>'
-                        f'<span style="font-family:{MONO};font-size:11px;color:{MUTED}">{data_fmt}</span>'
-                        f'<span style="font-size:18px;font-weight:800;color:{GREEN};letter-spacing:-0.5px">{dose:.1f} mg</span>'
+                        f'<span style="font-family:{MONO};font-size:10px;color:{MUTED};flex:1">{data_fmt}</span>'
+                        f'<span style="font-size:16px;font-weight:800;color:{GREEN};letter-spacing:-0.5px">{dose:.1f} mg</span>'
                         f'<span style="font-family:{MONO};font-size:8px;font-weight:700;'
                         f'background:rgba(0,230,118,0.12);color:{GREEN};'
-                        f'border:1px solid rgba(0,230,118,0.3);padding:2px 7px;'
+                        f'border:1px solid rgba(0,230,118,0.3);padding:2px 6px;'
                         f'border-radius:3px;letter-spacing:1px">ATUAL</span>'
                         f'</div>',
                         unsafe_allow_html=True,
@@ -2360,18 +2366,18 @@ with col_s:
                 else:
                     # Doses anteriores — linha minimizada
                     st.markdown(
-                        f'<div style="border-left:2px solid {BORDER};padding:5px 10px 5px 12px;'
+                        f'<div style="border-left:2px solid {BORDER};padding:4px 10px 4px 12px;'
                         f'margin-bottom:2px;display:flex;align-items:center;gap:10px;'
-                        f'opacity:0.65">'
-                        f'<span style="width:5px;height:5px;border-radius:50%;'
+                        f'opacity:0.55">'
+                        f'<span style="width:4px;height:4px;border-radius:50%;'
                         f'background:{GHOST};flex-shrink:0;display:inline-block"></span>'
-                        f'<span style="font-family:{MONO};font-size:10px;color:{GHOST}">{data_fmt}</span>'
-                        f'<span style="font-size:13px;font-weight:700;color:{MUTED}">{dose:.1f} mg</span>'
+                        f'<span style="font-family:{MONO};font-size:9px;color:{GHOST};flex:1">{data_fmt}</span>'
+                        f'<span style="font-size:12px;font-weight:700;color:{MUTED}">{dose:.1f} mg</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
             with _me:
-                st.markdown('<div style="margin-top:6px"></div>', unsafe_allow_html=True)
+                st.markdown('<div style="margin-top:4px"></div>', unsafe_allow_html=True)
                 _edit_lbl = "✕" if is_editing else "✏"
                 if st.button(_edit_lbl, key=f"tog_med_{mid}", use_container_width=True,
                              help="Editar este registro"):
@@ -2819,14 +2825,29 @@ if not df_hist.empty:
             id_map[lbl] = int(r_row["id"])
 
     with sel_col:
-        sel_past = st.selectbox(
-            "Histórico de Análises:",
-            options=past_options,
-            label_visibility="collapsed",
-            key="ia_hist_sel",
-        )
-        
-    if sel_past != "📂  Histórico de análises ▾":
+        if len(past_options) > 1:
+            st.markdown(
+                f'<div style="font-family:{MONO};font-size:9px;font-weight:700;'
+                f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};'
+                f'margin-bottom:4px">📂 HISTÓRICO DE ANÁLISES</div>',
+                unsafe_allow_html=True,
+            )
+            sel_past = st.radio(
+                "Histórico",
+                options=past_options[1:],   # sem o placeholder
+                label_visibility="collapsed",
+                key="ia_hist_sel",
+                horizontal=True,
+            )
+        else:
+            sel_past = None
+            st.markdown(
+                f'<div style="font-family:{MONO};font-size:10px;color:{GHOST};'
+                f'padding-top:8px">Sem análises anteriores</div>',
+                unsafe_allow_html=True,
+            )
+
+    if sel_past and sel_past in id_map:
         sel_id = id_map[sel_past]
         df_sel = db("SELECT analise_txt FROM ia_analises_clinicas WHERE id = ?", [sel_id])
         if not df_sel.empty:
