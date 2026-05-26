@@ -556,6 +556,105 @@ def _hevy_sync_dashboard() -> str:
         return f"Erro Hevy: {e}"
 
 
+# ── GOOGLE CALENDAR ──────────────────────────────────────────────────────────
+def _get_gcal_creds():
+    """Monta credenciais OAuth2 usando refresh_token (sem browser)."""
+    try:
+        from google.oauth2.credentials import Credentials
+        client_id     = (getattr(st.secrets, "get", lambda k, d=None: d)("GOOGLE_CLIENT_ID")     or os.getenv("GOOGLE_CLIENT_ID",     "")).strip()
+        client_secret = (getattr(st.secrets, "get", lambda k, d=None: d)("GOOGLE_CLIENT_SECRET") or os.getenv("GOOGLE_CLIENT_SECRET", "")).strip()
+        refresh_token = (getattr(st.secrets, "get", lambda k, d=None: d)("GOOGLE_REFRESH_TOKEN") or os.getenv("GOOGLE_REFRESH_TOKEN", "")).strip()
+        if not (client_id and client_secret and refresh_token):
+            return None
+        return Credentials(
+            token=None,
+            refresh_token=refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=["https://www.googleapis.com/auth/calendar.readonly"],
+        )
+    except Exception:
+        return None
+
+
+@st.cache_data(ttl=300)
+def _get_gcal_eventos(dia: str) -> list[dict]:
+    """
+    Busca todos os eventos do Google Calendar para o dia informado.
+    Retorna lista de dicts: {titulo, inicio, fim, local, descricao, cor, dia_todo}.
+    Cache de 5 minutos.
+    """
+    try:
+        from googleapiclient.discovery import build
+        import googleapiclient.errors
+
+        creds = _get_gcal_creds()
+        if creds is None:
+            return []
+
+        service = build("calendar", "v3", credentials=creds, cache_discovery=False)
+
+        # Intervalo do dia em UTC (São Paulo = UTC-3)
+        inicio_dia = f"{dia}T03:00:00Z"   # 00:00 BRT = 03:00 UTC
+        fim_dia    = f"{dia}T26:59:59Z"   # 23:59 BRT = 02:59+1 UTC → usa dia+1
+        from datetime import date as _date2, timedelta
+        dia_dt  = _date2.fromisoformat(dia)
+        fim_utc = (dia_dt + timedelta(days=1)).isoformat() + "T02:59:59Z"
+
+        result = service.events().list(
+            calendarId="primary",
+            timeMin=f"{dia}T03:00:00Z",
+            timeMax=fim_utc,
+            singleEvents=True,
+            orderBy="startTime",
+            maxResults=15,
+        ).execute()
+
+        eventos = []
+        for ev in result.get("items", []):
+            start = ev.get("start", {})
+            end   = ev.get("end",   {})
+            dia_todo = "date" in start and "dateTime" not in start
+
+            if dia_todo:
+                inicio_fmt = "Dia todo"
+                fim_fmt    = ""
+            else:
+                def _fmt_hr(iso):
+                    try:
+                        from datetime import datetime as _dt2
+                        dt = _dt2.fromisoformat(iso.replace("Z", "+00:00"))
+                        dt_br = dt.astimezone(_BR)
+                        return dt_br.strftime("%H:%M")
+                    except Exception:
+                        return iso[:5]
+                inicio_fmt = _fmt_hr(start.get("dateTime", ""))
+                fim_fmt    = _fmt_hr(end.get("dateTime",   ""))
+
+            # Cor do evento (Google retorna colorId 1-11)
+            _gcal_cores = {
+                "1":"#7986cb","2":"#33b679","3":"#8e24aa","4":"#e67c73",
+                "5":"#f6bf26","6":"#f4511e","7":"#039be5","8":"#616161",
+                "9":"#3f51b5","10":"#0b8043","11":"#d50000",
+            }
+            cor_ev = _gcal_cores.get(ev.get("colorId", ""), CYAN)
+
+            eventos.append({
+                "titulo":    ev.get("summary", "(sem título)"),
+                "inicio":    inicio_fmt,
+                "fim":       fim_fmt,
+                "local":     ev.get("location", ""),
+                "descricao": ev.get("description", ""),
+                "cor":       cor_ev,
+                "dia_todo":  dia_todo,
+            })
+        return eventos
+    except Exception as e:
+        return [{"titulo": f"Erro ao carregar agenda: {e}", "inicio": "", "fim": "",
+                 "local": "", "descricao": "", "cor": RED, "dia_todo": False}]
+
+
 # ── METAS ────────────────────────────────────────────────────────────────────
 TMB       = 1863  # Taxa Metabólica Basal — meta calórica é calculada dinamicamente
 META_PROT = 190
@@ -1659,7 +1758,122 @@ with a_col8:
     ), unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 3 — EVOLUÇÃO
+# SEÇÃO 3 — AGENDA DO DIA (Google Calendar)
+# ════════════════════════════════════════════════════════════════════════════
+_gcal_ok = bool(
+    (os.getenv("GOOGLE_CLIENT_ID") or "").strip() or
+    (os.getenv("GOOGLE_REFRESH_TOKEN") or "").strip()
+)
+try:
+    _gcal_ok = _gcal_ok or bool(
+        st.secrets.get("GOOGLE_CLIENT_ID") or st.secrets.get("GOOGLE_REFRESH_TOKEN")
+    )
+except Exception:
+    pass
+
+st.markdown(sec("Agenda", f"Hoje · {hoje_pt}"), unsafe_allow_html=True)
+
+if not _gcal_ok:
+    # Card de configuração — ainda sem credenciais
+    st.markdown(
+        f'<div style="background:{BG2};border:1px dashed {BORDER};border-radius:10px;'
+        f'padding:20px 24px;display:flex;align-items:center;gap:16px">'
+        f'<span style="font-size:28px">📅</span>'
+        f'<div>'
+        f'<div style="font-family:{MONO};font-size:10px;font-weight:700;letter-spacing:1.5px;'
+        f'text-transform:uppercase;color:{MUTED};margin-bottom:4px">Google Calendar não configurado</div>'
+        f'<div style="font-size:12px;color:{GHOST}">Rode <code style="background:#0a1020;padding:1px 6px;'
+        f'border-radius:3px;color:{CYAN}">python get_gcal_token.py</code> localmente e adicione '
+        f'<code style="background:#0a1020;padding:1px 6px;border-radius:3px;color:{CYAN}">'
+        f'GOOGLE_CLIENT_ID</code>, <code style="background:#0a1020;padding:1px 6px;'
+        f'border-radius:3px;color:{CYAN}">GOOGLE_CLIENT_SECRET</code> e '
+        f'<code style="background:#0a1020;padding:1px 6px;border-radius:3px;color:{CYAN}">'
+        f'GOOGLE_REFRESH_TOKEN</code> nos Secrets do Streamlit.</div>'
+        f'</div></div>',
+        unsafe_allow_html=True,
+    )
+else:
+    _eventos = _get_gcal_eventos(hoje_sql)
+    _ag_left, _ag_right = st.columns([1, 0.18])
+    with _ag_right:
+        if st.button("🔄 Agenda", key="btn_gcal_refresh", use_container_width=True,
+                     help="Atualizar eventos do Google Calendar"):
+            st.cache_data.clear()
+            st.rerun()
+
+    if not _eventos:
+        st.markdown(
+            f'<div style="text-align:center;padding:24px;border:1px dashed {BORDER};'
+            f'border-radius:8px">'
+            f'<div style="font-size:24px;margin-bottom:6px">✅</div>'
+            f'<div style="font-family:{MONO};font-size:10px;font-weight:700;letter-spacing:1.5px;'
+            f'text-transform:uppercase;color:{MUTED}">Sem eventos para hoje</div>'
+            f'<div style="font-size:11px;color:{GHOST};margin-top:4px">Dia livre na agenda</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        # Detecta se tem treino no título (para destaque automático)
+        _TREINO_KW = ["treino", "série", "serie", "musculação", "musculacao",
+                      "cardio", "hiit", "zona 2", "zone 2", "corrida", "gym",
+                      "academia", "workout", "cross", "funcional"]
+
+        _cols_ag = st.columns(min(len(_eventos), 4))
+        for _i, _ev in enumerate(_eventos):
+            _titulo_low = _ev["titulo"].lower()
+            _is_treino  = any(kw in _titulo_low for kw in _TREINO_KW)
+            _ev_cor     = GREEN if _is_treino else _ev["cor"]
+            _ev_bg      = "rgba(0,230,118,0.05)" if _is_treino else f"{BG2}"
+            _ev_border  = f"rgba(0,230,118,0.3)" if _is_treino else f"{BORDER}"
+
+            _horario_html = ""
+            if _ev["dia_todo"]:
+                _horario_html = (
+                    f'<span style="font-family:{MONO};font-size:10px;font-weight:700;'
+                    f'color:{MUTED};background:{BORDER};border-radius:3px;'
+                    f'padding:1px 6px">DIA TODO</span>'
+                )
+            elif _ev["inicio"]:
+                _horario_html = (
+                    f'<span style="font-family:{MONO};font-size:12px;font-weight:700;'
+                    f'color:{_ev_cor}">{_ev["inicio"]}</span>'
+                    + (f'<span style="font-size:11px;color:{GHOST}"> → {_ev["fim"]}</span>'
+                       if _ev["fim"] else "")
+                )
+
+            _local_html = ""
+            if _ev["local"]:
+                _local_html = (
+                    f'<div style="font-size:10px;color:{GHOST};margin-top:5px;'
+                    f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+                    f'📍 {_ev["local"]}</div>'
+                )
+
+            _treino_badge = (
+                f'<span style="font-family:{MONO};font-size:8px;font-weight:700;'
+                f'background:rgba(0,230,118,0.12);color:{GREEN};'
+                f'border:1px solid rgba(0,230,118,0.3);padding:1px 6px;'
+                f'border-radius:3px;letter-spacing:1px;margin-left:6px">TREINO</span>'
+                if _is_treino else ""
+            )
+
+            _card_ag = (
+                f'<div style="background:{_ev_bg};border:1px solid {_ev_border};'
+                f'border-top:3px solid {_ev_cor};border-radius:8px;'
+                f'padding:12px 14px;height:100%">'
+                f'<div style="margin-bottom:8px">{_horario_html}</div>'
+                f'<div style="font-size:13px;font-weight:700;color:{TEXT};'
+                f'line-height:1.3;margin-bottom:4px">'
+                f'{_ev["titulo"]}{_treino_badge}</div>'
+                f'{_local_html}'
+                f'</div>'
+            )
+
+            with _cols_ag[_i % 4]:
+                st.markdown(_card_ag, unsafe_allow_html=True)
+
+# ════════════════════════════════════════════════════════════════════════════
+# SEÇÃO 4 — EVOLUÇÃO
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown(sec("Evolução", "Peso histórico · Macros do dia"), unsafe_allow_html=True)
 
