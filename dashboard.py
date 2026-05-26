@@ -2268,23 +2268,24 @@ with col_s:
         unsafe_allow_html=True,
     )
 
-    # ── Tirzepatida — timeline colorida ──────────────────────────────────────
+    # ── Tirzepatida — registro sutil ─────────────────────────────────────────
     df_med = _q_medicacao()
     from datetime import date as _date, datetime as _datetime
 
-    # Cabeçalho compacto com botão menor
-    _th, _tn = st.columns([1, 0.28])
+    # Cabeçalho minimalista
+    _th, _tn = st.columns([1, 0.22])
     with _th:
         st.markdown(
-            f'<div style="display:flex;align-items:center;gap:7px;margin:14px 0 8px">'
-            f'<span style="font-size:14px">💉</span>'
-            f'<span style="font-family:{MONO};font-size:10px;font-weight:700;'
-            f'letter-spacing:1.5px;text-transform:uppercase;color:{TEXT}">Tirzepatida</span>'
+            f'<div style="display:flex;align-items:center;gap:6px;margin:12px 0 6px">'
+            f'<span style="width:6px;height:6px;border-radius:50%;background:{GREEN};'
+            f'box-shadow:0 0 6px rgba(0,230,118,0.5);flex-shrink:0;display:inline-block"></span>'
+            f'<span style="font-family:{MONO};font-size:9px;font-weight:700;'
+            f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED}">Tirzepatida</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
     with _tn:
-        st.markdown('<div style="margin-top:10px"></div>', unsafe_allow_html=True)
+        st.markdown('<div style="margin-top:8px"></div>', unsafe_allow_html=True)
         if st.button("＋ dose", key="btn_med_nova_toggle", use_container_width=True):
             st.session_state["med_nova_open"] = not st.session_state.get("med_nova_open", False)
             st.rerun()
@@ -2342,38 +2343,34 @@ with col_s:
             edit_key  = f"med_edit_{mid}"
             is_editing = st.session_state.get(edit_key, False)
 
-            # ── Card da dose ──────────────────────────────────────────────────
-            _mc, _me = st.columns([1, 0.09])
+            # ── Linha da dose ─────────────────────────────────────────────────
+            _mc, _me = st.columns([1, 0.08])
             with _mc:
                 if is_atual:
+                    # Dose atual: destaque verde sutil, sem card/background
                     st.markdown(
-                        f'<div style="display:flex;align-items:center;gap:8px;'
-                        f'background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.2);'
-                        f'border-left:2px solid {GREEN};border-radius:0 4px 4px 0;'
-                        f'padding:5px 10px;margin-bottom:2px">'
-                        f'<span style="width:6px;height:6px;border-radius:50%;background:{GREEN};flex-shrink:0"></span>'
+                        f'<div style="display:flex;align-items:center;gap:10px;'
+                        f'padding:4px 0 4px 10px;border-left:2px solid {GREEN};margin-bottom:1px">'
                         f'<span style="font-family:{MONO};font-size:9px;color:{MUTED};flex:1">{data_fmt}</span>'
-                        f'<span style="font-size:13px;font-weight:800;color:{GREEN}">{dose:.1f} mg</span>'
+                        f'<span style="font-size:14px;font-weight:800;color:{GREEN};letter-spacing:-0.3px">{dose:.1f} mg</span>'
                         f'<span style="font-family:{MONO};font-size:7px;font-weight:700;'
-                        f'background:rgba(0,230,118,0.12);color:{GREEN};'
-                        f'border:1px solid rgba(0,230,118,0.25);padding:1px 5px;'
-                        f'border-radius:3px;letter-spacing:1px">ATUAL</span>'
+                        f'color:{GREEN};opacity:0.7;letter-spacing:1px">ATUAL</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
                 else:
+                    # Doses anteriores: linha fina quase invisível
                     st.markdown(
-                        f'<div style="display:flex;align-items:center;gap:8px;'
-                        f'border-left:1px solid {BORDER2};padding:3px 8px 3px 10px;'
-                        f'margin-bottom:1px;opacity:0.45">'
-                        f'<span style="width:3px;height:3px;border-radius:50%;background:{GHOST};flex-shrink:0"></span>'
+                        f'<div style="display:flex;align-items:center;gap:10px;'
+                        f'padding:3px 0 3px 10px;border-left:1px solid {BORDER2};'
+                        f'margin-bottom:1px;opacity:0.35">'
                         f'<span style="font-family:{MONO};font-size:8px;color:{GHOST};flex:1">{data_fmt}</span>'
-                        f'<span style="font-size:11px;font-weight:600;color:{MUTED}">{dose:.1f} mg</span>'
+                        f'<span style="font-size:11px;color:{GHOST}">{dose:.1f} mg</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
             with _me:
-                st.markdown('<div style="margin-top:2px"></div>', unsafe_allow_html=True)
+                st.markdown('<div style="margin-top:1px"></div>', unsafe_allow_html=True)
                 _edit_lbl = "✕" if is_editing else "✏"
                 if st.button(_edit_lbl, key=f"tog_med_{mid}", use_container_width=True,
                              help="Editar este registro"):
@@ -2821,26 +2818,40 @@ if not df_hist.empty:
             id_map[lbl] = int(r_row["id"])
 
     with sel_col:
+        _hist_open = st.session_state.get("ia_hist_open", False)
+        _hist_lbl = "✕ FECHAR" if _hist_open else "📂 HISTÓRICO ▾"
+        if st.button(_hist_lbl, key="btn_ia_hist_toggle", use_container_width=True):
+            st.session_state["ia_hist_open"] = not _hist_open
+            st.rerun()
+
+    # ── Menu dropdown do histórico ─────────────────────────────────────────────
+    if st.session_state.get("ia_hist_open", False):
         if id_map:
             st.markdown(
-                f'<div style="font-family:{MONO};font-size:9px;font-weight:700;'
-                f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};'
-                f'margin-bottom:6px">📂 HISTÓRICO DE ANÁLISES</div>',
+                f'<div style="background:{BG3};border:1px solid {BORDER};'
+                f'border-top:2px solid {CYAN};border-radius:0 0 8px 8px;'
+                f'padding:6px 4px;margin-top:-2px">',
                 unsafe_allow_html=True,
             )
-            _hist_btn_cols = st.columns(min(len(id_map), 3))
-            for _hi, (_hlbl, _hid) in enumerate(id_map.items()):
-                with _hist_btn_cols[_hi % 3]:
-                    if st.button(_hlbl, key=f"ia_hist_btn_{_hid}",
-                                 use_container_width=True):
-                        _df_sel = db("SELECT analise_txt FROM ia_analises_clinicas WHERE id = ?", [_hid])
-                        if not _df_sel.empty:
-                            st.session_state["ia_coach_result"] = _df_sel["analise_txt"].iloc[0]
-                        st.rerun()
+            for _hlbl, _hid in id_map.items():
+                _col_item, = st.columns([1])
+                if st.button(
+                    f"↩  {_hlbl}",
+                    key=f"ia_hist_item_{_hid}",
+                    use_container_width=True,
+                ):
+                    _df_sel = db("SELECT analise_txt FROM ia_analises_clinicas WHERE id = ?", [_hid])
+                    if not _df_sel.empty:
+                        st.session_state["ia_coach_result"] = _df_sel["analise_txt"].iloc[0]
+                    st.session_state["ia_hist_open"] = False
+                    st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.markdown(
-                f'<div style="font-family:{MONO};font-size:10px;color:{GHOST};'
-                f'padding-top:8px">Sem análises anteriores</div>',
+                f'<div style="background:{BG3};border:1px solid {BORDER};'
+                f'border-top:2px solid {BORDER};border-radius:0 0 8px 8px;'
+                f'padding:10px 14px;margin-top:-2px;'
+                f'font-family:{MONO};font-size:10px;color:{GHOST}">Sem análises salvas</div>',
                 unsafe_allow_html=True,
             )
 
