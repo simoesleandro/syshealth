@@ -179,6 +179,18 @@ section[data-testid="stSidebar"] .stButton button:hover{
 section[data-testid="stSidebar"] .stButton button:active{
   background:rgba(0,212,255,0.08)!important}
 
+/* ── Selectbox: cursor pointer + hover ciano ── */
+[data-baseweb="select"]{cursor:pointer!important}
+[data-baseweb="select"] *{cursor:pointer!important}
+[data-baseweb="select"] > div:hover{border-color:rgba(0,212,255,0.4)!important}
+
+/* ── Date input compacto (Registro do Dia) ── */
+[data-testid="stDateInput"] input{
+  font-family:'Space Mono',monospace!important;
+  font-size:13px!important;font-weight:700!important;
+  padding:6px 10px!important;cursor:pointer!important}
+[data-testid="stDateInput"] > div > div{cursor:pointer!important}
+
 /* ── Sync buttons compactos (topbar direito) ── */
 /* Targetamos o stHorizontalBlock que contém .sh-topbar (topbar) → última coluna → botões */
 [data-testid="stHorizontalBlock"]:has(.sh-topbar) [data-testid="column"]:last-child [data-testid="stBaseButton-secondary"]{
@@ -1638,16 +1650,27 @@ BADGE_STYLE = {
 }
 
 with col_m:
-    # ── Seletor de data para histórico ────────────────────────────────────────
+    # ── Seletor de data compacto com label ────────────────────────────────────
     from datetime import date as _date
-    _hist_sel = st.date_input(
-        "📅 Consultar dia",
-        value=_date.fromisoformat(hoje_sql),
-        max_value=_date.fromisoformat(hoje_sql),
-        key="ref_hist_date",
-        label_visibility="collapsed",
-        format="DD/MM/YYYY",
-    )
+    _dc_lbl, _dc_inp = st.columns([1.1, 1])
+    with _dc_lbl:
+        st.markdown(
+            f'<div style="padding:6px 0 2px">'
+            f'<span style="font-family:{MONO};font-size:9px;font-weight:700;'
+            f'letter-spacing:1.5px;text-transform:uppercase;color:{CYAN}">📅 REGISTRO DO DIA</span>'
+            f'<div style="font-size:11px;color:{GHOST};margin-top:3px">'
+            f'Toque na data para ver outro dia</div></div>',
+            unsafe_allow_html=True,
+        )
+    with _dc_inp:
+        _hist_sel = st.date_input(
+            "data",
+            value=_date.fromisoformat(hoje_sql),
+            max_value=_date.fromisoformat(hoje_sql),
+            key="ref_hist_date",
+            label_visibility="collapsed",
+            format="DD/MM/YYYY",
+        )
     _hist_sql   = _hist_sel.strftime("%Y-%m-%d")
     _is_hoje    = _hist_sql == hoje_sql
     _titulo_ref = "Refeições de hoje" if _is_hoje else f"Refeições de {_hist_sel.strftime('%d/%m')}"
@@ -1908,18 +1931,20 @@ with col_s:
     df_med = _q_medicacao()
     from datetime import date as _date, datetime as _datetime
 
-    # Cabeçalho com botão de nova dose
-    _th, _tn = st.columns([1, 0.55])
+    # Cabeçalho compacto com botão menor
+    _th, _tn = st.columns([1, 0.45])
     with _th:
         st.markdown(
-            f'<div style="font-family:{MONO};font-size:11px;font-weight:700;'
-            f'letter-spacing:1.5px;text-transform:uppercase;color:{TEXT};'
-            f'margin:14px 0 8px">💉 Tirzepatida</div>',
+            f'<div style="display:flex;align-items:center;gap:7px;margin:14px 0 8px">'
+            f'<span style="font-size:14px">💉</span>'
+            f'<span style="font-family:{MONO};font-size:10px;font-weight:700;'
+            f'letter-spacing:1.5px;text-transform:uppercase;color:{TEXT}">Tirzepatida</span>'
+            f'</div>',
             unsafe_allow_html=True,
         )
     with _tn:
-        st.markdown('<div style="margin-top:14px"></div>', unsafe_allow_html=True)
-        if st.button("＋ Dose", key="btn_med_nova_toggle", width="stretch"):
+        st.markdown('<div style="margin-top:10px"></div>', unsafe_allow_html=True)
+        if st.button("＋ Dose", key="btn_med_nova_toggle", use_container_width=True):
             st.session_state["med_nova_open"] = not st.session_state.get("med_nova_open", False)
             st.rerun()
 
@@ -1977,34 +2002,43 @@ with col_s:
             is_editing = st.session_state.get(edit_key, False)
 
             # ── Card da dose ──────────────────────────────────────────────────
-            _mc, _me = st.columns([1, 0.1])
+            _mc, _me = st.columns([1, 0.18])
             with _mc:
-                atual_badge = (
-                    f'<span style="font-family:{MONO};font-size:8px;font-weight:700;'
-                    f'background:rgba(0,230,118,0.12);color:{GREEN};'
-                    f'border:1px solid rgba(0,230,118,0.3);padding:2px 7px;'
-                    f'border-radius:3px;letter-spacing:1px;margin-left:6px">ATUAL</span>'
-                    if is_atual else ""
-                )
-                st.markdown(
-                    f'<div style="background:{bg_med};border:1px solid {bd_med};'
-                    f'border-left:3px solid {cor_med};border-radius:0 8px 8px 0;'
-                    f'padding:10px 14px;margin-bottom:3px;'
-                    f'display:flex;align-items:center;gap:10px">'
-                    f'<span style="width:8px;height:8px;border-radius:50%;'
-                    f'background:{cor_med};flex-shrink:0;display:inline-block"></span>'
-                    f'<span style="font-family:{MONO};font-size:11px;color:{MUTED}">'
-                    f'{data_fmt}</span>'
-                    f'<span style="font-size:18px;font-weight:800;color:{cor_med};'
-                    f'letter-spacing:-0.5px">{dose:.1f} mg</span>'
-                    f'{atual_badge}'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+                if is_atual:
+                    # Dose atual — card destacado verde
+                    st.markdown(
+                        f'<div style="background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.28);'
+                        f'border-left:3px solid {GREEN};border-radius:0 8px 8px 0;'
+                        f'padding:10px 14px;margin-bottom:3px;'
+                        f'display:flex;align-items:center;gap:10px">'
+                        f'<span style="width:8px;height:8px;border-radius:50%;'
+                        f'background:{GREEN};flex-shrink:0;display:inline-block"></span>'
+                        f'<span style="font-family:{MONO};font-size:11px;color:{MUTED}">{data_fmt}</span>'
+                        f'<span style="font-size:18px;font-weight:800;color:{GREEN};letter-spacing:-0.5px">{dose:.1f} mg</span>'
+                        f'<span style="font-family:{MONO};font-size:8px;font-weight:700;'
+                        f'background:rgba(0,230,118,0.12);color:{GREEN};'
+                        f'border:1px solid rgba(0,230,118,0.3);padding:2px 7px;'
+                        f'border-radius:3px;letter-spacing:1px">ATUAL</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    # Doses anteriores — linha minimizada
+                    st.markdown(
+                        f'<div style="border-left:2px solid {BORDER};padding:5px 10px 5px 12px;'
+                        f'margin-bottom:2px;display:flex;align-items:center;gap:10px;'
+                        f'opacity:0.65">'
+                        f'<span style="width:5px;height:5px;border-radius:50%;'
+                        f'background:{GHOST};flex-shrink:0;display:inline-block"></span>'
+                        f'<span style="font-family:{MONO};font-size:10px;color:{GHOST}">{data_fmt}</span>'
+                        f'<span style="font-size:13px;font-weight:700;color:{MUTED}">{dose:.1f} mg</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
             with _me:
-                _edit_lbl = "✕" if is_editing else "✏"
-                if st.button(_edit_lbl, key=f"tog_med_{mid}", width="stretch",
-                             help="Editar / Fechar"):
+                _edit_lbl = "✕" if is_editing else "editar"
+                if st.button(_edit_lbl, key=f"tog_med_{mid}", use_container_width=True,
+                             help="Editar este registro"):
                     st.session_state[edit_key] = not is_editing
                     st.rerun()
 
@@ -2420,14 +2454,17 @@ if not df_hist.empty:
     cols_med = st.columns(4)
     for i, (icon, lbl, val, ref) in enumerate(medias):
         with cols_med[i % 4]:
-            ref_html = (f'<div style="font-size:10px;color:{GHOST};margin-top:3px">{ref}</div>'
+            ref_html = (f'<div style="font-size:10px;color:{GHOST};margin-top:4px">{ref}</div>'
                         if ref else "")
             st.markdown(
                 f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:9px;'
-                f'padding:12px 14px;margin-bottom:10px">'
+                f'padding:14px 14px 12px;margin-bottom:10px;min-height:105px;'
+                f'display:flex;flex-direction:column;justify-content:space-between">'
+                f'<div>'
                 f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-                f'text-transform:uppercase;color:{GHOST};margin-bottom:5px">{icon} {lbl}</div>'
-                f'<div style="font-size:20px;font-weight:800;color:{TEXT}">{val}</div>'
+                f'text-transform:uppercase;color:{GHOST};margin-bottom:6px">{icon} {lbl}</div>'
+                f'<div style="font-size:22px;font-weight:800;color:{TEXT};line-height:1">{val}</div>'
+                f'</div>'
                 f'{ref_html}</div>',
                 unsafe_allow_html=True,
             )
@@ -2453,16 +2490,16 @@ if not df_hist.empty:
 
     btn_col, sel_col = st.columns([1, 1])
     with btn_col:
-        executar_analise = st.button("🔄 Nova Análise de Emagrecimento", key="btn_ia_coach", width="stretch")
-    
+        executar_analise = st.button("🧠 NOVA ANÁLISE DE EMAGRECIMENTO", key="btn_ia_coach", use_container_width=True)
+
     # Busca análises anteriores para o seletor histórico
     df_past = db("""
-        SELECT id, data_hora, n_dias 
-        FROM ia_analises_clinicas 
+        SELECT id, data_hora, n_dias
+        FROM ia_analises_clinicas
         ORDER BY data_hora DESC
     """)
-    
-    past_options = ["-- Ver análises anteriores --"]
+
+    past_options = ["📂  Histórico de análises ▾"]
     id_map = {}
     if not df_past.empty:
         for idx, r_row in df_past.iterrows():
@@ -2472,17 +2509,22 @@ if not df_hist.empty:
                     dt_obj = datetime.strptime(dt_val.split(".")[0], "%Y-%m-%d %H:%M:%S")
                 else:
                     dt_obj = dt_val
-                dt_str = dt_obj.strftime("%d/%m/%Y %H:%M")
+                dt_str = dt_obj.strftime("%d/%m  %H:%M")
             except Exception:
                 dt_str = str(dt_val)
-            lbl = f"📅 {dt_str} ({r_row['n_dias']}d)"
+            lbl = f"↩  {dt_str}  ({r_row['n_dias']}d)"
             past_options.append(lbl)
             id_map[lbl] = int(r_row["id"])
-            
+
     with sel_col:
-        sel_past = st.selectbox("Histórico de Análises:", options=past_options, label_visibility="collapsed")
+        sel_past = st.selectbox(
+            "Histórico de Análises:",
+            options=past_options,
+            label_visibility="collapsed",
+            key="ia_hist_sel",
+        )
         
-    if sel_past != "-- Ver análises anteriores --":
+    if sel_past != "📂  Histórico de análises ▾":
         sel_id = id_map[sel_past]
         df_sel = db("SELECT analise_txt FROM ia_analises_clinicas WHERE id = ?", [sel_id])
         if not df_sel.empty:
