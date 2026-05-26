@@ -2272,98 +2272,109 @@ with col_s:
     df_med = _q_medicacao()
     from datetime import date as _date, datetime as _datetime, timedelta as _td
 
-    # ── KPIs de resumo do protocolo ───────────────────────────────────────────
+    # Pré-processa lista de doses
+    _doses_list = []
     if not df_med.empty:
-        _doses_list = []
         for _, _r in df_med.iterrows():
             _d = float(_r["dose_mg"])
             if _d > 100: _d /= 1000
             _doses_list.append({"iso": str(_r["data_iso"])[:10], "fmt": str(_r["data_fmt"]), "dose": _d, "id": int(_r["id"])})
-        _dose_atual  = _doses_list[0]["dose"]
-        _n_doses     = len(_doses_list)
-        # semanas desde a 1ª dose
-        try:
-            _dt_inicio = _datetime.strptime(_doses_list[-1]["iso"], "%Y-%m-%d").date()
-            _semanas   = (_date.fromisoformat(hoje_sql) - _dt_inicio).days // 7
-        except Exception:
-            _semanas = 0
-        # próxima dose estimada (+7 dias da última)
-        try:
-            _dt_ult  = _datetime.strptime(_doses_list[0]["iso"], "%Y-%m-%d").date()
-            _proxima = (_dt_ult + _td(days=7)).strftime("%d/%m/%Y")
-        except Exception:
-            _proxima = "—"
 
-        _kc1, _kc2, _kc3, _kc4 = st.columns(4)
-        _tirzep_kpi_style = (
-            f'background:{BG2};border:1px solid {BORDER};border-radius:8px;'
-            f'padding:10px 14px;text-align:center'
-        )
-        for _col, _lbl, _val, _cor in [
-            (_kc1, "DOSE ATUAL",      f"{_dose_atual:.1f} mg", GREEN),
-            (_kc2, "DOSES APLICADAS", str(_n_doses),           CYAN),
-            (_kc3, "SEMANAS ATIVAS",  str(_semanas),           AMBER),
-            (_kc4, "PRÓXIMA DOSE",    _proxima,                MUTED),
-        ]:
-            with _col:
-                st.markdown(
-                    f'<div style="{_tirzep_kpi_style}">'
-                    f'<div style="font-family:{MONO};font-size:8px;font-weight:700;'
-                    f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin-bottom:5px">{_lbl}</div>'
-                    f'<div style="font-size:18px;font-weight:800;color:{_cor};letter-spacing:-0.5px">{_val}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
+    # Calcula métricas do protocolo
+    _dose_atual = _doses_list[0]["dose"] if _doses_list else 0.0
+    _n_doses    = len(_doses_list)
+    try:
+        _dt_inicio = _datetime.strptime(_doses_list[-1]["iso"], "%Y-%m-%d").date() if _doses_list else _date.fromisoformat(hoje_sql)
+        _semanas   = (_date.fromisoformat(hoje_sql) - _dt_inicio).days // 7
+    except Exception:
+        _semanas = 0
+    try:
+        _dt_ult  = _datetime.strptime(_doses_list[0]["iso"], "%Y-%m-%d").date() if _doses_list else _date.fromisoformat(hoje_sql)
+        _proxima = (_dt_ult + _td(days=7)).strftime("%d/%m")
+    except Exception:
+        _proxima = "—"
 
-    # ── Cabeçalho + botão nova dose ───────────────────────────────────────────
-    _th, _tn = st.columns([1, 0.20])
+    # ── Card principal: header + stats ────────────────────────────────────────
+    st.markdown(
+        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;'
+        f'border-top:3px solid {PURPLE};padding:14px 16px;margin-bottom:8px">'
+        # Cabeçalho
+        f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+        f'<div style="display:flex;align-items:center;gap:8px">'
+        f'<span style="font-size:16px">💊</span>'
+        f'<div>'
+        f'<div style="font-family:{MONO};font-size:10px;font-weight:700;letter-spacing:1.5px;'
+        f'text-transform:uppercase;color:{PURPLE}">Tirzepatida</div>'
+        f'<div style="font-size:11px;color:{MUTED};margin-top:1px">Protocolo farmacológico · injetável semanal</div>'
+        f'</div></div></div>'
+        # Divider
+        f'<div style="height:1px;background:{BORDER2};margin-bottom:12px"></div>'
+        # Stats row
+        f'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">'
+        # Stat 1 — Dose atual
+        f'<div style="background:{BG3};border:1px solid rgba(0,230,118,0.15);border-radius:8px;padding:10px 12px;text-align:center">'
+        f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin-bottom:4px">Dose Atual</div>'
+        f'<div style="font-size:20px;font-weight:800;color:{GREEN};letter-spacing:-0.5px">{_dose_atual:.1f}</div>'
+        f'<div style="font-size:10px;color:{MUTED};margin-top:1px">mg / semana</div>'
+        f'</div>'
+        # Stat 2 — Aplicações
+        f'<div style="background:{BG3};border:1px solid {BORDER};border-radius:8px;padding:10px 12px;text-align:center">'
+        f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin-bottom:4px">Aplicações</div>'
+        f'<div style="font-size:20px;font-weight:800;color:{PURPLE};letter-spacing:-0.5px">{_n_doses}</div>'
+        f'<div style="font-size:10px;color:{MUTED};margin-top:1px">doses totais</div>'
+        f'</div>'
+        # Stat 3 — Semanas
+        f'<div style="background:{BG3};border:1px solid {BORDER};border-radius:8px;padding:10px 12px;text-align:center">'
+        f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin-bottom:4px">Semanas</div>'
+        f'<div style="font-size:20px;font-weight:800;color:{AMBER};letter-spacing:-0.5px">{_semanas}</div>'
+        f'<div style="font-size:10px;color:{MUTED};margin-top:1px">em protocolo</div>'
+        f'</div>'
+        # Stat 4 — Próxima
+        f'<div style="background:{BG3};border:1px solid {BORDER};border-radius:8px;padding:10px 12px;text-align:center">'
+        f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin-bottom:4px">Próxima</div>'
+        f'<div style="font-size:20px;font-weight:800;color:{TEXT};letter-spacing:-0.5px">{_proxima}</div>'
+        f'<div style="font-size:10px;color:{MUTED};margin-top:1px">estimativa</div>'
+        f'</div>'
+        f'</div>'  # grid
+        f'</div>',  # card
+        unsafe_allow_html=True,
+    )
+
+    # ── Histórico de doses: título + botão ───────────────────────────────────
+    _th, _tn = st.columns([1, 0.18])
     with _th:
         st.markdown(
-            f'<div style="display:flex;align-items:center;gap:6px;margin:14px 0 8px">'
-            f'<span style="width:7px;height:7px;border-radius:50%;background:{GREEN};'
-            f'box-shadow:0 0 8px rgba(0,230,118,0.5);flex-shrink:0;display:inline-block"></span>'
-            f'<span style="font-family:{MONO};font-size:9px;font-weight:700;'
-            f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED}">Histórico de doses</span>'
-            f'</div>',
+            f'<div style="font-family:{MONO};font-size:9px;font-weight:700;'
+            f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin:4px 0 6px">Histórico de doses</div>',
             unsafe_allow_html=True,
         )
     with _tn:
-        st.markdown('<div style="margin-top:10px"></div>', unsafe_allow_html=True)
         if st.button("＋ DOSE", key="btn_med_nova_toggle", use_container_width=True):
             st.session_state["med_nova_open"] = not st.session_state.get("med_nova_open", False)
             st.rerun()
 
-    # Form de nova dose (toggle)
+    # Form de nova dose
     if st.session_state.get("med_nova_open", False):
         with st.form("form_med_nova", clear_on_submit=True):
             _mn1, _mn2 = st.columns(2)
             with _mn1:
-                nova_data_n = st.date_input(
-                    "Data", value=_date.fromisoformat(hoje_sql),
-                    key="mdata_nova", format="DD/MM/YYYY"
-                )
+                nova_data_n = st.date_input("Data", value=_date.fromisoformat(hoje_sql),
+                                            key="mdata_nova", format="DD/MM/YYYY")
             with _mn2:
-                nova_dose_n = st.number_input(
-                    "Dose (mg)", value=5.0,
-                    min_value=0.5, max_value=25.0, step=0.5, format="%.1f",
-                    key="mdose_nova"
-                )
+                nova_dose_n = st.number_input("Dose (mg)", value=5.0,
+                                              min_value=0.5, max_value=25.0, step=0.5, format="%.1f",
+                                              key="mdose_nova")
             if st.form_submit_button("REGISTRAR DOSE", width="stretch"):
-                DB.execute(
-                    "INSERT INTO medicacao (data_hora, dose_mg) VALUES (?,?)",
-                    [f"{nova_data_n} 12:00:00", nova_dose_n],
-                )
+                DB.execute("INSERT INTO medicacao (data_hora, dose_mg) VALUES (?,?)",
+                           [f"{nova_data_n} 12:00:00", nova_dose_n])
                 st.cache_data.clear()
                 st.session_state["med_nova_open"] = False
                 _notif(f"Tirzepatida {nova_dose_n:.1f} mg registrada")
                 st.rerun()
 
-    # ── Timeline de doses ─────────────────────────────────────────────────────
-    if df_med.empty:
-        st.markdown(
-            f'<p style="color:{GHOST};font-size:12px;margin-bottom:8px">Sem registros.</p>',
-            unsafe_allow_html=True,
-        )
+    # ── Timeline ──────────────────────────────────────────────────────────────
+    if not _doses_list:
+        st.markdown(f'<p style="color:{GHOST};font-size:12px">Sem registros.</p>', unsafe_allow_html=True)
     else:
         for i, _item in enumerate(_doses_list):
             mid      = _item["id"]
@@ -2371,25 +2382,23 @@ with col_s:
             data_fmt = _item["fmt"]
             data_iso = _item["iso"]
             is_atual = (i == 0)
-
             edit_key   = f"med_edit_{mid}"
             is_editing = st.session_state.get(edit_key, False)
 
-            # ── Linha da timeline ─────────────────────────────────────────────
             _mc, _me = st.columns([1, 0.07])
             with _mc:
                 if is_atual:
                     st.markdown(
                         f'<div style="display:flex;align-items:center;gap:12px;'
-                        f'padding:8px 12px;border-radius:6px;margin-bottom:3px;'
-                        f'background:rgba(0,230,118,0.06);border:1px solid rgba(0,230,118,0.18)">'
+                        f'padding:8px 14px;border-radius:8px;margin-bottom:4px;'
+                        f'background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.15)">'
                         f'<span style="width:8px;height:8px;border-radius:50%;background:{GREEN};'
-                        f'box-shadow:0 0 6px rgba(0,230,118,0.6);flex-shrink:0"></span>'
+                        f'box-shadow:0 0 8px rgba(0,230,118,0.5);flex-shrink:0"></span>'
                         f'<span style="font-family:{MONO};font-size:10px;color:{MUTED};flex:1">{data_fmt}</span>'
-                        f'<span style="font-size:15px;font-weight:800;color:{GREEN};letter-spacing:-0.3px">{dose:.1f} mg</span>'
+                        f'<span style="font-size:16px;font-weight:800;color:{GREEN};letter-spacing:-0.3px">{dose:.1f} mg</span>'
                         f'<span style="font-family:{MONO};font-size:8px;font-weight:700;'
-                        f'background:rgba(0,230,118,0.15);color:{GREEN};'
-                        f'border:1px solid rgba(0,230,118,0.3);padding:2px 7px;'
+                        f'color:{GREEN};background:rgba(0,230,118,0.12);'
+                        f'border:1px solid rgba(0,230,118,0.25);padding:2px 8px;'
                         f'border-radius:10px;letter-spacing:1px">ATUAL</span>'
                         f'</div>',
                         unsafe_allow_html=True,
@@ -2397,7 +2406,7 @@ with col_s:
                 else:
                     st.markdown(
                         f'<div style="display:flex;align-items:center;gap:12px;'
-                        f'padding:6px 12px;margin-bottom:2px;opacity:0.65">'
+                        f'padding:6px 14px;margin-bottom:2px;opacity:0.6">'
                         f'<span style="width:5px;height:5px;border-radius:50%;'
                         f'background:{GHOST};border:1px solid {BORDER};flex-shrink:0"></span>'
                         f'<span style="font-family:{MONO};font-size:10px;color:{GHOST};flex:1">{data_fmt}</span>'
@@ -2408,12 +2417,10 @@ with col_s:
             with _me:
                 st.markdown('<div style="margin-top:2px"></div>', unsafe_allow_html=True)
                 _edit_lbl = "✕" if is_editing else "✏"
-                if st.button(_edit_lbl, key=f"tog_med_{mid}", use_container_width=True,
-                             help="Editar este registro"):
+                if st.button(_edit_lbl, key=f"tog_med_{mid}", use_container_width=True):
                     st.session_state[edit_key] = not is_editing
                     st.rerun()
 
-            # ── Form de edição inline ─────────────────────────────────────────
             if is_editing:
                 with st.form(f"form_med_edit_{mid}"):
                     _mc1, _mc2 = st.columns(2)
@@ -2422,26 +2429,20 @@ with col_s:
                             _val_data = _datetime.strptime(data_iso, "%Y-%m-%d").date()
                         except Exception:
                             _val_data = _date.fromisoformat(hoje_sql)
-                        nova_data_med = st.date_input(
-                            "Data", value=_val_data,
-                            key=f"mdata_{mid}", format="DD/MM/YYYY"
-                        )
+                        nova_data_med = st.date_input("Data", value=_val_data,
+                                                      key=f"mdata_{mid}", format="DD/MM/YYYY")
                     with _mc2:
-                        nova_dose_med = st.number_input(
-                            "Dose (mg)", value=dose,
-                            min_value=0.5, max_value=25.0, step=0.5, format="%.1f",
-                            key=f"mdose_{mid}"
-                        )
+                        nova_dose_med = st.number_input("Dose (mg)", value=dose,
+                                                        min_value=0.5, max_value=25.0, step=0.5, format="%.1f",
+                                                        key=f"mdose_{mid}")
                     _msb, _mdb = st.columns([3, 1])
                     with _msb:
                         _med_salvar = st.form_submit_button("✓ SALVAR", width="stretch")
                     with _mdb:
-                        _med_del    = st.form_submit_button("🗑", width="stretch")
+                        _med_del = st.form_submit_button("🗑", width="stretch")
                     if _med_salvar:
-                        DB.execute(
-                            "UPDATE medicacao SET data_hora=?, dose_mg=? WHERE id=?",
-                            [f"{nova_data_med} 12:00:00", nova_dose_med, mid],
-                        )
+                        DB.execute("UPDATE medicacao SET data_hora=?, dose_mg=? WHERE id=?",
+                                   [f"{nova_data_med} 12:00:00", nova_dose_med, mid])
                         st.cache_data.clear()
                         st.session_state[edit_key] = False
                         _notif(f"Dose atualizada: {nova_dose_med:.1f} mg")
