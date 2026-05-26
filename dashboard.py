@@ -475,7 +475,7 @@ def _hevy_sync_dashboard() -> str:
             return "Hevy: Nenhum treino encontrado."
         count = 0
         for w in workouts:
-            w_id = w.get("workout_id")
+            w_id = w.get("id") or w.get("workout_id")
             title = w.get("title", "Treino de Musculação")
             desc = w.get("description", "")
             start_iso = w.get("start_time")
