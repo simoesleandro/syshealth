@@ -179,6 +179,19 @@ section[data-testid="stSidebar"] .stButton button:hover{
 section[data-testid="stSidebar"] .stButton button:active{
   background:rgba(0,212,255,0.08)!important}
 
+/* ── Sync buttons compactos (topbar direito) ── */
+/* Targetamos o stHorizontalBlock que contém .sh-topbar (topbar) → última coluna → botões */
+[data-testid="stHorizontalBlock"]:has(.sh-topbar) [data-testid="column"]:last-child [data-testid="stBaseButton-secondary"]{
+  min-height:30px!important;
+  padding:4px 8px!important;
+  font-size:9px!important;
+  border-radius:20px!important;
+  letter-spacing:0.8px!important;
+  border-color:#1a2035!important}
+[data-testid="stHorizontalBlock"]:has(.sh-topbar) [data-testid="column"]:last-child [data-testid="stBaseButton-secondary"]:hover{
+  border-color:#00d4ff88!important;
+  color:#00d4ff!important}
+
 /* ── Painel de conteúdo (container com borda) ── */
 [data-testid="stVerticalBlockBorderWrapper"]{
   background:#070b15!important;border:1px solid rgba(0,212,255,0.22)!important;
@@ -939,19 +952,14 @@ def _painel_entrada():
     atual = st.session_state.get("painel_aberto", None)
 
     # ── Barra de navegação ────────────────────────────────────────────────────
-    _nav_cols = st.columns([1, 1, 1, 1, 0.28])
+    _nav_cols = st.columns(4)
     for i, (icon, label, key) in enumerate(PAINEIS):
         with _nav_cols[i]:
             ativo = (atual == key)
             lbl   = f"{icon}  {label}" + ("  ▲" if ativo else "")
-            if st.button(lbl, key=f"nav_{key}", width="stretch",
+            if st.button(lbl, key=f"nav_{key}", use_container_width=True,
                          type="primary" if ativo else "secondary"):
                 st.session_state["painel_aberto"] = None if ativo else key
-                st.rerun()
-    with _nav_cols[4]:
-        if atual:
-            if st.button("✕", key="nav_fechar", width="stretch"):
-                st.session_state["painel_aberto"] = None
                 st.rerun()
 
     # ── Conteúdo do painel ativo ──────────────────────────────────────────────
@@ -1314,16 +1322,17 @@ with _tb_right:
         f'</div>',
         unsafe_allow_html=True,
     )
+    st.html('<div class="sh-sync-row"></div>')
     col_sync1, col_sync2 = st.columns(2)
     with col_sync1:
-        if st.button("🔄 Sync Zepp", key="btn_zepp_sync_top", width="stretch"):
+        if st.button("🔄 Zepp", key="btn_zepp_sync_top", use_container_width=True):
             with st.spinner("Sincronizando Zepp..."):
                 _sync_result = _zepp_sync_dashboard(hoje_sql)
             st.cache_data.clear()
             _notif(_sync_result, "ok" if "passos" in _sync_result or "sincronizado" in _sync_result.lower() else "info")
             st.rerun()
     with col_sync2:
-        if st.button("💪 Sync Hevy", key="btn_hevy_sync_top", width="stretch"):
+        if st.button("💪 Hevy", key="btn_hevy_sync_top", use_container_width=True):
             with st.spinner("Sincronizando Hevy..."):
                 _h_sync_result = _hevy_sync_dashboard()
             st.cache_data.clear()
@@ -1353,7 +1362,7 @@ def kpi_card(acento, lbl, val, unit, extra=""):
         f'letter-spacing:-1px">{val}</span>'
         f'<span style="font-size:18px;color:{MUTED};margin-left:5px">{unit}</span></div>'
         f'{extra}',
-        extra="position:relative;overflow:hidden"
+        extra="position:relative;overflow:hidden;min-height:210px"
     )
 
 with k1:
@@ -1408,7 +1417,8 @@ def az_card(icon, lbl, val, unit, extra=""):
         f'<div style="font-size:24px;font-weight:800;color:{TEXT};line-height:1;'
         f'text-align:center;letter-spacing:-0.5px">{val}</div>'
         f'<div style="font-size:14px;color:{MUTED};margin-top:5px;text-align:center">{unit}</div>'
-        f'{extra}'
+        f'{extra}',
+        extra="min-height:190px"
     )
 
 a_col1, a_col2, a_col3, a_col4 = st.columns(4)
