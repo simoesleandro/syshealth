@@ -2268,6 +2268,12 @@ with col_s:
         unsafe_allow_html=True,
     )
 
+    # ── Separador visual entre Suplementação e Tirzepatida ───────────────────
+    st.markdown(
+        f'<div style="height:1px;background:{BORDER2};margin:14px 0 12px"></div>',
+        unsafe_allow_html=True,
+    )
+
     # ── Tirzepatida ───────────────────────────────────────────────────────────
     df_med = _q_medicacao()
     from datetime import date as _date, datetime as _datetime, timedelta as _td
@@ -2389,28 +2395,28 @@ with col_s:
             with _mc:
                 if is_atual:
                     st.markdown(
-                        f'<div style="display:flex;align-items:center;gap:12px;'
-                        f'padding:8px 14px;border-radius:8px;margin-bottom:4px;'
+                        f'<div style="display:flex;align-items:center;gap:10px;'
+                        f'padding:5px 10px;border-radius:6px;margin-bottom:2px;'
                         f'background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.15)">'
-                        f'<span style="width:8px;height:8px;border-radius:50%;background:{GREEN};'
-                        f'box-shadow:0 0 8px rgba(0,230,118,0.5);flex-shrink:0"></span>'
+                        f'<span style="width:7px;height:7px;border-radius:50%;background:{GREEN};'
+                        f'box-shadow:0 0 6px rgba(0,230,118,0.5);flex-shrink:0"></span>'
                         f'<span style="font-family:{MONO};font-size:10px;color:{MUTED};flex:1">{data_fmt}</span>'
-                        f'<span style="font-size:16px;font-weight:800;color:{GREEN};letter-spacing:-0.3px">{dose:.1f} mg</span>'
-                        f'<span style="font-family:{MONO};font-size:8px;font-weight:700;'
+                        f'<span style="font-size:14px;font-weight:800;color:{GREEN};letter-spacing:-0.3px">{dose:.1f} mg</span>'
+                        f'<span style="font-family:{MONO};font-size:7px;font-weight:700;'
                         f'color:{GREEN};background:rgba(0,230,118,0.12);'
-                        f'border:1px solid rgba(0,230,118,0.25);padding:2px 8px;'
+                        f'border:1px solid rgba(0,230,118,0.25);padding:1px 6px;'
                         f'border-radius:10px;letter-spacing:1px">ATUAL</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
                 else:
                     st.markdown(
-                        f'<div style="display:flex;align-items:center;gap:12px;'
-                        f'padding:6px 14px;margin-bottom:2px;opacity:0.6">'
-                        f'<span style="width:5px;height:5px;border-radius:50%;'
-                        f'background:{GHOST};border:1px solid {BORDER};flex-shrink:0"></span>'
-                        f'<span style="font-family:{MONO};font-size:10px;color:{GHOST};flex:1">{data_fmt}</span>'
-                        f'<span style="font-size:13px;font-weight:600;color:{MUTED}">{dose:.1f} mg</span>'
+                        f'<div style="display:flex;align-items:center;gap:10px;'
+                        f'padding:3px 10px;margin-bottom:1px;opacity:0.55">'
+                        f'<span style="width:4px;height:4px;border-radius:50%;'
+                        f'background:{GHOST};flex-shrink:0"></span>'
+                        f'<span style="font-family:{MONO};font-size:9px;color:{GHOST};flex:1">{data_fmt}</span>'
+                        f'<span style="font-size:12px;font-weight:600;color:{MUTED}">{dose:.1f} mg</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
