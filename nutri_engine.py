@@ -182,6 +182,8 @@ def calcular_macros_refeicao(model, descricao: str) -> dict:
         # 2. USDA fallback
         if not dados and nome_en:
             dados = buscar_usda(nome_en)
+            if dados:
+                dados["nome"] = nome.strip().capitalize()
             fonte = "USDA"
 
         # 3. IA fallback (densidade 100g)

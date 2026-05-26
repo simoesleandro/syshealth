@@ -150,9 +150,13 @@ _TABLES_PG = [
         id TEXT PRIMARY KEY, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         titulo TEXT, descricao TEXT, exercicios_json TEXT,
         duracao_min INTEGER, volume_kg REAL)""",
+    """CREATE TABLE IF NOT EXISTS ia_analises_clinicas (
+        id SERIAL PRIMARY KEY, data_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        analise_txt TEXT NOT NULL, n_dias INTEGER NOT NULL)""",
     "CREATE INDEX IF NOT EXISTS idx_refeicoes_data ON refeicoes(data_hora)",
     "CREATE INDEX IF NOT EXISTS idx_agua_data ON agua(data_hora)",
     "CREATE INDEX IF NOT EXISTS idx_medicacao_data ON medicacao(data_hora)",
+    "CREATE INDEX IF NOT EXISTS idx_ia_analises_data ON ia_analises_clinicas(data_hora)",
 ]
 
 _TABLES_SQLITE = [
@@ -182,9 +186,13 @@ _TABLES_SQLITE = [
         id TEXT PRIMARY KEY, data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
         titulo TEXT, descricao TEXT, exercicios_json TEXT,
         duracao_min INTEGER, volume_kg REAL)""",
+    """CREATE TABLE IF NOT EXISTS ia_analises_clinicas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, data_hora DATETIME DEFAULT CURRENT_TIMESTAMP,
+        analise_txt TEXT NOT NULL, n_dias INTEGER NOT NULL)""",
     "CREATE INDEX IF NOT EXISTS idx_refeicoes_data ON refeicoes(data_hora)",
     "CREATE INDEX IF NOT EXISTS idx_agua_data ON agua(data_hora)",
     "CREATE INDEX IF NOT EXISTS idx_medicacao_data ON medicacao(data_hora)",
+    "CREATE INDEX IF NOT EXISTS idx_ia_analises_data_sq ON ia_analises_clinicas(data_hora)",
 ]
 
 

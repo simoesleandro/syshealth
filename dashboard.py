@@ -2170,6 +2170,30 @@ df_macro_hist = db(f"""
     ORDER BY dia ASC
 """)
 
+# Hevy history query
+df_hevy_hist = db(f"""
+    SELECT 
+        COUNT(*) as count_treino,
+        SUM(duracao_min) as dur,
+        SUM(volume_kg) as vol
+    FROM hevy_treinos
+    WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
+""")
+total_treinos = int(df_hevy_hist["count_treino"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["count_treino"].iloc[0] is not None else 0
+total_vol = float(df_hevy_hist["vol"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["vol"].iloc[0] is not None else 0.0
+total_dur = int(df_hevy_hist["dur"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["dur"].iloc[0] is not None else 0
+media_vol_treino = total_vol / total_treinos if total_treinos > 0 else 0.0
+media_dur_treino = total_dur / total_treinos if total_treinos > 0 else 0.0
+
+df_hevy_list = db(f"""
+    SELECT 
+        date(data_hora, 'localtime') as dia,
+        titulo, duracao_min, volume_kg
+    FROM hevy_treinos
+    WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
+    ORDER BY data_hora ASC
+""")
+
 def chart_layout(height=200, show_legend=False):
     return dict(
         height=height, margin=dict(t=10, b=10, l=0, r=0),
@@ -2300,6 +2324,34 @@ if not df_hist.empty:
             fig.update_layout(**chart_layout(180))
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
+    # ── Linha 4: Musculação (Hevy) ─────────────────────────────────────────────
+    if not df_hevy_list.empty:
+        h4a, h4b = st.columns(2)
+        
+        with h4a:
+            st.markdown(panel(ptitl("🏋️ Volume de Carga (kg/treino)")), unsafe_allow_html=True)
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=df_hevy_list["dia"], y=df_hevy_list["volume_kg"],
+                name="Volume", marker_color=GREEN, opacity=0.8,
+                text=df_hevy_list["titulo"],
+                hovertemplate="<b>%{x|%d/%m}</b><br>Treino: %{text}<br>Volume: %{y:,.0f} kg<extra></extra>"
+            ))
+            fig.update_layout(**chart_layout(180))
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            
+        with h4b:
+            st.markdown(panel(ptitl("⏱️ Duração do Treino (min)")), unsafe_allow_html=True)
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=df_hevy_list["dia"], y=df_hevy_list["duracao_min"],
+                name="Duração", marker_color=AMBER, opacity=0.8,
+                text=df_hevy_list["titulo"],
+                hovertemplate="<b>%{x|%d/%m}</b><br>Treino: %{text}<br>Duração: %{y} min<extra></extra>"
+            ))
+            fig.update_layout(**chart_layout(180))
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
     # ── Tabela resumo semanal ─────────────────────────────────────────────────
     st.markdown(sec("Resumo", f"Médias dos últimos {n_dias} dias"), unsafe_allow_html=True)
 
@@ -2348,6 +2400,12 @@ if not df_hist.empty:
              "meta 500 kcal"),
         ]
 
+    # Musculação averages from Hevy
+    medias += [
+        ("🏋️", "Vol. Musculação", fmt_val(media_vol_treino, " kg", 0), f"{total_treinos} treinos"),
+        ("⏱️", "Treino Médio",    fmt_val(media_dur_treino, " min", 0), "musculação"),
+    ]
+
     # Grid 4 colunas
     cols_med = st.columns(4)
     for i, (icon, lbl, val, ref) in enumerate(medias):
@@ -2383,7 +2441,44 @@ if not df_hist.empty:
     """
     st.markdown(coach_html, unsafe_allow_html=True)
 
-    if st.button("🔄 Executar Análise Clínica de Emagrecimento IA", key="btn_ia_coach", width="stretch"):
+    btn_col, sel_col = st.columns([1, 1])
+    with btn_col:
+        executar_analise = st.button("🔄 Nova Análise de Emagrecimento", key="btn_ia_coach", width="stretch")
+    
+    # Busca análises anteriores para o seletor histórico
+    df_past = db("""
+        SELECT id, data_hora, n_dias 
+        FROM ia_analises_clinicas 
+        ORDER BY data_hora DESC
+    """)
+    
+    past_options = ["-- Ver análises anteriores --"]
+    id_map = {}
+    if not df_past.empty:
+        for idx, r_row in df_past.iterrows():
+            dt_val = r_row["data_hora"]
+            try:
+                if isinstance(dt_val, str):
+                    dt_obj = datetime.strptime(dt_val.split(".")[0], "%Y-%m-%d %H:%M:%S")
+                else:
+                    dt_obj = dt_val
+                dt_str = dt_obj.strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                dt_str = str(dt_val)
+            lbl = f"📅 {dt_str} ({r_row['n_dias']}d)"
+            past_options.append(lbl)
+            id_map[lbl] = int(r_row["id"])
+            
+    with sel_col:
+        sel_past = st.selectbox("Histórico de Análises:", options=past_options, label_visibility="collapsed")
+        
+    if sel_past != "-- Ver análises anteriores --":
+        sel_id = id_map[sel_past]
+        df_sel = db("SELECT analise_txt FROM ia_analises_clinicas WHERE id = ?", [sel_id])
+        if not df_sel.empty:
+            st.session_state["ia_coach_result"] = df_sel["analise_txt"].iloc[0]
+
+    if executar_analise:
         with st.spinner("🧠 IA Coach analisando dados clínicos, metabólicos e rotinas..."):
             try:
                 # Obter médias
@@ -2398,21 +2493,6 @@ if not df_hist.empty:
                 media_prot = media(df_macro_hist, "prot")
                 media_carb = media(df_macro_hist, "carb")
                 media_gord = media(df_macro_hist, "gord")
-                
-                # Hevy history query
-                df_hevy_hist = db(f"""
-                    SELECT 
-                        COUNT(*) as count_treino,
-                        SUM(duracao_min) as dur,
-                        SUM(volume_kg) as vol
-                    FROM hevy_treinos
-                    WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
-                """)
-                total_treinos = int(df_hevy_hist["count_treino"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["count_treino"].iloc[0] is not None else 0
-                total_vol = float(df_hevy_hist["vol"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["vol"].iloc[0] is not None else 0.0
-                total_dur = int(df_hevy_hist["dur"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["dur"].iloc[0] is not None else 0
-                media_vol_treino = total_vol / total_treinos if total_treinos > 0 else 0.0
-                media_dur_treino = total_dur / total_treinos if total_treinos > 0 else 0.0
                 
                 media_corrida_km = media(df_hist, "corrida_km")
                 media_corrida_cal = media(df_hist, "corrida_cal")
@@ -2455,6 +2535,16 @@ if not df_hist.empty:
                 vision = _gemini_model()
                 res = vision.generate_content(prompt)
                 st.session_state["ia_coach_result"] = res.text
+                
+                # Salvar no histórico
+                try:
+                    DB.execute(
+                        "INSERT INTO ia_analises_clinicas (analise_txt, n_dias) VALUES (?, ?)",
+                        [res.text, n_dias]
+                    )
+                except Exception as save_err:
+                    st.warning(f"⚠️ Erro ao salvar análise no histórico: {save_err}")
+                st.rerun()
             except Exception as e:
                 st.error(f"❌ Erro ao chamar a IA: {e}")
 
