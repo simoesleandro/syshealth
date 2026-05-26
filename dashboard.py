@@ -2268,109 +2268,145 @@ with col_s:
         unsafe_allow_html=True,
     )
 
-    # ── Tirzepatida — registro sutil ─────────────────────────────────────────
+    # ── Tirzepatida ───────────────────────────────────────────────────────────
     df_med = _q_medicacao()
-    from datetime import date as _date, datetime as _datetime
+    from datetime import date as _date, datetime as _datetime, timedelta as _td
 
-    # Cabeçalho minimalista
-    _th, _tn = st.columns([1, 0.22])
+    # ── KPIs de resumo do protocolo ───────────────────────────────────────────
+    if not df_med.empty:
+        _doses_list = []
+        for _, _r in df_med.iterrows():
+            _d = float(_r["dose_mg"])
+            if _d > 100: _d /= 1000
+            _doses_list.append({"iso": str(_r["data_iso"])[:10], "fmt": str(_r["data_fmt"]), "dose": _d, "id": int(_r["id"])})
+        _dose_atual  = _doses_list[0]["dose"]
+        _n_doses     = len(_doses_list)
+        # semanas desde a 1ª dose
+        try:
+            _dt_inicio = _datetime.strptime(_doses_list[-1]["iso"], "%Y-%m-%d").date()
+            _semanas   = (_date.fromisoformat(hoje_sql) - _dt_inicio).days // 7
+        except Exception:
+            _semanas = 0
+        # próxima dose estimada (+7 dias da última)
+        try:
+            _dt_ult  = _datetime.strptime(_doses_list[0]["iso"], "%Y-%m-%d").date()
+            _proxima = (_dt_ult + _td(days=7)).strftime("%d/%m/%Y")
+        except Exception:
+            _proxima = "—"
+
+        _kc1, _kc2, _kc3, _kc4 = st.columns(4)
+        _tirzep_kpi_style = (
+            f'background:{BG2};border:1px solid {BORDER};border-radius:8px;'
+            f'padding:10px 14px;text-align:center'
+        )
+        for _col, _lbl, _val, _cor in [
+            (_kc1, "DOSE ATUAL",      f"{_dose_atual:.1f} mg", GREEN),
+            (_kc2, "DOSES APLICADAS", str(_n_doses),           CYAN),
+            (_kc3, "SEMANAS ATIVAS",  str(_semanas),           AMBER),
+            (_kc4, "PRÓXIMA DOSE",    _proxima,                MUTED),
+        ]:
+            with _col:
+                st.markdown(
+                    f'<div style="{_tirzep_kpi_style}">'
+                    f'<div style="font-family:{MONO};font-size:8px;font-weight:700;'
+                    f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin-bottom:5px">{_lbl}</div>'
+                    f'<div style="font-size:18px;font-weight:800;color:{_cor};letter-spacing:-0.5px">{_val}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+    # ── Cabeçalho + botão nova dose ───────────────────────────────────────────
+    _th, _tn = st.columns([1, 0.20])
     with _th:
         st.markdown(
-            f'<div style="display:flex;align-items:center;gap:6px;margin:12px 0 6px">'
-            f'<span style="width:6px;height:6px;border-radius:50%;background:{GREEN};'
-            f'box-shadow:0 0 6px rgba(0,230,118,0.5);flex-shrink:0;display:inline-block"></span>'
+            f'<div style="display:flex;align-items:center;gap:6px;margin:14px 0 8px">'
+            f'<span style="width:7px;height:7px;border-radius:50%;background:{GREEN};'
+            f'box-shadow:0 0 8px rgba(0,230,118,0.5);flex-shrink:0;display:inline-block"></span>'
             f'<span style="font-family:{MONO};font-size:9px;font-weight:700;'
-            f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED}">Tirzepatida</span>'
+            f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED}">Histórico de doses</span>'
             f'</div>',
             unsafe_allow_html=True,
         )
     with _tn:
-        st.markdown('<div style="margin-top:8px"></div>', unsafe_allow_html=True)
-        if st.button("＋ dose", key="btn_med_nova_toggle", use_container_width=True):
+        st.markdown('<div style="margin-top:10px"></div>', unsafe_allow_html=True)
+        if st.button("＋ DOSE", key="btn_med_nova_toggle", use_container_width=True):
             st.session_state["med_nova_open"] = not st.session_state.get("med_nova_open", False)
             st.rerun()
 
     # Form de nova dose (toggle)
     if st.session_state.get("med_nova_open", False):
-        with st.container():
-            st.markdown(
-                f'<div style="border-left:3px solid {GREEN};padding:2px 0 2px 0;'
-                f'margin-bottom:6px"></div>',
-                unsafe_allow_html=True,
-            )
-            with st.form("form_med_nova", clear_on_submit=True):
-                _mn1, _mn2 = st.columns(2)
-                with _mn1:
-                    nova_data_n = st.date_input(
-                        "Data", value=_date.fromisoformat(hoje_sql),
-                        key="mdata_nova", format="DD/MM/YYYY"
-                    )
-                with _mn2:
-                    nova_dose_n = st.number_input(
-                        "Dose (mg)", value=5.0,
-                        min_value=0.5, max_value=25.0, step=0.5, format="%.1f",
-                        key="mdose_nova"
-                    )
-                if st.form_submit_button("REGISTRAR DOSE", width="stretch"):
-                    DB.execute(
-                        "INSERT INTO medicacao (data_hora, dose_mg) VALUES (?,?)",
-                        [f"{nova_data_n} 12:00:00", nova_dose_n],
-                    )
-                    st.cache_data.clear()
-                    st.session_state["med_nova_open"] = False
-                    _notif(f"Tirzepatida {nova_dose_n:.1f} mg registrada")
-                    st.rerun()
+        with st.form("form_med_nova", clear_on_submit=True):
+            _mn1, _mn2 = st.columns(2)
+            with _mn1:
+                nova_data_n = st.date_input(
+                    "Data", value=_date.fromisoformat(hoje_sql),
+                    key="mdata_nova", format="DD/MM/YYYY"
+                )
+            with _mn2:
+                nova_dose_n = st.number_input(
+                    "Dose (mg)", value=5.0,
+                    min_value=0.5, max_value=25.0, step=0.5, format="%.1f",
+                    key="mdose_nova"
+                )
+            if st.form_submit_button("REGISTRAR DOSE", width="stretch"):
+                DB.execute(
+                    "INSERT INTO medicacao (data_hora, dose_mg) VALUES (?,?)",
+                    [f"{nova_data_n} 12:00:00", nova_dose_n],
+                )
+                st.cache_data.clear()
+                st.session_state["med_nova_open"] = False
+                _notif(f"Tirzepatida {nova_dose_n:.1f} mg registrada")
+                st.rerun()
 
+    # ── Timeline de doses ─────────────────────────────────────────────────────
     if df_med.empty:
         st.markdown(
             f'<p style="color:{GHOST};font-size:12px;margin-bottom:8px">Sem registros.</p>',
             unsafe_allow_html=True,
         )
     else:
-        for i, (_, r) in enumerate(df_med.iterrows()):
-            mid      = int(r["id"])
-            dose     = float(r["dose_mg"])
-            if dose > 100:
-                dose /= 1000
-            data_fmt = str(r["data_fmt"])
-            data_iso = str(r["data_iso"])[:10]
+        for i, _item in enumerate(_doses_list):
+            mid      = _item["id"]
+            dose     = _item["dose"]
+            data_fmt = _item["fmt"]
+            data_iso = _item["iso"]
             is_atual = (i == 0)
 
-            cor_med  = GREEN if is_atual else GHOST
-            bg_med   = "rgba(0,230,118,0.05)" if is_atual else "transparent"
-            bd_med   = "rgba(0,230,118,0.28)" if is_atual else f"{BORDER}"
-
-            edit_key  = f"med_edit_{mid}"
+            edit_key   = f"med_edit_{mid}"
             is_editing = st.session_state.get(edit_key, False)
 
-            # ── Linha da dose ─────────────────────────────────────────────────
-            _mc, _me = st.columns([1, 0.08])
+            # ── Linha da timeline ─────────────────────────────────────────────
+            _mc, _me = st.columns([1, 0.07])
             with _mc:
                 if is_atual:
-                    # Dose atual: destaque verde sutil, sem card/background
                     st.markdown(
-                        f'<div style="display:flex;align-items:center;gap:10px;'
-                        f'padding:4px 0 4px 10px;border-left:2px solid {GREEN};margin-bottom:1px">'
-                        f'<span style="font-family:{MONO};font-size:9px;color:{MUTED};flex:1">{data_fmt}</span>'
-                        f'<span style="font-size:14px;font-weight:800;color:{GREEN};letter-spacing:-0.3px">{dose:.1f} mg</span>'
-                        f'<span style="font-family:{MONO};font-size:7px;font-weight:700;'
-                        f'color:{GREEN};opacity:0.7;letter-spacing:1px">ATUAL</span>'
+                        f'<div style="display:flex;align-items:center;gap:12px;'
+                        f'padding:8px 12px;border-radius:6px;margin-bottom:3px;'
+                        f'background:rgba(0,230,118,0.06);border:1px solid rgba(0,230,118,0.18)">'
+                        f'<span style="width:8px;height:8px;border-radius:50%;background:{GREEN};'
+                        f'box-shadow:0 0 6px rgba(0,230,118,0.6);flex-shrink:0"></span>'
+                        f'<span style="font-family:{MONO};font-size:10px;color:{MUTED};flex:1">{data_fmt}</span>'
+                        f'<span style="font-size:15px;font-weight:800;color:{GREEN};letter-spacing:-0.3px">{dose:.1f} mg</span>'
+                        f'<span style="font-family:{MONO};font-size:8px;font-weight:700;'
+                        f'background:rgba(0,230,118,0.15);color:{GREEN};'
+                        f'border:1px solid rgba(0,230,118,0.3);padding:2px 7px;'
+                        f'border-radius:10px;letter-spacing:1px">ATUAL</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
                 else:
-                    # Doses anteriores: linha fina quase invisível
                     st.markdown(
-                        f'<div style="display:flex;align-items:center;gap:10px;'
-                        f'padding:3px 0 3px 10px;border-left:1px solid {BORDER2};'
-                        f'margin-bottom:1px;opacity:0.35">'
-                        f'<span style="font-family:{MONO};font-size:8px;color:{GHOST};flex:1">{data_fmt}</span>'
-                        f'<span style="font-size:11px;color:{GHOST}">{dose:.1f} mg</span>'
+                        f'<div style="display:flex;align-items:center;gap:12px;'
+                        f'padding:6px 12px;margin-bottom:2px;opacity:0.65">'
+                        f'<span style="width:5px;height:5px;border-radius:50%;'
+                        f'background:{GHOST};border:1px solid {BORDER};flex-shrink:0"></span>'
+                        f'<span style="font-family:{MONO};font-size:10px;color:{GHOST};flex:1">{data_fmt}</span>'
+                        f'<span style="font-size:13px;font-weight:600;color:{MUTED}">{dose:.1f} mg</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
             with _me:
-                st.markdown('<div style="margin-top:1px"></div>', unsafe_allow_html=True)
+                st.markdown('<div style="margin-top:2px"></div>', unsafe_allow_html=True)
                 _edit_lbl = "✕" if is_editing else "✏"
                 if st.button(_edit_lbl, key=f"tog_med_{mid}", use_container_width=True,
                              help="Editar este registro"):
@@ -2379,10 +2415,6 @@ with col_s:
 
             # ── Form de edição inline ─────────────────────────────────────────
             if is_editing:
-                st.markdown(
-                    f'<div style="height:1px;background:{cor_med}33;margin:0 0 6px 3px"></div>',
-                    unsafe_allow_html=True,
-                )
                 with st.form(f"form_med_edit_{mid}"):
                     _mc1, _mc2 = st.columns(2)
                     with _mc1:
