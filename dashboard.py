@@ -193,6 +193,14 @@ section[data-testid="stSidebar"] .stButton button:hover{
 section[data-testid="stSidebar"] .stButton button:active{
   background:rgba(0,212,255,0.08)!important}
 
+/* ── Botões de ação compactos (✏ ✕ nos cards de refeição e medicação) ── */
+/* Alvo: botões secundários dentro de colunas muito estreitas (< 80px) */
+[data-testid="stHorizontalBlock"]:has([data-testid="stMarkdownContainer"]) [data-testid="column"]:last-child [data-testid="stBaseButton-secondary"]{
+  min-height:34px!important;
+  padding:2px 4px!important;
+  font-size:13px!important;
+  letter-spacing:0!important}
+
 /* ── Selectbox: cursor pointer + hover ciano ── */
 [data-baseweb="select"]{cursor:pointer!important}
 [data-baseweb="select"] *{cursor:pointer!important}
@@ -1757,18 +1765,17 @@ BADGE_STYLE = {
 }
 
 with col_m:
-    # ── Seletor de data compacto com label ────────────────────────────────────
+    # ── Seletor de data: label + input na mesma linha compacta ────────────────
     from datetime import date as _date
-    _dc_lbl, _dc_inp = st.columns([1.1, 1])
-    with _dc_lbl:
-        st.markdown(
-            f'<div style="padding:6px 0 2px">'
-            f'<span style="font-family:{MONO};font-size:9px;font-weight:700;'
-            f'letter-spacing:1.5px;text-transform:uppercase;color:{CYAN}">📅 REGISTRO DO DIA</span>'
-            f'<div style="font-size:11px;color:{GHOST};margin-top:3px">'
-            f'Toque na data para ver outro dia</div></div>',
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">'
+        f'<span style="font-family:{MONO};font-size:9px;font-weight:700;'
+        f'letter-spacing:1.5px;text-transform:uppercase;color:{CYAN}">📅 Visualizar dia</span>'
+        f'<span style="font-size:10px;color:{GHOST}">— toque para consultar outro dia</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    _dc_inp, _ = st.columns([0.42, 0.58])
     with _dc_inp:
         _hist_sel = st.date_input(
             "data",
@@ -1878,7 +1885,7 @@ with col_m:
     </div>"""
                 details_html += "\n  </div>\n</details>"
 
-            _cc, _ce = st.columns([1, 0.1])
+            _cc, _ce = st.columns([1, 0.09])
             with _cc:
                 st.markdown(
                     f'<div style="background:{BG2};border:1px solid {cor}22;'
@@ -1899,8 +1906,9 @@ with col_m:
                     unsafe_allow_html=True,
                 )
             with _ce:
+                st.markdown('<div style="margin-top:14px"></div>', unsafe_allow_html=True)
                 _edit_lbl = "✕" if is_editing else "✏"
-                if st.button(_edit_lbl, key=f"tog_meal_{rid}", width="stretch",
+                if st.button(_edit_lbl, key=f"tog_meal_{rid}", use_container_width=True,
                              help="Editar / Fechar"):
                     st.session_state[edit_key] = not is_editing
                     st.rerun()
@@ -2045,7 +2053,7 @@ with col_s:
     from datetime import date as _date, datetime as _datetime
 
     # Cabeçalho compacto com botão menor
-    _th, _tn = st.columns([1, 0.45])
+    _th, _tn = st.columns([1, 0.28])
     with _th:
         st.markdown(
             f'<div style="display:flex;align-items:center;gap:7px;margin:14px 0 8px">'
@@ -2057,7 +2065,7 @@ with col_s:
         )
     with _tn:
         st.markdown('<div style="margin-top:10px"></div>', unsafe_allow_html=True)
-        if st.button("＋ Dose", key="btn_med_nova_toggle", use_container_width=True):
+        if st.button("＋ dose", key="btn_med_nova_toggle", use_container_width=True):
             st.session_state["med_nova_open"] = not st.session_state.get("med_nova_open", False)
             st.rerun()
 
@@ -2115,7 +2123,7 @@ with col_s:
             is_editing = st.session_state.get(edit_key, False)
 
             # ── Card da dose ──────────────────────────────────────────────────
-            _mc, _me = st.columns([1, 0.18])
+            _mc, _me = st.columns([1, 0.13])
             with _mc:
                 if is_atual:
                     # Dose atual — card destacado verde
@@ -2149,7 +2157,8 @@ with col_s:
                         unsafe_allow_html=True,
                     )
             with _me:
-                _edit_lbl = "✕" if is_editing else "editar"
+                st.markdown('<div style="margin-top:6px"></div>', unsafe_allow_html=True)
+                _edit_lbl = "✕" if is_editing else "✏"
                 if st.button(_edit_lbl, key=f"tog_med_{mid}", use_container_width=True,
                              help="Editar este registro"):
                     st.session_state[edit_key] = not is_editing
