@@ -1576,8 +1576,8 @@ def kpi_card(acento, lbl, val, unit, extra=""):
         f'<div><span style="font-size:36px;font-weight:800;color:{TEXT};line-height:1;'
         f'letter-spacing:-1px">{val}</span>'
         f'<span style="font-size:18px;color:{MUTED};margin-left:5px">{unit}</span></div>'
-        f'</div>'
-        f'{extra}',
+        f'{extra}'
+        f'</div>',
         extra="position:relative;overflow:hidden;min-height:210px"
     )
 
@@ -2343,41 +2343,37 @@ with col_s:
             is_editing = st.session_state.get(edit_key, False)
 
             # ── Card da dose ──────────────────────────────────────────────────
-            _mc, _me = st.columns([1, 0.10])
+            _mc, _me = st.columns([1, 0.09])
             with _mc:
                 if is_atual:
-                    # Dose atual — pill compacta verde
                     st.markdown(
-                        f'<div style="background:rgba(0,230,118,0.06);border:1px solid rgba(0,230,118,0.25);'
-                        f'border-left:3px solid {GREEN};border-radius:0 6px 6px 0;'
-                        f'padding:7px 12px;margin-bottom:3px;'
-                        f'display:flex;align-items:center;gap:10px">'
-                        f'<span style="width:7px;height:7px;border-radius:50%;'
-                        f'background:{GREEN};flex-shrink:0;display:inline-block"></span>'
-                        f'<span style="font-family:{MONO};font-size:10px;color:{MUTED};flex:1">{data_fmt}</span>'
-                        f'<span style="font-size:16px;font-weight:800;color:{GREEN};letter-spacing:-0.5px">{dose:.1f} mg</span>'
-                        f'<span style="font-family:{MONO};font-size:8px;font-weight:700;'
+                        f'<div style="display:flex;align-items:center;gap:8px;'
+                        f'background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.2);'
+                        f'border-left:2px solid {GREEN};border-radius:0 4px 4px 0;'
+                        f'padding:5px 10px;margin-bottom:2px">'
+                        f'<span style="width:6px;height:6px;border-radius:50%;background:{GREEN};flex-shrink:0"></span>'
+                        f'<span style="font-family:{MONO};font-size:9px;color:{MUTED};flex:1">{data_fmt}</span>'
+                        f'<span style="font-size:13px;font-weight:800;color:{GREEN}">{dose:.1f} mg</span>'
+                        f'<span style="font-family:{MONO};font-size:7px;font-weight:700;'
                         f'background:rgba(0,230,118,0.12);color:{GREEN};'
-                        f'border:1px solid rgba(0,230,118,0.3);padding:2px 6px;'
+                        f'border:1px solid rgba(0,230,118,0.25);padding:1px 5px;'
                         f'border-radius:3px;letter-spacing:1px">ATUAL</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
                 else:
-                    # Doses anteriores — linha minimizada
                     st.markdown(
-                        f'<div style="border-left:2px solid {BORDER};padding:4px 10px 4px 12px;'
-                        f'margin-bottom:2px;display:flex;align-items:center;gap:10px;'
-                        f'opacity:0.55">'
-                        f'<span style="width:4px;height:4px;border-radius:50%;'
-                        f'background:{GHOST};flex-shrink:0;display:inline-block"></span>'
-                        f'<span style="font-family:{MONO};font-size:9px;color:{GHOST};flex:1">{data_fmt}</span>'
-                        f'<span style="font-size:12px;font-weight:700;color:{MUTED}">{dose:.1f} mg</span>'
+                        f'<div style="display:flex;align-items:center;gap:8px;'
+                        f'border-left:1px solid {BORDER2};padding:3px 8px 3px 10px;'
+                        f'margin-bottom:1px;opacity:0.45">'
+                        f'<span style="width:3px;height:3px;border-radius:50%;background:{GHOST};flex-shrink:0"></span>'
+                        f'<span style="font-family:{MONO};font-size:8px;color:{GHOST};flex:1">{data_fmt}</span>'
+                        f'<span style="font-size:11px;font-weight:600;color:{MUTED}">{dose:.1f} mg</span>'
                         f'</div>',
                         unsafe_allow_html=True,
                     )
             with _me:
-                st.markdown('<div style="margin-top:4px"></div>', unsafe_allow_html=True)
+                st.markdown('<div style="margin-top:2px"></div>', unsafe_allow_html=True)
                 _edit_lbl = "✕" if is_editing else "✏"
                 if st.button(_edit_lbl, key=f"tog_med_{mid}", use_container_width=True,
                              help="Editar este registro"):
@@ -2825,33 +2821,28 @@ if not df_hist.empty:
             id_map[lbl] = int(r_row["id"])
 
     with sel_col:
-        if len(past_options) > 1:
+        if id_map:
             st.markdown(
                 f'<div style="font-family:{MONO};font-size:9px;font-weight:700;'
                 f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};'
-                f'margin-bottom:4px">📂 HISTÓRICO DE ANÁLISES</div>',
+                f'margin-bottom:6px">📂 HISTÓRICO DE ANÁLISES</div>',
                 unsafe_allow_html=True,
             )
-            sel_past = st.radio(
-                "Histórico",
-                options=past_options[1:],   # sem o placeholder
-                label_visibility="collapsed",
-                key="ia_hist_sel",
-                horizontal=True,
-            )
+            _hist_btn_cols = st.columns(min(len(id_map), 3))
+            for _hi, (_hlbl, _hid) in enumerate(id_map.items()):
+                with _hist_btn_cols[_hi % 3]:
+                    if st.button(_hlbl, key=f"ia_hist_btn_{_hid}",
+                                 use_container_width=True):
+                        _df_sel = db("SELECT analise_txt FROM ia_analises_clinicas WHERE id = ?", [_hid])
+                        if not _df_sel.empty:
+                            st.session_state["ia_coach_result"] = _df_sel["analise_txt"].iloc[0]
+                        st.rerun()
         else:
-            sel_past = None
             st.markdown(
                 f'<div style="font-family:{MONO};font-size:10px;color:{GHOST};'
                 f'padding-top:8px">Sem análises anteriores</div>',
                 unsafe_allow_html=True,
             )
-
-    if sel_past and sel_past in id_map:
-        sel_id = id_map[sel_past]
-        df_sel = db("SELECT analise_txt FROM ia_analises_clinicas WHERE id = ?", [sel_id])
-        if not df_sel.empty:
-            st.session_state["ia_coach_result"] = df_sel["analise_txt"].iloc[0]
 
     if executar_analise:
         with st.spinner("🧠 IA Coach analisando dados clínicos, metabólicos e rotinas..."):
