@@ -129,6 +129,20 @@ section[data-testid="stSidebar"] > div:first-child{padding:0.75rem 1rem 1rem!imp
 [data-testid="stNumberInput"] button{
   background:#0d1424!important;border-color:#1a2035!important;color:#e8edf5!important}
 
+/* ── Radio horizontal (seletor de período) ── */
+[data-testid="stRadio"] > div{display:flex!important;gap:8px!important;flex-wrap:wrap!important}
+[data-testid="stRadio"] label{
+  background:#0c1525!important;border:1px solid #1e2840!important;
+  color:#7a8a9a!important;font-family:'Space Mono',monospace!important;font-size:10px!important;
+  font-weight:700!important;letter-spacing:1px!important;text-transform:uppercase!important;
+  border-radius:20px!important;padding:5px 14px!important;cursor:pointer!important;
+  transition:all 0.15s ease!important}
+[data-testid="stRadio"] label:has(input:checked){
+  background:rgba(0,212,255,0.10)!important;border-color:#00d4ff!important;
+  color:#00d4ff!important;box-shadow:0 0 12px rgba(0,212,255,0.15)!important}
+[data-testid="stRadio"] [data-baseweb="radio"]{display:none!important}
+[data-testid="stRadio"] label span{pointer-events:none!important}
+
 /* ── Selectbox ── */
 [data-testid="stSelectbox"] [data-baseweb="select"] > div{
   background:#080c14!important;border-color:#1a2035!important;border-radius:4px!important;
@@ -402,7 +416,7 @@ def sec(tag, titulo):
         f'<span style="font-family:{MONO};font-size:12px;font-weight:700;letter-spacing:1.5px;'
         f'text-transform:uppercase;color:{CYAN};background:rgba(0,212,255,0.07);'
         f'border:1px solid rgba(0,212,255,0.2);border-radius:3px;padding:3px 8px">{tag}</span>'
-        f'<span style="font-size:13px;color:{GHOST}">{titulo}</span>'
+        f'<span style="font-size:13px;color:{MUTED}">{titulo}</span>'
         f'<div style="flex:1;height:1px;background:{BORDER2}"></div>'
         f'</div>'
     )
@@ -1322,15 +1336,14 @@ with _tb_left:
 with _tb_right:
     st.markdown(
         f'<div class="sh-topbar-right" style="text-align:right;padding-bottom:6px;border-bottom:1px solid {BORDER2};margin-bottom:6px">'
-        f'<div style="font-family:{MONO};font-size:13px;color:{GHOST}">{dia_sem} · {hoje_pt} · {hora_now}</div>'
-        f'<div style="font-family:{MONO};font-size:11px;color:{_zepp_status_cor};font-weight:700;margin-top:3px">'
+        f'<div style="font-family:{MONO};font-size:11px;color:{GHOST}">{dia_sem} · {hoje_pt} · {hora_now}</div>'
+        f'<div style="font-size:22px;font-weight:800;color:{def_cor};letter-spacing:-0.5px;margin-top:2px">'
+        f'{"▲" if deficit>0 else "▼"} {abs(deficit):,} <span style="font-size:13px;font-weight:400;color:{MUTED}">kcal {def_txt.split()[0].lower()}</span></div>'
+        f'<div style="font-family:{MONO};font-size:10px;color:{_zepp_status_cor};margin-top:2px">'
         f'<span style="display:inline-block;width:5px;height:5px;border-radius:50%;'
-        f'background:{_zepp_status_cor};margin-right:5px;vertical-align:middle"></span>'
-        f'Amazfit — {_zepp_status_txt}</div>'
-        f'<div style="font-family:{MONO};font-size:11px;color:{_hevy_status_cor};font-weight:700;margin-top:1px">'
-        f'<span style="display:inline-block;width:5px;height:5px;border-radius:50%;'
-        f'background:{_hevy_status_cor};margin-right:5px;vertical-align:middle"></span>'
-        f'Hevy — {_hevy_status_txt}</div>'
+        f'background:{_zepp_status_cor};margin-right:4px;vertical-align:middle"></span>'
+        f'Amazfit · '
+        f'<span style="color:{_hevy_status_cor}">Hevy</span></div>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -1356,6 +1369,88 @@ _render_notif_pendente()
 
 # ── Painel de entrada inline (substituiu sidebar) ────────────────────────────
 _painel_entrada()
+
+# ── Sidebar — metas e atalhos ─────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:10px;font-weight:700;letter-spacing:2px;'
+        f'text-transform:uppercase;color:{CYAN};margin-bottom:16px;padding-bottom:8px;'
+        f'border-bottom:1px solid {BORDER}">⚡ SYS.HEALTH</div>',
+        unsafe_allow_html=True,
+    )
+    # Status do dia
+    _def_cor_sb = GREEN if deficit > 0 else RED
+    _def_icn_sb = "▲" if deficit > 0 else "▼"
+    st.markdown(
+        f'<div style="margin-bottom:14px">'
+        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px">HOJE · {hoje_pt}</div>'
+        # Déficit
+        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        f'<span style="font-size:11px;color:{MUTED}">Déficit</span>'
+        f'<span style="font-family:{MONO};font-size:13px;font-weight:700;color:{_def_cor_sb}">{_def_icn_sb} {abs(deficit):,} kcal</span>'
+        f'</div>'
+        # Calorias
+        f'<div style="background:{BORDER};border-radius:3px;height:4px;margin-bottom:8px;overflow:hidden">'
+        f'<div style="width:{min(100,int(cal_h/meta_cal_dinamica*100)) if meta_cal_dinamica else 0}%;height:4px;background:{GREEN};border-radius:3px"></div>'
+        f'</div>'
+        # Proteína
+        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+        f'<span style="font-size:11px;color:{MUTED}">Proteína</span>'
+        f'<span style="font-family:{MONO};font-size:12px;color:{TEXT}">{int(prot_h)}<span style="color:{GHOST}">/{META_PROT}g</span></span>'
+        f'</div>'
+        f'<div style="background:{BORDER};border-radius:3px;height:4px;margin-bottom:8px;overflow:hidden">'
+        f'<div style="width:{min(100,int(prot_h/META_PROT*100))}%;height:4px;background:{RED};border-radius:3px"></div>'
+        f'</div>'
+        # Água
+        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+        f'<span style="font-size:11px;color:{MUTED}">Água</span>'
+        f'<span style="font-family:{MONO};font-size:12px;color:{TEXT}">{agua_l:.1f}<span style="color:{GHOST}">/{META_AGUA}L</span></span>'
+        f'</div>'
+        f'<div style="background:{BORDER};border-radius:3px;height:4px;margin-bottom:8px;overflow:hidden">'
+        f'<div style="width:{min(100,int(agua_l/META_AGUA*100))}%;height:4px;background:{PURPLE};border-radius:3px"></div>'
+        f'</div>'
+        # Passos
+        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+        f'<span style="font-size:11px;color:{MUTED}">Passos</span>'
+        f'<span style="font-family:{MONO};font-size:12px;color:{TEXT}">{passos:,}<span style="color:{GHOST}">/{META_PASS:,}</span></span>'
+        f'</div>'
+        f'<div style="background:{BORDER};border-radius:3px;height:4px;overflow:hidden">'
+        f'<div style="width:{min(100,int(passos/META_PASS*100))}%;height:4px;background:{CYAN};border-radius:3px"></div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;'
+        f'text-transform:uppercase;margin:10px 0 6px;padding-top:10px;border-top:1px solid {BORDER}">ATALHOS</div>',
+        unsafe_allow_html=True,
+    )
+    if st.button("➕  Refeição", key="sb_btn_ref", use_container_width=True):
+        st.session_state["painel_aberto"] = "refeicao"; st.rerun()
+    if st.button("💧  Água / Peso", key="sb_btn_agua", use_container_width=True):
+        st.session_state["painel_aberto"] = "agua"; st.rerun()
+    if st.button("💊  Suplemento", key="sb_btn_supp", use_container_width=True):
+        st.session_state["painel_aberto"] = "suplemento"; st.rerun()
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;'
+        f'text-transform:uppercase;margin:10px 0 6px;padding-top:10px;border-top:1px solid {BORDER}">AMAZFIT HOJE</div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f'<div style="display:flex;justify-content:space-between;margin-bottom:5px">'
+        f'<span style="font-size:11px;color:{MUTED}">👟 Passos</span>'
+        f'<span style="font-family:{MONO};font-size:11px;color:{CYAN}">{passos:,}</span></div>'
+        f'<div style="display:flex;justify-content:space-between;margin-bottom:5px">'
+        f'<span style="font-size:11px;color:{MUTED}">🌙 Sono</span>'
+        f'<span style="font-family:{MONO};font-size:11px;color:{PURPLE}">{sono_h_fmt}</span></div>'
+        f'<div style="display:flex;justify-content:space-between;margin-bottom:5px">'
+        f'<span style="font-size:11px;color:{MUTED}">💓 HRV</span>'
+        f'<span style="font-family:{MONO};font-size:11px;color:{hrv_cor}">{hrv} ms</span></div>'
+        f'<div style="display:flex;justify-content:space-between">'
+        f'<span style="font-size:11px;color:{MUTED}">⚡ PAI</span>'
+        f'<span style="font-family:{MONO};font-size:11px;color:{pai_cor}">{pai}</span></div>',
+        unsafe_allow_html=True,
+    )
 
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 1 — NUTRIÇÃO
@@ -1433,6 +1528,12 @@ def az_card(icon, lbl, val, unit, extra=""):
         extra="min-height:190px"
     )
 
+st.markdown(
+    f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:2px;'
+    f'text-transform:uppercase;color:{MUTED};margin:2px 0 8px;'
+    f'border-left:2px solid {CYAN};padding-left:8px">ATIVIDADE</div>',
+    unsafe_allow_html=True,
+)
 a_col1, a_col2, a_col3, a_col4 = st.columns(4)
 
 with a_col1:
@@ -1466,6 +1567,12 @@ with a_col4:
         f'{sono_prof} min · meta {META_SONO}</div>',
     ), unsafe_allow_html=True)
 
+st.markdown(
+    f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:2px;'
+    f'text-transform:uppercase;color:{MUTED};margin:12px 0 8px;'
+    f'border-left:2px solid {PURPLE};padding-left:8px">RECOVERY · MUSCULAÇÃO</div>',
+    unsafe_allow_html=True,
+)
 a_col5, a_col6, a_col7, a_col8 = st.columns(4)
 
 with a_col5:
@@ -1640,10 +1747,10 @@ st.markdown(sec("Registros do dia", "Refeições · Suplementação"), unsafe_al
 col_m, col_s = st.columns([1.6, 1.4])
 
 BADGE_STYLE = {
-    "Café da Manhã":   f"background:rgba(0,212,255,0.08);color:{CYAN};border:1px solid rgba(0,212,255,0.2)",
-    "Lanche da Manhã": f"background:rgba(167,139,250,0.08);color:{PURPLE};border:1px solid rgba(167,139,250,0.2)",
+    "Café da Manhã":   f"background:rgba(245,158,11,0.10);color:#f59e0b;border:1px solid rgba(245,158,11,0.28)",
+    "Lanche da Manhã": f"background:rgba(129,140,248,0.08);color:#818cf8;border:1px solid rgba(129,140,248,0.22)",
     "Almoço":          f"background:rgba(0,230,118,0.08);color:{GREEN};border:1px solid rgba(0,230,118,0.2)",
-    "Lanche da Tarde": f"background:rgba(167,139,250,0.08);color:{PURPLE};border:1px solid rgba(167,139,250,0.2)",
+    "Lanche da Tarde": f"background:rgba(129,140,248,0.08);color:#818cf8;border:1px solid rgba(129,140,248,0.22)",
     "Jantar":          f"background:rgba(255,107,107,0.08);color:{RED};border:1px solid rgba(255,107,107,0.2)",
     "Lanche da Noite": f"background:rgba(167,139,250,0.08);color:{PURPLE};border:1px solid rgba(167,139,250,0.2)",
     "Lanche":          f"background:rgba(74,85,104,0.15);color:{MUTED};border:1px solid {BORDER}",
@@ -1679,10 +1786,10 @@ with col_m:
 
     # Mapeamentos de cor e ícone por categoria
     _CAT_COLOR = {
-        "Café da Manhã":   CYAN,
-        "Lanche da Manhã": PURPLE,
+        "Café da Manhã":   "#f59e0b",
+        "Lanche da Manhã": "#818cf8",
         "Almoço":          GREEN,
-        "Lanche da Tarde": PURPLE,
+        "Lanche da Tarde": "#818cf8",
         "Jantar":          RED,
         "Lanche da Noite": PURPLE,
         "Lanche":          MUTED,
@@ -1707,8 +1814,14 @@ with col_m:
 
     if df_ref_hoje.empty:
         st.markdown(
-            f'<p style="color:{GHOST};font-size:12px;margin-top:4px">'
-            f'Nenhuma refeição registrada neste dia.</p>',
+            f'<div style="text-align:center;padding:28px 16px;border:1px dashed {BORDER};'
+            f'border-radius:8px;margin-top:8px">'
+            f'<div style="font-size:28px;margin-bottom:8px">🍽️</div>'
+            f'<div style="font-family:{MONO};font-size:10px;font-weight:700;letter-spacing:1.5px;'
+            f'text-transform:uppercase;color:{MUTED}">Nenhuma refeição registrada</div>'
+            f'<div style="font-size:12px;color:{GHOST};margin-top:4px">'
+            f'Abra ➕ Refeição no menu acima para registrar</div>'
+            f'</div>',
             unsafe_allow_html=True,
         )
     else:
@@ -1737,7 +1850,7 @@ with col_m:
                     f'margin-top:7px;padding-top:7px;border-top:1px solid {cor}22">'
                     f'<span style="font-family:{MONO};font-size:11px;font-weight:700;color:{AMBER}">🔥 {kcal_v}</span>'
                     f'<span style="font-size:11px;color:{MUTED}">🥩<b style="color:{GREEN}"> {prot_v:.0f}g</b></span>'
-                    f'<span style="font-size:11px;color:{MUTED}">🌾<b style="color:{CYAN}"> {carb_v:.0f}g</b></span>'
+                    f'<span style="font-size:11px;color:{MUTED}">🌾<b style="color:#2dd4bf"> {carb_v:.0f}g</b></span>'
                     f'<span style="font-size:11px;color:{MUTED}">🫒<b style="color:{PURPLE}"> {gord_v:.0f}g</b></span>'
                     f'</div>'
                 )
@@ -2088,104 +2201,24 @@ with col_s:
                 st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 5 — EVOLUÇÃO DE MEDIDAS (largura total — 11 colunas cabem melhor)
-# ════════════════════════════════════════════════════════════════════════════
-st.markdown(sec("Biometria", "Evolução de medidas — histórico completo"), unsafe_allow_html=True)
-
-if True:  # bloco de escopo para df_bio
-    df_bio = _q_biometria()
-
-    if not df_bio.empty:
-        df_bio = df_bio.sort_values("data_ord", ascending=True)
-        COLS_NUM = ["peso","cintura","abdomen","peitoral","quadril",
-                    "coxa_dir","coxa_esq","panturrilha_dir","biceps_dir","biceps_esq"]
-        idx_rec = df_bio.index[-1]
-        diffs = {}
-        for c in COLS_NUM:
-            atual = df_bio.loc[idx_rec, c]
-            if pd.isna(atual):
-                diffs[c] = 0
-            else:
-                dm = atual - df_bio[c].max()
-                dn = atual - df_bio[c].min()
-                diffs[c] = dm if abs(dm) >= abs(dn) else dn
-
-        df_bio = df_bio.sort_values("data_ord", ascending=False)
-
-        td_base = f"text-align:right;padding:7px 8px;border-bottom:1px solid #0a1020;"
-
-        def cel(val, diff, peso=False, rec=False):
-            if pd.isna(val):
-                return f"<td style='{td_base}color:{GHOST}'>—</td>"
-            fmt = f"{val:.2f}" if peso else f"{val:.1f}"
-            un  = "kg" if peso else "cm"
-            if not rec or not diff:
-                return f"<td style='{td_base}'><b style='color:{TEXT}'>{fmt}</b></td>"
-            if diff < 0:
-                d = (f"<span style='color:{GREEN};font-size:9px;font-weight:700;"
-                     f"display:block'>▼ {abs(diff):.1f}{un}</span>")
-            else:
-                d = (f"<span style='color:{RED};font-size:9px;font-weight:700;"
-                     f"display:block'>+{diff:.1f}{un}</span>")
-            return f"<td style='{td_base}'><b style='color:{TEXT}'>{fmt}</b>{d}</td>"
-
-        HEADS = ["Data","Peso","Cintura","Abdômen","Peitoral","Quadril",
-                 "Coxa D","Coxa E","Pant. D","Bíceps D","Bíceps E"]
-        th_s  = (f"font-family:{MONO};background:{BG3};color:{GHOST};padding:9px 8px;"
-                 f"border-bottom:1px solid {BORDER2};text-transform:uppercase;font-size:9px;"
-                 f"letter-spacing:1px;text-align:right;white-space:nowrap")
-        th_s1 = th_s.replace("text-align:right", "text-align:left")
-        ths = (f"<th style='{th_s1}'>{HEADS[0]}</th>" +
-               "".join(f"<th style='{th_s}'>{h}</th>" for h in HEADS[1:]))
-
-        body = ""
-        for i, (_, row) in enumerate(df_bio.iterrows()):
-            rec    = (i == 0)
-            row_bg = f"background:rgba(0,212,255,0.04);" if rec else ""
-            data_val = (
-                f'{row["data_fmt"]} <span style="background:{CYAN};color:{BG};font-size:8px;'
-                f'font-weight:900;padding:1px 4px;border-radius:2px;margin-left:4px;'
-                f'font-family:{MONO};letter-spacing:1px">ATUAL</span>'
-                if rec else row["data_fmt"]
-            )
-            td_data = (
-                f"<td style='text-align:left;padding:7px 8px;border-bottom:1px solid #0a1020;"
-                f"color:{CYAN if rec else GHOST};font-weight:{'700' if rec else '400'};{row_bg}'>"
-                f"{data_val}</td>"
-            )
-            body += f"<tr>{td_data}"
-            body += cel(row["peso"], diffs["peso"], peso=True, rec=rec)
-            for c in ["cintura","abdomen","peitoral","quadril",
-                      "coxa_dir","coxa_esq","panturrilha_dir","biceps_dir","biceps_esq"]:
-                body += cel(row[c], diffs[c], rec=rec)
-            body += "</tr>"
-
-        st.markdown(
-            panel(
-                ptitl("Evolução de medidas — dos extremos") +
-                f'<div style="overflow-x:auto;border-radius:6px;border:1px solid {BORDER}">'
-                f'<table style="width:100%;border-collapse:collapse;font-size:12px;'
-                f'background:{BG2};min-width:620px">'
-                f'<thead><tr>{ths}</tr></thead><tbody>{body}</tbody></table>'
-                f'</div>'
-            ),
-            unsafe_allow_html=True,
-        )
-
-# ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 6 — HISTÓRICO SEMANAL
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown(sec("Histórico", "Últimos 30 dias · Tendências"), unsafe_allow_html=True)
 
-# Seletor de período
-periodo_col, _ = st.columns([1, 3])
-with periodo_col:
-    periodo = st.selectbox(
-        "Período",
-        ["7 dias", "14 dias", "30 dias", "90 dias"],
-        index=1,
-        label_visibility="collapsed"
-    )
+# Seletor de período — radio horizontal
+st.markdown(
+    f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
+    f'text-transform:uppercase;color:{MUTED};margin-bottom:4px">PERÍODO DE ANÁLISE</div>',
+    unsafe_allow_html=True,
+)
+periodo = st.radio(
+    "Período",
+    ["7 dias", "14 dias", "30 dias", "90 dias"],
+    index=1,
+    horizontal=True,
+    label_visibility="collapsed",
+    key="periodo_hist",
+)
 n_dias = int(periodo.split()[0])
 
 # ── Dados históricos ──────────────────────────────────────────────────────────
@@ -2269,6 +2302,79 @@ def barra(df, col, cor, name=""):
     )
 
 if not df_hist.empty:
+
+    # ── Tabela resumo semanal ─────────────────────────────────────────────────
+    st.markdown(sec("Resumo", f"Médias dos últimos {n_dias} dias"), unsafe_allow_html=True)
+
+    def media(df, col):
+        return df[col].replace(0, pd.NA).mean() if col in df.columns else 0
+
+    def fmt_val(val, sufixo="", decimais=0):
+        if pd.isna(val) or val == 0:
+            return "—"
+        return f"{val:.{decimais}f}{sufixo}"
+
+    # Calcular déficit calórico médio para o resumo
+    media_deficit = 0.0
+    if not df_hist.empty or not df_macro_hist.empty:
+        df_h = df_hist.copy() if not df_hist.empty else pd.DataFrame(columns=["dia", "calorias_gastas"])
+        df_m = df_macro_hist.copy() if not df_macro_hist.empty else pd.DataFrame(columns=["dia", "cal"])
+        if "calorias_gastas" not in df_h.columns:
+            df_h["calorias_gastas"] = 0.0
+        if "cal" not in df_m.columns:
+            df_m["cal"] = 0.0
+        df_merged = pd.merge(df_h, df_m, on="dia", how="outer").fillna(0)
+        df_merged["deficit"] = (TMB + df_merged["calorias_gastas"]) - df_merged["cal"]
+        media_deficit = df_merged["deficit"].mean()
+
+    medias = [
+        ("👟", "Passos/dia",       fmt_val(media(df_hist, "passos"), "", 0),
+         f"meta {META_PASS:,}"),
+        ("📍", "Distância/dia",    fmt_val(media(df_hist, "distancia_km"), " km", 1),
+         ""),
+        ("🌙", "Sono total/dia",   fmt_val(media(df_hist, "sono_total_min"), " min", 0),
+         "≥ 420 min"),
+        ("💤", "Sono profundo/dia",fmt_val(media(df_hist, "sono_profundo_min"), " min", 0),
+         f"meta {META_SONO} min"),
+        ("💓", "HRV médio",        fmt_val(media(df_hist, "hrv_ms"), " ms", 0),
+         ""),
+        ("⚡", "PAI médio",        fmt_val(media(df_hist, "pai"), "", 0),
+         "meta ≥ 100"),
+    ]
+    if not df_macro_hist.empty:
+        medias += [
+            ("🔥", "Calorias/dia",  fmt_val(media(df_macro_hist, "cal"), " kcal", 0),
+             f"meta {TMB}"),
+            ("🥩", "Proteínas/dia", fmt_val(media(df_macro_hist, "prot"), " g", 0),
+             f"meta {META_PROT}g"),
+            ("📉", "Déficit/dia",    fmt_val(media_deficit, " kcal", 0),
+             "meta 500 kcal"),
+        ]
+
+    # Musculação averages from Hevy
+    medias += [
+        ("🏋️", "Vol. Musculação", fmt_val(media_vol_treino, " kg", 0), f"{total_treinos} treinos"),
+        ("⏱️", "Treino Médio",    fmt_val(media_dur_treino, " min", 0), "musculação"),
+    ]
+
+    # Grid 4 colunas
+    cols_med = st.columns(4)
+    for i, (icon, lbl, val, ref) in enumerate(medias):
+        with cols_med[i % 4]:
+            ref_html = (f'<div style="font-size:10px;color:{GHOST};margin-top:4px">{ref}</div>'
+                        if ref else "")
+            st.markdown(
+                f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:9px;'
+                f'padding:14px 14px 12px;margin-bottom:10px;min-height:105px;'
+                f'display:flex;flex-direction:column;justify-content:space-between">'
+                f'<div>'
+                f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
+                f'text-transform:uppercase;color:{GHOST};margin-bottom:6px">{icon} {lbl}</div>'
+                f'<div style="font-size:22px;font-weight:800;color:{TEXT};line-height:1">{val}</div>'
+                f'</div>'
+                f'{ref_html}</div>',
+                unsafe_allow_html=True,
+            )
 
     # ── Linha 1: Passos + Distância ───────────────────────────────────────────
     h1a, h1b = st.columns(2)
@@ -2396,93 +2502,66 @@ if not df_hist.empty:
             fig.update_layout(**chart_layout(180))
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
-    # ── Tabela resumo semanal ─────────────────────────────────────────────────
-    st.markdown(sec("Resumo", f"Médias dos últimos {n_dias} dias"), unsafe_allow_html=True)
-
-    def media(df, col):
-        return df[col].replace(0, pd.NA).mean() if col in df.columns else 0
-
-    def fmt_val(val, sufixo="", decimais=0):
-        if pd.isna(val) or val == 0:
-            return "—"
-        return f"{val:.{decimais}f}{sufixo}"
-
-    # Calcular déficit calórico médio para o resumo
-    media_deficit = 0.0
-    if not df_hist.empty or not df_macro_hist.empty:
-        df_h = df_hist.copy() if not df_hist.empty else pd.DataFrame(columns=["dia", "calorias_gastas"])
-        df_m = df_macro_hist.copy() if not df_macro_hist.empty else pd.DataFrame(columns=["dia", "cal"])
-        if "calorias_gastas" not in df_h.columns:
-            df_h["calorias_gastas"] = 0.0
-        if "cal" not in df_m.columns:
-            df_m["cal"] = 0.0
-        df_merged = pd.merge(df_h, df_m, on="dia", how="outer").fillna(0)
-        df_merged["deficit"] = (TMB + df_merged["calorias_gastas"]) - df_merged["cal"]
-        media_deficit = df_merged["deficit"].mean()
-
-    medias = [
-        ("👟", "Passos/dia",       fmt_val(media(df_hist, "passos"), "", 0),
-         f"meta {META_PASS:,}"),
-        ("📍", "Distância/dia",    fmt_val(media(df_hist, "distancia_km"), " km", 1),
-         ""),
-        ("🌙", "Sono total/dia",   fmt_val(media(df_hist, "sono_total_min"), " min", 0),
-         "≥ 420 min"),
-        ("💤", "Sono profundo/dia",fmt_val(media(df_hist, "sono_profundo_min"), " min", 0),
-         f"meta {META_SONO} min"),
-        ("💓", "HRV médio",        fmt_val(media(df_hist, "hrv_ms"), " ms", 0),
-         ""),
-        ("⚡", "PAI médio",        fmt_val(media(df_hist, "pai"), "", 0),
-         "meta ≥ 100"),
-    ]
-    if not df_macro_hist.empty:
-        medias += [
-            ("🔥", "Calorias/dia",  fmt_val(media(df_macro_hist, "cal"), " kcal", 0),
-             f"meta {TMB}"),
-            ("🥩", "Proteínas/dia", fmt_val(media(df_macro_hist, "prot"), " g", 0),
-             f"meta {META_PROT}g"),
-            ("📉", "Déficit/dia",    fmt_val(media_deficit, " kcal", 0),
-             "meta 500 kcal"),
-        ]
-
-    # Musculação averages from Hevy
-    medias += [
-        ("🏋️", "Vol. Musculação", fmt_val(media_vol_treino, " kg", 0), f"{total_treinos} treinos"),
-        ("⏱️", "Treino Médio",    fmt_val(media_dur_treino, " min", 0), "musculação"),
-    ]
-
-    # Grid 4 colunas
-    cols_med = st.columns(4)
-    for i, (icon, lbl, val, ref) in enumerate(medias):
-        with cols_med[i % 4]:
-            ref_html = (f'<div style="font-size:10px;color:{GHOST};margin-top:4px">{ref}</div>'
-                        if ref else "")
-            st.markdown(
-                f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:9px;'
-                f'padding:14px 14px 12px;margin-bottom:10px;min-height:105px;'
-                f'display:flex;flex-direction:column;justify-content:space-between">'
-                f'<div>'
-                f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-                f'text-transform:uppercase;color:{GHOST};margin-bottom:6px">{icon} {lbl}</div>'
-                f'<div style="font-size:22px;font-weight:800;color:{TEXT};line-height:1">{val}</div>'
-                f'</div>'
-                f'{ref_html}</div>',
-                unsafe_allow_html=True,
-            )
-
     # ── IA Coach ─────────────────────────────────────────────────────────────
     st.markdown(sec("IA Coach", "Análise de Emagrecimento & Performance"), unsafe_allow_html=True)
-    
+
+    # Valores padrão do protocolo
+    _proto_defaults = {
+        "rotina": "Musculação + Cardio (6x/sem)",
+        "hiit": "Ter & Sex — Alta Intensidade / EPOC",
+        "zona2": "Seg, Qua, Qui, Sáb — Corrida BPM 120-140",
+        "peso_inicial": "115.3 kg (Jan/2026)",
+    }
+    if "coach_proto" not in st.session_state:
+        st.session_state["coach_proto"] = _proto_defaults.copy()
+    _proto = st.session_state["coach_proto"]
+
+    _proto_hdr, _proto_edit_btn = st.columns([1, 0.2])
+    with _proto_hdr:
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
+            f'text-transform:uppercase;color:{CYAN};margin-bottom:6px">📋 PROTOCOLO & METAS METABÓLICAS</div>',
+            unsafe_allow_html=True,
+        )
+    with _proto_edit_btn:
+        if st.button("✏ editar" if not st.session_state.get("coach_proto_editing") else "✕ fechar",
+                     key="btn_proto_edit", use_container_width=True):
+            st.session_state["coach_proto_editing"] = not st.session_state.get("coach_proto_editing", False)
+            st.rerun()
+
+    if st.session_state.get("coach_proto_editing", False):
+        with st.form("form_proto_coach"):
+            _p1, _p2 = st.columns(2)
+            with _p1:
+                _rotina_in = st.text_input("Rotina de Exercícios", value=_proto["rotina"])
+                _hiit_in   = st.text_input("Treinos HIIT", value=_proto["hiit"])
+            with _p2:
+                _zona2_in  = st.text_input("Treinos Zona 2", value=_proto["zona2"])
+                _pinit_in  = st.text_input("Peso inicial (referência)", value=_proto["peso_inicial"])
+            if st.form_submit_button("✓ SALVAR PROTOCOLO", use_container_width=True):
+                st.session_state["coach_proto"] = {
+                    "rotina": _rotina_in, "hiit": _hiit_in,
+                    "zona2": _zona2_in, "peso_inicial": _pinit_in,
+                }
+                st.session_state["coach_proto_editing"] = False
+                _notif("Protocolo atualizado")
+                st.rerun()
+
     coach_html = f"""
-    <div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;padding:16px 20px;margin-bottom:15px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-            <span style="font-family:{MONO};font-size:11px;font-weight:700;color:{CYAN};letter-spacing:1px">📋 PROTOCOLO & METAS METABÓLICAS</span>
-            <span style="background:rgba(167,139,250,0.1);border:1px solid {PURPLE}55;border-radius:4px;padding:2px 8px;font-family:{MONO};font-size:9px;color:{PURPLE};font-weight:700;letter-spacing:0.5px">TIRZEPATIDA</span>
+    <div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;padding:14px 18px;margin-bottom:15px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+            <div style="font-size:11px;color:{MUTED}">Evolução de Peso
+              <div style="font-size:13px;font-weight:700;color:{TEXT};margin-top:2px">{_proto["peso_inicial"]} ➔ {peso:.1f} kg atual</div></div>
+            <div style="font-size:11px;color:{MUTED}">Rotina
+              <div style="font-size:13px;font-weight:700;color:{TEXT};margin-top:2px">{_proto["rotina"]}</div></div>
+            <div style="font-size:11px;color:{MUTED}">HIIT
+              <div style="font-size:13px;font-weight:700;color:{TEXT};margin-top:2px">{_proto["hiit"]}</div></div>
+            <div style="font-size:11px;color:{MUTED}">Zona 2
+              <div style="font-size:13px;font-weight:700;color:{TEXT};margin-top:2px">{_proto["zona2"]}</div></div>
         </div>
-        <div style="display:grid;grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));gap:12px">
-            <div style="font-size:12px;color:{MUTED}">Evolução de Peso: <br><span style="font-size:13px;font-weight:700;color:{TEXT}">115.3 kg (Jan/2026) ➔ {peso:.1f} kg atual</span></div>
-            <div style="font-size:12px;color:{MUTED}">Rotina de Exercícios: <br><span style="font-size:13px;font-weight:700;color:{TEXT}">Musculação + Cardio (6x/sem)</span></div>
-            <div style="font-size:12px;color:{MUTED}">Treinos HIIT (Ter & Sex): <br><span style="font-size:13px;font-weight:700;color:{TEXT}">Alta Intensidade / EPOC</span></div>
-            <div style="font-size:12px;color:{MUTED}">Treinos Zona 2 (Seg, Qua, Qui, Sáb): <br><span style="font-size:13px;font-weight:700;color:{TEXT}">Corrida BPM 120-140 max</span></div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid {BORDER};display:flex;gap:8px;align-items:center">
+            <span style="background:rgba(167,139,250,0.1);border:1px solid {PURPLE}55;border-radius:4px;padding:2px 8px;font-family:{MONO};font-size:9px;color:{PURPLE};font-weight:700;letter-spacing:0.5px">TIRZEPATIDA</span>
+            <span style="font-family:{MONO};font-size:10px;color:{GHOST}">Protocolo farmacológico ativo · injetável semanal</span>
         </div>
     </div>
     """
@@ -2616,6 +2695,91 @@ else:
               f'Ainda sem dados históricos do Amazfit. Rode /sync no bot para começar.</p>'),
         unsafe_allow_html=True,
     )
+
+# ════════════════════════════════════════════════════════════════════════════
+# SEÇÃO 5 — EVOLUÇÃO DE MEDIDAS (largura total — 11 colunas cabem melhor)
+# ════════════════════════════════════════════════════════════════════════════
+st.markdown(sec("Biometria", "Evolução de medidas — histórico completo"), unsafe_allow_html=True)
+
+if True:  # bloco de escopo para df_bio
+    df_bio = _q_biometria()
+
+    if not df_bio.empty:
+        df_bio = df_bio.sort_values("data_ord", ascending=True)
+        COLS_NUM = ["peso","cintura","abdomen","peitoral","quadril",
+                    "coxa_dir","coxa_esq","panturrilha_dir","biceps_dir","biceps_esq"]
+        idx_rec = df_bio.index[-1]
+        diffs = {}
+        for c in COLS_NUM:
+            atual = df_bio.loc[idx_rec, c]
+            if pd.isna(atual):
+                diffs[c] = 0
+            else:
+                dm = atual - df_bio[c].max()
+                dn = atual - df_bio[c].min()
+                diffs[c] = dm if abs(dm) >= abs(dn) else dn
+
+        df_bio = df_bio.sort_values("data_ord", ascending=False)
+
+        td_base = f"text-align:right;padding:7px 8px;border-bottom:1px solid #0a1020;"
+
+        def cel(val, diff, peso=False, rec=False):
+            if pd.isna(val):
+                return f"<td style='{td_base}color:{GHOST}'>—</td>"
+            fmt = f"{val:.2f}" if peso else f"{val:.1f}"
+            un  = "kg" if peso else "cm"
+            if not rec or not diff:
+                return f"<td style='{td_base}'><b style='color:{TEXT}'>{fmt}</b></td>"
+            if diff < 0:
+                d = (f"<span style='color:{GREEN};font-size:9px;font-weight:700;"
+                     f"display:block'>▼ {abs(diff):.1f}{un}</span>")
+            else:
+                d = (f"<span style='color:{RED};font-size:9px;font-weight:700;"
+                     f"display:block'>+{diff:.1f}{un}</span>")
+            return f"<td style='{td_base}'><b style='color:{TEXT}'>{fmt}</b>{d}</td>"
+
+        HEADS = ["Data","Peso","Cintura","Abdômen","Peitoral","Quadril",
+                 "Coxa D","Coxa E","Pant. D","Bíceps D","Bíceps E"]
+        th_s  = (f"font-family:{MONO};background:{BG3};color:{GHOST};padding:9px 8px;"
+                 f"border-bottom:1px solid {BORDER2};text-transform:uppercase;font-size:9px;"
+                 f"letter-spacing:1px;text-align:right;white-space:nowrap")
+        th_s1 = th_s.replace("text-align:right", "text-align:left")
+        ths = (f"<th style='{th_s1}'>{HEADS[0]}</th>" +
+               "".join(f"<th style='{th_s}'>{h}</th>" for h in HEADS[1:]))
+
+        body = ""
+        for i, (_, row) in enumerate(df_bio.iterrows()):
+            rec    = (i == 0)
+            row_bg = f"background:rgba(0,212,255,0.04);" if rec else ""
+            data_val = (
+                f'{row["data_fmt"]} <span style="background:{CYAN};color:{BG};font-size:8px;'
+                f'font-weight:900;padding:1px 4px;border-radius:2px;margin-left:4px;'
+                f'font-family:{MONO};letter-spacing:1px">ATUAL</span>'
+                if rec else row["data_fmt"]
+            )
+            td_data = (
+                f"<td style='text-align:left;padding:7px 8px;border-bottom:1px solid #0a1020;"
+                f"color:{CYAN if rec else GHOST};font-weight:{'700' if rec else '400'};{row_bg}'>"
+                f"{data_val}</td>"
+            )
+            body += f"<tr>{td_data}"
+            body += cel(row["peso"], diffs["peso"], peso=True, rec=rec)
+            for c in ["cintura","abdomen","peitoral","quadril",
+                      "coxa_dir","coxa_esq","panturrilha_dir","biceps_dir","biceps_esq"]:
+                body += cel(row[c], diffs[c], rec=rec)
+            body += "</tr>"
+
+        st.markdown(
+            panel(
+                ptitl("Evolução de medidas — dos extremos") +
+                f'<div style="overflow-x:auto;border-radius:6px;border:1px solid {BORDER}">'
+                f'<table style="width:100%;border-collapse:collapse;font-size:12px;'
+                f'background:{BG2};min-width:620px">'
+                f'<thead><tr>{ths}</tr></thead><tbody>{body}</tbody></table>'
+                f'</div>'
+            ),
+            unsafe_allow_html=True,
+        )
 
 # ════════════════════════════════════════════════════════════════════════════
 # RODAPÉ
