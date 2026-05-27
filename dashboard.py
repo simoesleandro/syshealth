@@ -1225,7 +1225,7 @@ def _painel_entrada():
             _tab_editar()
 
 
-def _render_fav_row(frow):
+def _render_fav_row(frow, key_prefix=""):
     """Renderiza uma linha de alimento no painel de favoritos."""
     _fc, _fs, _fa = st.columns([1, 0.08, 0.14])
     fid   = int(frow["id"])
@@ -1253,12 +1253,12 @@ def _render_fav_row(frow):
         )
     with _fs:
         _star_lbl = "⭐" if fstar else "☆"
-        if st.button(_star_lbl, key=f"fav_star_{fid}", use_container_width=True, help="Favoritar"):
+        if st.button(_star_lbl, key=f"fav_star_{key_prefix}{fid}", use_container_width=True, help="Favoritar"):
             DB.execute("UPDATE alimentos_favoritos SET favorito=? WHERE id=?", [1 - fstar, fid])
             st.cache_data.clear()
             st.rerun()
     with _fa:
-        if st.button("➕ Usar", key=f"fav_use_{fid}", use_container_width=True):
+        if st.button("➕ Usar", key=f"fav_use_{key_prefix}{fid}", use_container_width=True):
             _hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S")
             DB.execute(
                 "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json,data_hora) VALUES (?,?,?,?,?,?,?,?)",
@@ -1297,11 +1297,11 @@ def _tab_refeicao():
                     st.markdown(f'<div style="font-size:12px;color:{GHOST};padding:6px 0">Marque alimentos como favorito com ⭐</div>', unsafe_allow_html=True)
                 else:
                     for _, _frow in _df_starred.iterrows():
-                        _render_fav_row(_frow)
+                        _render_fav_row(_frow, key_prefix="s_")
 
             with _all_tab:
                 for _, _frow in _df_show.iterrows():
-                    _render_fav_row(_frow)
+                    _render_fav_row(_frow, key_prefix="a_")
 
     st.markdown(f'<div style="height:1px;background:{BORDER};margin:10px 0 8px"></div>', unsafe_allow_html=True)
 
