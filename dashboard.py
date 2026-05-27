@@ -2242,14 +2242,16 @@ with col_m:
                     _macros_ing = ""
                     if _dp or _dc or _dg:
                         _macros_ing = (
-                            f'<span style="font-size:9px;color:{GREEN};margin-left:6px">P:{_dp:.0f}g</span>'
-                            f'<span style="font-size:9px;color:#2dd4bf;margin-left:4px">C:{_dc:.0f}g</span>'
-                            f'<span style="font-size:9px;color:{PURPLE};margin-left:4px">G:{_dg:.0f}g</span>'
+                            f'<span style="font-family:{MONO};font-size:11px;color:{GREEN};margin-left:8px">Prot. {_dp:.0f}g</span>'
+                            f'<span style="font-family:{MONO};font-size:11px;color:#2dd4bf;margin-left:8px">Carb. {_dc:.0f}g</span>'
+                            f'<span style="font-family:{MONO};font-size:11px;color:{PURPLE};margin-left:8px">Gord. {_dg:.0f}g</span>'
                         )
                     details_html += f"""
     <div style="background:#070b15;border-radius:4px;padding:4px 8px;display:flex;justify-content:space-between;align-items:center;border:1px solid {cor}11">
       <span style="font-size:11px;color:{TEXT}">{d.get('nome','?')} <span style="color:{MUTED};font-size:10px">{d.get('gramas',0)}g</span></span>
-      <span style="display:flex;align-items:center"><span style="font-size:11px;font-family:{MONO};color:{d_cor}">{int(d.get('kcal',0))} kcal</span>{_macros_ing}</span>
+      <span style="display:flex;align-items:center;flex-wrap:wrap;gap:0;justify-content:flex-end">
+        <span style="font-family:{MONO};font-size:11px;color:{d_cor}">{int(d.get('kcal',0))} kcal</span>{_macros_ing}
+      </span>
     </div>"""
                 details_html += "\n  </div>\n</details>"
 
