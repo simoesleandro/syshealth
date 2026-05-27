@@ -400,13 +400,25 @@ html.sh-xs section[data-testid="stSidebar"]{
   .sh-supp-grid{grid-template-columns:repeat(2,1fr)!important}
   .block-container{padding:0.5rem!important}
   section[data-testid="stSidebar"]{max-width:95vw!important}}
+
+/* ── Overlay semitransparente atrás do sidebar aberto em mobile ── */
+@media(max-width:768px){
+  section[data-testid="stSidebar"][aria-expanded="true"]::before{
+    content:'';
+    position:fixed;inset:0;
+    background:rgba(0,0,0,0.55);
+    z-index:999;
+    pointer-events:auto;
+  }
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ── JS: detecta largura via st.html (sem iframe filho) ───────────────────────
+# ── JS: detecta largura + IntersectionObserver para nav ativo ────────────────
 st.html("""
 <script>
 (function(){
+  /* ── Breakpoint classes ── */
   function bp(){
     var w=window.innerWidth;
     var h=document.documentElement;
@@ -418,6 +430,29 @@ st.html("""
   }
   bp();
   window.addEventListener('resize',bp);
+
+  /* ── IntersectionObserver: destaca link ativo no sidebar ── */
+  function initNavObserver(){
+    var sections=document.querySelectorAll('[id^="sec-"]');
+    if(!sections.length){setTimeout(initNavObserver,600);return;}
+    var links=document.querySelectorAll('a[href^="#sec-"]');
+    if(!links.length){setTimeout(initNavObserver,600);return;}
+    var obs=new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        if(e.isIntersecting){
+          var id=e.target.id;
+          links.forEach(function(a){
+            var active=(a.getAttribute('href')==='#'+id);
+            a.style.color=active?'#00d4ff':'#e8edf5';
+            a.style.background=active?'rgba(0,212,255,0.08)':'transparent';
+            a.style.borderColor=active?'rgba(0,212,255,0.25)':'transparent';
+          });
+        }
+      });
+    },{threshold:0.25});
+    sections.forEach(function(s){obs.observe(s);});
+  }
+  setTimeout(initNavObserver,800);
 })();
 </script>
 """)
@@ -1772,6 +1807,26 @@ with st.sidebar:
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 1 — NUTRIÇÃO
 # ════════════════════════════════════════════════════════════════════════════
+st.markdown(
+    f'<div style="display:flex;justify-content:space-between;align-items:center;'
+    f'padding:6px 0 14px;border-bottom:1px solid {BORDER};margin-bottom:16px">'
+    f'<span style="font-family:{MONO};color:{CYAN};font-size:12px;letter-spacing:2px;'
+    f'text-transform:uppercase;font-weight:700">⚡ SYS.HEALTH</span>'
+    f'<span style="color:{MUTED};font-size:11px;font-family:{MONO};letter-spacing:0.5px">'
+    f'{hoje_pt} · {hora_now} · {dia_sem}</span>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
+
+# ── BLOCO: HOJE ───────────────────────────────────────────────────────────────
+st.markdown(
+    f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:2.5px;'
+    f'text-transform:uppercase;color:{GHOST};margin:0 0 10px;'
+    f'padding:6px 10px;background:rgba(0,212,255,0.04);border-left:2px solid {CYAN}33;'
+    f'border-radius:0 4px 4px 0">▸ HOJE — MÉTRICAS E ATIVIDADE</div>',
+    unsafe_allow_html=True,
+)
+
 st.markdown('<div id="sec-nutricao"></div>', unsafe_allow_html=True)
 st.markdown(sec("Nutrição", "Metas do dia"), unsafe_allow_html=True)
 
@@ -1971,20 +2026,32 @@ with a_col8:
         hevy_extra
     ), unsafe_allow_html=True)
 
+# ── Timestamp dos dados Amazfit ───────────────────────────────────────────────
+if not _az.empty and "data_hora" in _az.columns:
+    try:
+        _az_ts_fmt = pd.to_datetime(str(_az["data_hora"].iloc[0])).strftime("%d/%m %H:%M")
+    except Exception:
+        _az_ts_fmt = str(_az["data_hora"].iloc[0])[:16]
+    st.markdown(
+        f'<p style="color:{MUTED};font-size:10px;text-align:right;font-family:{MONO};'
+        f'margin:2px 0 8px;letter-spacing:0.5px">⟳ sincronizado {_az_ts_fmt}</p>',
+        unsafe_allow_html=True,
+    )
+
 # ════════════════════════════════════════════════════════════════════════════
 # PAINEL — DETALHES DOS TREINOS (Hevy)
 # ════════════════════════════════════════════════════════════════════════════
 _tbtn1, _tbtn2 = st.columns(2)
 with _tbtn1:
     _tw_open = st.session_state.get("treino_tab_open", False)
-    if st.button("✕ FECHAR TREINOS" if _tw_open else "📋 DETALHES DOS TREINOS",
-                 key="btn_treino_tab", use_container_width=True):
+    _tw_lbl = "📋 TREINOS ▴" if _tw_open else "📋 TREINOS ▾"
+    if st.button(_tw_lbl, key="btn_treino_tab", use_container_width=True):
         st.session_state["treino_tab_open"] = not _tw_open
         st.rerun()
 with _tbtn2:
     _rc_open = st.session_state.get("corrida_tab_open", False)
-    if st.button("✕ FECHAR CORRIDAS" if _rc_open else "🏃 HISTÓRICO DE CORRIDAS",
-                 key="btn_corrida_tab", use_container_width=True):
+    _rc_lbl = "🏃 CORRIDAS ▴" if _rc_open else "🏃 CORRIDAS ▾"
+    if st.button(_rc_lbl, key="btn_corrida_tab", use_container_width=True):
         st.session_state["corrida_tab_open"] = not _rc_open
         st.rerun()
 
@@ -2376,6 +2443,15 @@ else:
 
             with _cols_ag[_i % 4]:
                 st.markdown(_card_ag, unsafe_allow_html=True)
+
+# ── BLOCO: REGISTROS ─────────────────────────────────────────────────────────
+st.markdown(
+    f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:2.5px;'
+    f'text-transform:uppercase;color:{GHOST};margin:24px 0 10px;'
+    f'padding:6px 10px;background:rgba(0,230,118,0.04);border-left:2px solid {GREEN}33;'
+    f'border-radius:0 4px 4px 0">▸ REGISTROS — EVOLUÇÃO E DADOS DO DIA</div>',
+    unsafe_allow_html=True,
+)
 
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 4 — EVOLUÇÃO
@@ -2975,6 +3051,15 @@ with col_s:
                         st.rerun()
                 st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 
+# ── BLOCO: ANÁLISE ───────────────────────────────────────────────────────────
+st.markdown(
+    f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:2.5px;'
+    f'text-transform:uppercase;color:{GHOST};margin:24px 0 10px;'
+    f'padding:6px 10px;background:rgba(167,139,250,0.04);border-left:2px solid {PURPLE}33;'
+    f'border-radius:0 4px 4px 0">▸ ANÁLISE — HISTÓRICO E TENDÊNCIAS</div>',
+    unsafe_allow_html=True,
+)
+
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 6 — HISTÓRICO SEMANAL
 # ════════════════════════════════════════════════════════════════════════════
@@ -2982,24 +3067,22 @@ st.markdown('<div id="sec-historico"></div>', unsafe_allow_html=True)
 st.markdown(sec("Histórico", "Últimos 30 dias · Tendências"), unsafe_allow_html=True)
 
 # Seletor de período — radio horizontal
-_hc1, _hc2 = st.columns([3, 1])
-with _hc1:
-    st.markdown(
-        f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-        f'text-transform:uppercase;color:{MUTED};margin-bottom:4px">PERÍODO DE ANÁLISE</div>',
-        unsafe_allow_html=True,
-    )
-    periodo = st.radio(
-        "Período",
-        ["7 dias", "14 dias", "30 dias", "90 dias"],
-        index=1,
-        horizontal=True,
-        label_visibility="collapsed",
-        key="periodo_hist",
-    )
-with _hc2:
-    st.markdown('<div style="height:24px"></div>', unsafe_allow_html=True)
-    if st.button("📊 Carregar", key="btn_hist_load", use_container_width=True):
+st.markdown(
+    f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
+    f'text-transform:uppercase;color:{MUTED};margin-bottom:4px">PERÍODO DE ANÁLISE</div>',
+    unsafe_allow_html=True,
+)
+periodo = st.radio(
+    "Período",
+    ["7 dias", "14 dias", "30 dias", "90 dias"],
+    index=1,
+    horizontal=True,
+    label_visibility="collapsed",
+    key="periodo_hist",
+)
+_hload1, _hload2, _hload3 = st.columns([1, 2, 1])
+with _hload2:
+    if st.button("📊 Carregar dados do período", key="btn_hist_load", use_container_width=True):
         st.session_state["hist_carregado"] = True
         st.rerun()
 
@@ -3079,6 +3162,21 @@ if _hist_carregado:
         WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
         ORDER BY data_hora ASC
     """)
+
+    # ── Caption: intervalo real dos dados carregados ─────────────────────────
+    if not df_hist.empty:
+        try:
+            _min_d = pd.to_datetime(df_hist["dia"].min()).strftime("%d/%m/%Y")
+            _max_d = pd.to_datetime(df_hist["dia"].max()).strftime("%d/%m/%Y")
+            _n_nutri = len(df_macro_hist)
+            st.markdown(
+                f'<div style="font-size:10px;color:{GHOST};font-family:{MONO};'
+                f'letter-spacing:0.5px;margin:4px 0 8px;text-align:right">'
+                f'📅 {_min_d} → {_max_d} · {len(df_hist)} dias Amazfit · {_n_nutri} dias nutrição</div>',
+                unsafe_allow_html=True,
+            )
+        except Exception:
+            pass
 
 def chart_layout(height=200, show_legend=False):
     return dict(
@@ -3582,7 +3680,9 @@ if _tem_qualquer_dado:
             )
 
     if executar_analise:
-        with st.spinner("🧠 IA Coach coletando todos os dados e gerando análise completa..."):
+      try:
+        with st.status("🧠 IA Coach — coletando dados e gerando análise...", expanded=True) as _ia_status:
+            _ia_status.write("📊 Calculando médias do período selecionado...")
             try:
                 # ── 1. MÉDIAS DO PERÍODO SELECIONADO ─────────────────────────
                 media_passos      = media(df_hist, "passos")
@@ -3599,11 +3699,14 @@ if _tem_qualquer_dado:
                 media_corrida_cal = media(df_hist, "corrida_cal")
 
                 # ── 2. DADOS BRUTOS COMPLETOS (queries extras) ────────────────
+                _ia_status.write("⚖️ Buscando histórico de peso...")
 
                 # Histórico de peso (medidas)
                 _ia_peso_df = DB.query(
                     "SELECT data, peso FROM medidas WHERE peso IS NOT NULL ORDER BY data ASC"
                 )
+
+                _ia_status.write("💪 Buscando treinos de musculação...")
 
                 # Treinos detalhados — últimas 100 sessões
                 _ia_hevy_df = DB.query(
@@ -3612,11 +3715,15 @@ if _tem_qualquer_dado:
                     "FROM hevy_treinos ORDER BY data_hora DESC LIMIT 100"
                 )
 
+                _ia_status.write("🏃 Buscando histórico de corridas...")
+
                 # Corridas completas
                 _ia_corridas_df = DB.query(
                     "SELECT data_hora, corrida_km, corrida_cal, passos "
                     "FROM amazfit_dados WHERE corrida_km > 0 ORDER BY data_hora DESC"
                 )
+
+                _ia_status.write("🌙 Buscando dados diários (sono, HRV, PAI)...")
 
                 # Dados diários Amazfit (sono, HRV, PAI, passos) — últimos 90 dias
                 _ia_daily_df = DB.query(
@@ -3626,6 +3733,8 @@ if _tem_qualquer_dado:
                     "WHERE date(data_hora) >= date('now','-90 days') "
                     "ORDER BY data_hora ASC"
                 )
+
+                _ia_status.write("🥗 Buscando nutrição e medicação...")
 
                 # Nutrição diária — últimos 90 dias
                 _ia_nutri_df = DB.query(
@@ -3642,6 +3751,8 @@ if _tem_qualquer_dado:
                     "SELECT date(data_hora,'localtime') as dt, dose_mg "
                     "FROM medicacao ORDER BY data_hora ASC"
                 )
+
+                _ia_status.write("📝 Montando contexto clínico completo...")
 
                 # ── 3. FORMATAR BLOCOS DE TEXTO ───────────────────────────────
 
@@ -3865,9 +3976,11 @@ if _tem_qualquer_dado:
                     "Tom: técnico, sênior, clínico, sem introduções genéricas. Cite números reais dos dados."
                 )
 
+                _ia_status.write("🤖 Consultando Gemini 2.5 Flash...")
                 vision = _gemini_model()
                 res = vision.generate_content(prompt)
                 st.session_state["ia_coach_result"] = res.text
+                _ia_status.update(label="✅ Análise concluída!", state="complete", expanded=False)
 
                 # Salvar no histórico
                 try:
@@ -3879,7 +3992,10 @@ if _tem_qualquer_dado:
                     st.warning(f"⚠️ Erro ao salvar análise no histórico: {save_err}")
                 st.rerun()
             except Exception as e:
+                _ia_status.update(label=f"❌ Erro: {e}", state="error", expanded=True)
                 st.error(f"❌ Erro ao chamar a IA: {e}")
+      except Exception as _outer_e:
+          st.error(f"❌ Erro ao iniciar análise: {_outer_e}")
 
     if "ia_coach_result" in st.session_state:
         st.markdown(f"""
@@ -3898,6 +4014,15 @@ else:
         unsafe_allow_html=True,
     )
 
+# ── BLOCO: CORPO ─────────────────────────────────────────────────────────────
+st.markdown(
+    f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:2.5px;'
+    f'text-transform:uppercase;color:{GHOST};margin:24px 0 10px;'
+    f'padding:6px 10px;background:rgba(251,191,36,0.04);border-left:2px solid {AMBER}33;'
+    f'border-radius:0 4px 4px 0">▸ CORPO — COMPOSIÇÃO E BIOMETRIA</div>',
+    unsafe_allow_html=True,
+)
+
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 5 — EVOLUÇÃO DE MEDIDAS (largura total — 11 colunas cabem melhor)
 # ════════════════════════════════════════════════════════════════════════════
@@ -3906,7 +4031,7 @@ st.markdown(sec("Biometria", "Evolução de medidas — histórico completo"), u
 
 # ── Botão + formulário de nova medida ────────────────────────────────────────
 _bio_open = st.session_state.get("bio_nova_open", False)
-_bio_lbl  = "✕ FECHAR" if _bio_open else "＋ NOVA MEDIDA"
+_bio_lbl  = "📏 NOVA MEDIDA ▴" if _bio_open else "📏 NOVA MEDIDA ▾"
 if st.button(_bio_lbl, key="btn_bio_nova", use_container_width=True):
     st.session_state["bio_nova_open"] = not _bio_open
     st.rerun()
@@ -4035,48 +4160,73 @@ if True:  # bloco de escopo para df_bio
                      f"display:block'>+{diff:.1f}{un}</span>")
             return f"<td style='{td_base}'><b style='color:{TEXT}'>{fmt}</b>{d}</td>"
 
-        HEADS = ["Data","Peso","Cintura","Abdômen","Peitoral","Quadril",
-                 "Coxa D","Coxa E","Pant. D","Bíceps D","Bíceps E"]
         th_s  = (f"font-family:{MONO};background:{BG3};color:{GHOST};padding:9px 8px;"
                  f"border-bottom:1px solid {BORDER2};text-transform:uppercase;font-size:9px;"
                  f"letter-spacing:1px;text-align:right;white-space:nowrap")
         th_s1 = th_s.replace("text-align:right", "text-align:left")
-        ths = (f"<th style='{th_s1}'>{HEADS[0]}</th>" +
-               "".join(f"<th style='{th_s}'>{h}</th>" for h in HEADS[1:]))
 
-        body = ""
-        for i, (_, row) in enumerate(df_bio.iterrows()):
-            rec    = (i == 0)
-            row_bg = f"background:rgba(0,212,255,0.04);" if rec else ""
+        def _bio_row_head_data(row, rec):
+            row_bg = "background:rgba(0,212,255,0.04);" if rec else ""
             data_val = (
                 f'{row["data_fmt"]} <span style="background:{CYAN};color:{BG};font-size:8px;'
                 f'font-weight:900;padding:1px 4px;border-radius:2px;margin-left:4px;'
                 f'font-family:{MONO};letter-spacing:1px">ATUAL</span>'
                 if rec else row["data_fmt"]
             )
-            td_data = (
+            return (
                 f"<td style='text-align:left;padding:7px 8px;border-bottom:1px solid #0a1020;"
                 f"color:{CYAN if rec else GHOST};font-weight:{'700' if rec else '400'};{row_bg}'>"
                 f"{data_val}</td>"
             )
-            body += f"<tr>{td_data}"
-            body += cel(row["peso"], diffs["peso"], peso=True, rec=rec)
-            for c in ["cintura","abdomen","peitoral","quadril",
-                      "coxa_dir","coxa_esq","panturrilha_dir","biceps_dir","biceps_esq"]:
-                body += cel(row[c], diffs[c], rec=rec)
-            body += "</tr>"
 
-        st.markdown(
-            panel(
-                ptitl("Evolução de medidas — dos extremos") +
-                f'<div style="overflow-x:auto;border-radius:6px;border:1px solid {BORDER}">'
-                f'<table style="width:100%;border-collapse:collapse;font-size:12px;'
-                f'background:{BG2};min-width:620px">'
-                f'<thead><tr>{ths}</tr></thead><tbody>{body}</tbody></table>'
-                f'</div>'
-            ),
-            unsafe_allow_html=True,
-        )
+        _bio_tab1, _bio_tab2 = st.tabs(["🏛️ Tronco · Composição", "💪 Membros"])
+
+        # ── Tab 1: Peso + medidas do tronco ──────────────────────────────────
+        with _bio_tab1:
+            HEADS_T1 = ["Data","Peso","Cintura","Abdômen","Peitoral","Quadril"]
+            ths1 = (f"<th style='{th_s1}'>{HEADS_T1[0]}</th>" +
+                    "".join(f"<th style='{th_s}'>{h}</th>" for h in HEADS_T1[1:]))
+            body1 = ""
+            for i, (_, row) in enumerate(df_bio.iterrows()):
+                rec = (i == 0)
+                body1 += f"<tr>{_bio_row_head_data(row, rec)}"
+                body1 += cel(row["peso"],    diffs["peso"],    peso=True, rec=rec)
+                for c in ["cintura","abdomen","peitoral","quadril"]:
+                    body1 += cel(row[c], diffs[c], rec=rec)
+                body1 += "</tr>"
+            st.markdown(
+                panel(
+                    ptitl("Evolução — Tronco & Composição Corporal") +
+                    f'<div style="overflow-x:auto;border-radius:6px;border:1px solid {BORDER}">'
+                    f'<table style="width:100%;border-collapse:collapse;font-size:12px;'
+                    f'background:{BG2};min-width:400px">'
+                    f'<thead><tr>{ths1}</tr></thead><tbody>{body1}</tbody></table></div>'
+                ),
+                unsafe_allow_html=True,
+            )
+
+        # ── Tab 2: Membros ────────────────────────────────────────────────────
+        with _bio_tab2:
+            HEADS_T2 = ["Data","Coxa D","Coxa E","Pant. D","Bíceps D","Bíceps E"]
+            ths2 = (f"<th style='{th_s1}'>{HEADS_T2[0]}</th>" +
+                    "".join(f"<th style='{th_s}'>{h}</th>" for h in HEADS_T2[1:]))
+            body2 = ""
+            for i, (_, row) in enumerate(df_bio.iterrows()):
+                rec = (i == 0)
+                body2 += f"<tr>{_bio_row_head_data(row, rec)}"
+                for c in ["coxa_dir","coxa_esq","panturrilha_dir","biceps_dir","biceps_esq"]:
+                    body2 += cel(row[c], diffs[c], rec=rec)
+                body2 += "</tr>"
+            st.markdown(
+                panel(
+                    ptitl("Evolução — Membros") +
+                    f'<div style="overflow-x:auto;border-radius:6px;border:1px solid {BORDER}">'
+                    f'<table style="width:100%;border-collapse:collapse;font-size:12px;'
+                    f'background:{BG2};min-width:380px">'
+                    f'<thead><tr>{ths2}</tr></thead><tbody>{body2}</tbody></table></div>'
+                ),
+                unsafe_allow_html=True,
+            )
 
 # ════════════════════════════════════════════════════════════════════════════
 # RODAPÉ
