@@ -3274,6 +3274,100 @@ else:
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown(sec("Biometria", "Evolução de medidas — histórico completo"), unsafe_allow_html=True)
 
+# ── Botão + formulário de nova medida ────────────────────────────────────────
+_bio_open = st.session_state.get("bio_nova_open", False)
+_bio_lbl  = "✕ FECHAR" if _bio_open else "＋ NOVA MEDIDA"
+if st.button(_bio_lbl, key="btn_bio_nova", use_container_width=True):
+    st.session_state["bio_nova_open"] = not _bio_open
+    st.rerun()
+
+if st.session_state.get("bio_nova_open", False):
+    st.markdown(
+        f'<div style="background:{BG3};border:1px solid {CYAN}33;border-top:2px solid {CYAN};'
+        f'border-radius:0 0 10px 10px;padding:16px 18px 18px;margin-bottom:16px">',
+        unsafe_allow_html=True,
+    )
+
+    # Carrega última medida para pré-preencher campos
+    _bio_ultimo = _q_biometria()
+    _bio_ult = _bio_ultimo.iloc[-1] if not _bio_ultimo.empty else None
+
+    def _bio_default(col, fallback=0.0):
+        if _bio_ult is None:
+            return fallback
+        v = _bio_ult.get(col, None)
+        return float(v) if v is not None and not pd.isna(v) else fallback
+
+    with st.form("form_bio_nova", clear_on_submit=True):
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
+            f'text-transform:uppercase;color:{CYAN};margin-bottom:12px">📏 REGISTRAR MEDIDAS CORPORAIS</div>',
+            unsafe_allow_html=True,
+        )
+
+        _bio_data = st.date_input("Data", value=hoje, key="bio_data_in")
+
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:9px;color:{MUTED};letter-spacing:1px;'
+            f'text-transform:uppercase;margin:10px 0 6px">COMPOSIÇÃO CORPORAL</div>',
+            unsafe_allow_html=True,
+        )
+        _bc1, _bc2, _bc3 = st.columns(3)
+        with _bc1:
+            _b_peso     = st.number_input("Peso (kg)",      min_value=0.0, max_value=300.0,
+                                          value=_bio_default("peso", 0.0), step=0.1, format="%.1f")
+            _b_cintura  = st.number_input("Cintura (cm)",   min_value=0.0, max_value=200.0,
+                                          value=_bio_default("cintura", 0.0), step=0.1, format="%.1f")
+            _b_abdomen  = st.number_input("Abdômen (cm)",   min_value=0.0, max_value=200.0,
+                                          value=_bio_default("abdomen", 0.0), step=0.1, format="%.1f")
+        with _bc2:
+            _b_peitoral = st.number_input("Peitoral (cm)",  min_value=0.0, max_value=200.0,
+                                          value=_bio_default("peitoral", 0.0), step=0.1, format="%.1f")
+            _b_quadril  = st.number_input("Quadril (cm)",   min_value=0.0, max_value=200.0,
+                                          value=_bio_default("quadril", 0.0), step=0.1, format="%.1f")
+            _b_coxa_d   = st.number_input("Coxa Dir (cm)",  min_value=0.0, max_value=150.0,
+                                          value=_bio_default("coxa_dir", 0.0), step=0.1, format="%.1f")
+            _b_coxa_e   = st.number_input("Coxa Esq (cm)",  min_value=0.0, max_value=150.0,
+                                          value=_bio_default("coxa_esq", 0.0), step=0.1, format="%.1f")
+        with _bc3:
+            _b_pant_d   = st.number_input("Pant. Dir (cm)", min_value=0.0, max_value=100.0,
+                                          value=_bio_default("panturrilha_dir", 0.0), step=0.1, format="%.1f")
+            _b_bic_d    = st.number_input("Bíceps Dir (cm)",min_value=0.0, max_value=80.0,
+                                          value=_bio_default("biceps_dir", 0.0), step=0.1, format="%.1f")
+            _b_bic_e    = st.number_input("Bíceps Esq (cm)",min_value=0.0, max_value=80.0,
+                                          value=_bio_default("biceps_esq", 0.0), step=0.1, format="%.1f")
+
+        _bio_salvar = st.form_submit_button("✓ SALVAR MEDIDAS", use_container_width=True)
+
+    if _bio_salvar:
+        _bio_data_sql = str(_bio_data)
+        _ex = DB.query("SELECT id FROM medidas WHERE date(data)=?", [_bio_data_sql])
+        def _nz(v): return float(v) if v and float(v) > 0 else None
+        if _ex.empty:
+            DB.execute(
+                "INSERT INTO medidas (data,peso,cintura,abdomen,peitoral,quadril,"
+                "coxa_dir,coxa_esq,panturrilha_dir,biceps_dir,biceps_esq) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                [_bio_data_sql, _nz(_b_peso), _nz(_b_cintura), _nz(_b_abdomen),
+                 _nz(_b_peitoral), _nz(_b_quadril), _nz(_b_coxa_d), _nz(_b_coxa_e),
+                 _nz(_b_pant_d), _nz(_b_bic_d), _nz(_b_bic_e)],
+            )
+        else:
+            DB.execute(
+                "UPDATE medidas SET peso=?,cintura=?,abdomen=?,peitoral=?,quadril=?,"
+                "coxa_dir=?,coxa_esq=?,panturrilha_dir=?,biceps_dir=?,biceps_esq=? "
+                "WHERE date(data)=?",
+                [_nz(_b_peso), _nz(_b_cintura), _nz(_b_abdomen),
+                 _nz(_b_peitoral), _nz(_b_quadril), _nz(_b_coxa_d), _nz(_b_coxa_e),
+                 _nz(_b_pant_d), _nz(_b_bic_d), _nz(_b_bic_e), _bio_data_sql],
+            )
+        st.cache_data.clear()
+        st.session_state["bio_nova_open"] = False
+        _notif(f"Medidas de {_bio_data.strftime('%d/%m/%Y')} salvas ✓")
+        st.rerun()
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
 if True:  # bloco de escopo para df_bio
     df_bio = _q_biometria()
 
