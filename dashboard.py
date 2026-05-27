@@ -1972,6 +1972,294 @@ with a_col8:
     ), unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
+# PAINEL — DETALHES DOS TREINOS (Hevy)
+# ════════════════════════════════════════════════════════════════════════════
+_tbtn1, _tbtn2 = st.columns(2)
+with _tbtn1:
+    _tw_open = st.session_state.get("treino_tab_open", False)
+    if st.button("✕ FECHAR TREINOS" if _tw_open else "📋 DETALHES DOS TREINOS",
+                 key="btn_treino_tab", use_container_width=True):
+        st.session_state["treino_tab_open"] = not _tw_open
+        st.rerun()
+with _tbtn2:
+    _rc_open = st.session_state.get("corrida_tab_open", False)
+    if st.button("✕ FECHAR CORRIDAS" if _rc_open else "🏃 HISTÓRICO DE CORRIDAS",
+                 key="btn_corrida_tab", use_container_width=True):
+        st.session_state["corrida_tab_open"] = not _rc_open
+        st.rerun()
+
+# ── Tabela de treinos (Hevy) ──────────────────────────────────────────────────
+if st.session_state.get("treino_tab_open", False):
+    st.markdown(
+        f'<div style="background:{BG3};border:1px solid {GREEN}33;'
+        f'border-top:2px solid {GREEN};border-radius:0 0 10px 10px;'
+        f'padding:16px 18px 18px;margin-bottom:12px">',
+        unsafe_allow_html=True,
+    )
+
+    # Seletor de período
+    _tw_col1, _tw_col2 = st.columns([2, 1])
+    with _tw_col1:
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:9px;font-weight:700;'
+            f'letter-spacing:1.5px;text-transform:uppercase;color:{GREEN};margin-bottom:4px">'
+            f'💪 DIÁRIO DE TREINOS — HEVY</div>',
+            unsafe_allow_html=True,
+        )
+    with _tw_col2:
+        _tw_periodo = st.selectbox(
+            "Período", ["Últimos 30 dias", "Últimos 90 dias", "Últimos 6 meses", "Tudo"],
+            key="tw_periodo", label_visibility="collapsed"
+        )
+
+    _tw_dias_map = {"Últimos 30 dias": 30, "Últimos 90 dias": 90,
+                    "Últimos 6 meses": 180, "Tudo": 3650}
+    _tw_dias = _tw_dias_map[_tw_periodo]
+
+    _df_tw = DB.query(
+        f"SELECT id, date(data_hora,'localtime') as data_treino, "
+        f"strftime('%d/%m/%Y',data_hora,'localtime') as data_fmt, "
+        f"titulo, duracao_min, volume_kg, exercicios_json "
+        f"FROM hevy_treinos "
+        f"WHERE date(data_hora,'localtime') >= date('now','-{_tw_dias} days') "
+        f"ORDER BY data_hora DESC"
+    )
+
+    if _df_tw.empty:
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:11px;color:{MUTED};padding:12px;'
+            f'text-align:center">Nenhum treino encontrado neste período</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        # Expande exercicios_json em linhas individuais por série
+        _linhas = []
+        for _, _tw_row in _df_tw.iterrows():
+            try:
+                _exs = json.loads(_tw_row["exercicios_json"] or "[]")
+            except Exception:
+                _exs = []
+            _data = _tw_row["data_fmt"]
+            _titulo = _tw_row["titulo"]
+            _dur = int(_tw_row["duracao_min"] or 0)
+
+            if not _exs:
+                _linhas.append({
+                    "Data": _data, "Treino": _titulo, "Exercício": "—",
+                    "Série": "—", "Tipo": "—", "Carga (kg)": "—",
+                    "Reps": "—", "Volume (kg)": "—", "RPE": "—",
+                    "Duração": f"{_dur} min",
+                })
+                continue
+
+            for _ex in _exs:
+                _ex_nome = (_ex.get("title") or _ex.get("name") or
+                            _ex.get("exercise_title") or "Exercício")
+                _sets = _ex.get("sets", [])
+                for _si, _s in enumerate(_sets, 1):
+                    _kg   = float(_s.get("weight_kg") or 0)
+                    _reps = int(_s.get("reps") or 0)
+                    _rpe  = _s.get("rpe")
+                    _tipo = _s.get("set_type", "normal") or "normal"
+                    _tipo_map = {"normal": "Normal", "warmup": "Aquecimento",
+                                 "dropset": "Drop", "failure": "Falha", "myorep": "Myo"}
+                    _vol_set = round(_kg * _reps, 1)
+                    _linhas.append({
+                        "Data": _data,
+                        "Treino": _titulo,
+                        "Exercício": _ex_nome,
+                        "Série": _si,
+                        "Tipo": _tipo_map.get(_tipo, _tipo.capitalize()),
+                        "Carga (kg)": f"{_kg:.1f}" if _kg > 0 else "—",
+                        "Reps": _reps if _reps > 0 else "—",
+                        "Volume (kg)": f"{_vol_set:.1f}" if _vol_set > 0 else "—",
+                        "RPE": f"{float(_rpe):.1f}" if _rpe else "—",
+                        "Duração": f"{_dur} min" if _si == 1 else "",
+                    })
+
+        _df_exp = pd.DataFrame(_linhas)
+
+        # Filtro por exercício
+        _tw_exs = sorted(_df_exp["Exercício"].dropna().unique().tolist())
+        _tw_exs = [e for e in _tw_exs if e != "—"]
+        _tw_col3, _tw_col4 = st.columns([2, 1])
+        with _tw_col3:
+            _tw_ex_filter = st.selectbox(
+                "Filtrar exercício", ["Todos"] + _tw_exs,
+                key="tw_ex_filter", label_visibility="collapsed"
+            )
+        with _tw_col4:
+            _tw_treino_filter = st.selectbox(
+                "Filtrar treino", ["Todos"] + sorted(_df_tw["titulo"].unique().tolist()),
+                key="tw_treino_filter", label_visibility="collapsed"
+            )
+
+        if _tw_ex_filter != "Todos":
+            _df_exp = _df_exp[_df_exp["Exercício"] == _tw_ex_filter]
+        if _tw_treino_filter != "Todos":
+            _df_exp = _df_exp[_df_exp["Treino"] == _tw_treino_filter]
+
+        # Resumo rápido
+        _n_treinos = _df_tw.shape[0]
+        _n_exs = len([r for r in _linhas if r["Série"] == 1 and r["Exercício"] != "—"])
+        _vol_total = sum(float(r["Volume (kg)"].replace("—", "0") or 0)
+                         for r in _linhas if r["Volume (kg)"] != "—")
+
+        st.markdown(
+            f'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">'
+            f'<span style="font-family:{MONO};font-size:10px;color:{GREEN}">'
+            f'⚡ {_n_treinos} treinos</span>'
+            f'<span style="font-family:{MONO};font-size:10px;color:{CYAN}">'
+            f'📌 {len(_df_exp)} séries</span>'
+            f'<span style="font-family:{MONO};font-size:10px;color:{AMBER}">'
+            f'🏋️ {_vol_total:,.0f} kg volume total</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Renderiza tabela
+        _th_s = (f"font-family:{MONO};background:{BG3};color:{GHOST};padding:8px 10px;"
+                 f"border-bottom:1px solid {BORDER2};text-transform:uppercase;"
+                 f"font-size:9px;letter-spacing:1px;text-align:left;white-space:nowrap")
+        _td_s = (f"padding:6px 10px;border-bottom:1px solid #0a1020;"
+                 f"font-size:11px;color:{TEXT};vertical-align:middle")
+        _td_m = _td_s.replace(f"color:{TEXT}", f"color:{MUTED}")
+
+        _cols_tw = ["Data", "Treino", "Exercício", "Série", "Tipo",
+                    "Carga (kg)", "Reps", "Volume (kg)", "RPE", "Duração"]
+        _ths = "".join(f"<th style='{_th_s}'>{c}</th>" for c in _cols_tw)
+        _tbody = ""
+        _prev_data = None
+        for _, _lr in _df_exp.iterrows():
+            _row_bg = "background:rgba(0,230,118,0.03);" if _lr["Data"] != _prev_data else ""
+            _prev_data = _lr["Data"]
+            _tipo_cor = {"Aquecimento": AMBER, "Drop": PURPLE,
+                         "Falha": RED, "Myo": CYAN}.get(str(_lr["Tipo"]), TEXT)
+            _tbody += (
+                f"<tr style='{_row_bg}'>"
+                f"<td style='{_td_s};color:{GHOST};font-family:{MONO};font-size:10px'>{_lr['Data']}</td>"
+                f"<td style='{_td_s};max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>{_lr['Treino']}</td>"
+                f"<td style='{_td_s};color:{GREEN}'>{_lr['Exercício']}</td>"
+                f"<td style='{_td_m};text-align:center'>{_lr['Série']}</td>"
+                f"<td style='{_td_s};color:{_tipo_cor};font-family:{MONO};font-size:9px'>{_lr['Tipo']}</td>"
+                f"<td style='{_td_s};font-family:{MONO};text-align:right;color:{CYAN}'>{_lr['Carga (kg)']}</td>"
+                f"<td style='{_td_s};font-family:{MONO};text-align:right'>{_lr['Reps']}</td>"
+                f"<td style='{_td_s};font-family:{MONO};text-align:right;color:{AMBER}'>{_lr['Volume (kg)']}</td>"
+                f"<td style='{_td_s};font-family:{MONO};text-align:right;color:{PURPLE}'>{_lr['RPE']}</td>"
+                f"<td style='{_td_m};font-family:{MONO};font-size:10px'>{_lr['Duração']}</td>"
+                f"</tr>"
+            )
+
+        st.markdown(
+            f'<div style="overflow-x:auto;border-radius:6px;border:1px solid {BORDER};max-height:480px;overflow-y:auto">'
+            f'<table style="width:100%;border-collapse:collapse;background:{BG2};min-width:700px">'
+            f'<thead style="position:sticky;top:0;z-index:1"><tr>{_ths}</tr></thead>'
+            f'<tbody>{_tbody}</tbody></table></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ── Tabela de corridas (Amazfit) ──────────────────────────────────────────────
+if st.session_state.get("corrida_tab_open", False):
+    st.markdown(
+        f'<div style="background:{BG3};border:1px solid {CYAN}33;'
+        f'border-top:2px solid {CYAN};border-radius:0 0 10px 10px;'
+        f'padding:16px 18px 18px;margin-bottom:12px">',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;font-weight:700;'
+        f'letter-spacing:1.5px;text-transform:uppercase;color:{CYAN};margin-bottom:10px">'
+        f'🏃 HISTÓRICO DE CORRIDAS — AMAZFIT</div>',
+        unsafe_allow_html=True,
+    )
+
+    _df_rc = DB.query("""
+        SELECT
+            strftime('%d/%m/%Y', date(data_hora)) as data_fmt,
+            date(data_hora) as data_ord,
+            corrida_km,
+            corrida_cal,
+            passos,
+            distancia_km
+        FROM amazfit_dados
+        WHERE corrida_km > 0
+        ORDER BY data_hora DESC
+    """)
+
+    if _df_rc.empty:
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:11px;color:{MUTED};padding:12px;'
+            f'text-align:center">Nenhuma corrida registrada. Faça o sync do Amazfit para carregar os dados.</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        # Estatísticas rápidas
+        _rc_total_km  = float(_df_rc["corrida_km"].sum())
+        _rc_total_cal = int(_df_rc["corrida_cal"].sum())
+        _rc_n         = len(_df_rc)
+        _rc_media_km  = _rc_total_km / _rc_n if _rc_n > 0 else 0
+
+        st.markdown(
+            f'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">'
+            f'<span style="font-family:{MONO};font-size:10px;color:{CYAN}">'
+            f'📍 {_rc_total_km:.1f} km total</span>'
+            f'<span style="font-family:{MONO};font-size:10px;color:{GREEN}">'
+            f'🔥 {_rc_total_cal:,} kcal</span>'
+            f'<span style="font-family:{MONO};font-size:10px;color:{AMBER}">'
+            f'📊 {_rc_media_km:.2f} km/sessão</span>'
+            f'<span style="font-family:{MONO};font-size:10px;color:{MUTED}">'
+            f'🏁 {_rc_n} sessões</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Tabela
+        _th_rc = (f"font-family:{MONO};background:{BG3};color:{GHOST};padding:8px 10px;"
+                  f"border-bottom:1px solid {BORDER2};text-transform:uppercase;"
+                  f"font-size:9px;letter-spacing:1px;text-align:right;white-space:nowrap")
+        _th_rc1 = _th_rc.replace("text-align:right", "text-align:left")
+        _td_rc  = (f"padding:7px 10px;border-bottom:1px solid #0a1020;"
+                   f"font-size:12px;text-align:right;vertical-align:middle")
+
+        _rc_heads = ["Data", "Distância", "Calorias Corrida", "Ritmo estimado",
+                     "Passos (dia)", "Dist. total dia"]
+        _ths_rc = (f"<th style='{_th_rc1}'>{_rc_heads[0]}</th>" +
+                   "".join(f"<th style='{_th_rc}'>{h}</th>" for h in _rc_heads[1:]))
+
+        _tbody_rc = ""
+        for _, _rr in _df_rc.iterrows():
+            _rkm   = float(_rr["corrida_km"] or 0)
+            _rcal  = int(_rr["corrida_cal"] or 0)
+            _rpas  = int(_rr["passos"] or 0)
+            _rdist = float(_rr["distancia_km"] or 0)
+            # Estimativa de ritmo: presume ~6 min/km padrão se não houver dado de duração
+            # (Amazfit não expõe duração da corrida separado)
+            _ritmo = "—"
+            _tbody_rc += (
+                f"<tr>"
+                f"<td style='{_td_rc};text-align:left;color:{CYAN};font-family:{MONO};font-size:10px'>{_rr['data_fmt']}</td>"
+                f"<td style='{_td_rc};font-family:{MONO};font-weight:700;color:{CYAN}'>{_rkm:.2f} km</td>"
+                f"<td style='{_td_rc};font-family:{MONO};color:{GREEN}'>{_rcal:,} kcal</td>"
+                f"<td style='{_td_rc};color:{GHOST}'>{_ritmo}</td>"
+                f"<td style='{_td_rc};color:{MUTED}'>{_rpas:,}</td>"
+                f"<td style='{_td_rc};color:{MUTED}'>{_rdist:.2f} km</td>"
+                f"</tr>"
+            )
+
+        st.markdown(
+            f'<div style="overflow-x:auto;border-radius:6px;border:1px solid {BORDER};max-height:400px;overflow-y:auto">'
+            f'<table style="width:100%;border-collapse:collapse;background:{BG2};min-width:500px">'
+            f'<thead style="position:sticky;top:0;z-index:1"><tr>{_ths_rc}</tr></thead>'
+            f'<tbody>{_tbody_rc}</tbody></table></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 3 — AGENDA DO DIA (Google Calendar)
 # ════════════════════════════════════════════════════════════════════════════
 _gcal_ok = bool(
