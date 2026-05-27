@@ -491,6 +491,29 @@ def _render_notif_pendente():
 """)
 
 
+def _salvar_alimento_db(descricao, categoria, kcal, prot, carb, gord, componentes_json="[]"):
+    """Salva ou atualiza alimento no banco de favoritos."""
+    if not descricao or not descricao.strip():
+        return
+    try:
+        existente = DB.query(
+            "SELECT id, vezes_usado FROM alimentos_favoritos WHERE descricao=?",
+            [descricao.strip()]
+        )
+        if existente.empty:
+            DB.execute(
+                "INSERT INTO alimentos_favoritos (descricao,categoria,calorias,proteinas,carboidratos,gorduras,componentes_json) VALUES (?,?,?,?,?,?,?)",
+                [descricao.strip(), categoria, kcal, prot, carb, gord, componentes_json]
+            )
+        else:
+            DB.execute(
+                "UPDATE alimentos_favoritos SET vezes_usado=vezes_usado+1 WHERE descricao=?",
+                [descricao.strip()]
+            )
+    except Exception:
+        pass
+
+
 # ── ZEPP SYNC ─────────────────────────────────────────────────────────────────
 def _zepp_sync_dashboard(day: str | None = None) -> str:
     """
@@ -719,6 +742,10 @@ def _q_supp_check(dia: str):
     return DB.query(
         "SELECT descricao, COUNT(*) as qtd FROM refeicoes "
         "WHERE date(data_hora,'localtime')=? GROUP BY descricao", [dia])
+
+@st.cache_data(ttl=60)
+def _q_alimentos_favoritos():
+    return DB.query("SELECT id,descricao,categoria,calorias,proteinas,carboidratos,gorduras,componentes_json,favorito,vezes_usado FROM alimentos_favoritos ORDER BY favorito DESC, vezes_usado DESC")
 
 @st.cache_data(ttl=60)
 def _q_peso_historico():
@@ -1119,7 +1146,86 @@ def _painel_entrada():
             _tab_editar()
 
 
+def _render_fav_row(frow):
+    """Renderiza uma linha de alimento no painel de favoritos."""
+    _fc, _fs, _fa = st.columns([1, 0.08, 0.14])
+    fid   = int(frow["id"])
+    fdesc = str(frow["descricao"])
+    fkcal = int(frow["calorias"] or 0)
+    fprot = float(frow["proteinas"] or 0)
+    fcarb = float(frow["carboidratos"] or 0)
+    fgord = float(frow["gorduras"] or 0)
+    fcat  = str(frow["categoria"] or "Lanche")
+    fcomp = str(frow["componentes_json"] or "[]")
+    fstar = int(frow["favorito"] or 0)
+    fused = int(frow["vezes_usado"] or 1)
+    with _fc:
+        st.markdown(
+            f'<div style="padding:5px 0;border-bottom:1px solid {BORDER2}">'
+            f'<div style="font-size:12px;color:{TEXT};font-weight:600">{fdesc}</div>'
+            f'<div style="display:flex;gap:10px;margin-top:2px">'
+            f'<span style="font-family:{MONO};font-size:9px;color:{AMBER}">🔥{fkcal}</span>'
+            f'<span style="font-size:9px;color:{GREEN}">P:{fprot:.0f}g</span>'
+            f'<span style="font-size:9px;color:#2dd4bf">C:{fcarb:.0f}g</span>'
+            f'<span style="font-size:9px;color:{PURPLE}">G:{fgord:.0f}g</span>'
+            f'<span style="font-size:9px;color:{GHOST}">×{fused}</span>'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+    with _fs:
+        _star_lbl = "⭐" if fstar else "☆"
+        if st.button(_star_lbl, key=f"fav_star_{fid}", use_container_width=True, help="Favoritar"):
+            DB.execute("UPDATE alimentos_favoritos SET favorito=? WHERE id=?", [1 - fstar, fid])
+            st.cache_data.clear()
+            st.rerun()
+    with _fa:
+        if st.button("➕ Usar", key=f"fav_use_{fid}", use_container_width=True):
+            _hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S")
+            DB.execute(
+                "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json,data_hora) VALUES (?,?,?,?,?,?,?,?)",
+                [fcat, fdesc, fkcal, fprot, fcarb, fgord, fcomp, _hoje]
+            )
+            DB.execute("UPDATE alimentos_favoritos SET vezes_usado=vezes_usado+1 WHERE id=?", [fid])
+            st.cache_data.clear()
+            st.session_state["fav_panel_open"] = False
+            _notif(f"{fdesc} adicionado · {fkcal} kcal")
+            st.rerun()
+
+
 def _tab_refeicao():
+    # ── Favoritos / Banco de Alimentos ───────────────────────────────────────
+    _fav_open = st.session_state.get("fav_panel_open", False)
+    _fav_lbl  = "✕ FECHAR" if _fav_open else "⭐ FAVORITOS"
+    if st.button(_fav_lbl, key="btn_fav_toggle", use_container_width=True):
+        st.session_state["fav_panel_open"] = not _fav_open
+        st.rerun()
+
+    if st.session_state.get("fav_panel_open", False):
+        df_fav = _q_alimentos_favoritos()
+        if df_fav.empty:
+            st.markdown(f'<div style="font-size:12px;color:{GHOST};padding:8px 0">Nenhum alimento salvo ainda. Registre refeições para popular o banco.</div>', unsafe_allow_html=True)
+        else:
+            # Barra de busca
+            _fav_busca = st.text_input("🔍 Buscar", placeholder="filtrar alimento...", key="fav_search", label_visibility="collapsed")
+            _df_show = df_fav[df_fav["descricao"].str.contains(_fav_busca, case=False, na=False)] if _fav_busca else df_fav
+
+            # Tabs: Favoritos | Todos
+            _fav_tab, _all_tab = st.tabs(["⭐ Favoritos", "📋 Todos"])
+
+            with _fav_tab:
+                _df_starred = _df_show[_df_show["favorito"] == 1]
+                if _df_starred.empty:
+                    st.markdown(f'<div style="font-size:12px;color:{GHOST};padding:6px 0">Marque alimentos como favorito com ⭐</div>', unsafe_allow_html=True)
+                else:
+                    for _, _frow in _df_starred.iterrows():
+                        _render_fav_row(_frow)
+
+            with _all_tab:
+                for _, _frow in _df_show.iterrows():
+                    _render_fav_row(_frow)
+
+    st.markdown(f'<div style="height:1px;background:{BORDER};margin:10px 0 8px"></div>', unsafe_allow_html=True)
+
     # ── Análise por foto ─────────────────────────────────────────────────────
     foto_up = st.file_uploader(
         "📸 Envie uma foto do prato para análise automática de macros",
@@ -1169,6 +1275,7 @@ def _tab_refeicao():
                              "fonte": "IA"
                          }])],
                     )
+                    _salvar_alimento_db(item.get("descricao_resumida",""), item.get("categoria","Lanche"), item.get("calorias",0), item.get("proteinas",0), item.get("carboidratos",0), item.get("gorduras",0), json.dumps([{"nome":item.get("descricao_resumida",""),"gramas":0,"kcal":item.get("calorias",0),"prot":item.get("proteinas",0),"carb":item.get("carboidratos",0),"gord":item.get("gorduras",0),"fonte":"IA"}]))
                 del st.session_state["foto_resultado"]
                 st.cache_data.clear()
                 _notif("Foto registrada com sucesso!")
@@ -1220,6 +1327,7 @@ def _tab_refeicao():
                      r.get("carboidratos", 0), r.get("gorduras", 0),
                      json.dumps(r.get("detalhes", []))],
                 )
+                _salvar_alimento_db(r.get("descricao_resumida",""), r.get("categoria","Lanche"), r.get("calorias",0), r.get("proteinas",0), r.get("carboidratos",0), r.get("gorduras",0), json.dumps(r.get("detalhes",[])))
                 del st.session_state["ia_text_result"]
                 st.cache_data.clear()
                 _notif(f"Refeicao salva · {r.get('calorias',0)} kcal")
@@ -1264,6 +1372,7 @@ def _tab_refeicao():
                          "fonte": "Manual"
                      }])],
                 )
+                _salvar_alimento_db(desc_in.strip(), cat_sel, kcal_in, prot_in, carb_in, gord_in)
                 st.cache_data.clear()
                 _notif(f"Refeicao salva · {int(kcal_in)} kcal")
                 st.rerun()
@@ -2107,10 +2216,20 @@ with col_m:
                 for d in detalhes_list:
                     d_fonte = d.get("fonte", "LOCAL")
                     d_cor = {"LOCAL": GREEN, "USDA": CYAN, "IA (100g)": AMBER}.get(d_fonte, AMBER)
+                    _dp = float(d.get("prot", 0) or 0)
+                    _dc = float(d.get("carb", 0) or 0)
+                    _dg = float(d.get("gord", 0) or 0)
+                    _macros_ing = ""
+                    if _dp or _dc or _dg:
+                        _macros_ing = (
+                            f'<span style="font-size:9px;color:{GREEN};margin-left:6px">P:{_dp:.0f}g</span>'
+                            f'<span style="font-size:9px;color:#2dd4bf;margin-left:4px">C:{_dc:.0f}g</span>'
+                            f'<span style="font-size:9px;color:{PURPLE};margin-left:4px">G:{_dg:.0f}g</span>'
+                        )
                     details_html += f"""
-    <div style="background:#070b15;border-radius:4px;padding:3px 8px;display:flex;justify-content:space-between;align-items:center;border:1px solid {cor}11">
-      <span style="font-size:11px;color:{TEXT}">{d.get('nome','?')} <span style="color:{MUTED}">{d.get('gramas',0)}g</span></span>
-      <span style="font-size:11px;font-family:{MONO};color:{d_cor}">{int(d.get('kcal',0))} kcal</span>
+    <div style="background:#070b15;border-radius:4px;padding:4px 8px;display:flex;justify-content:space-between;align-items:center;border:1px solid {cor}11">
+      <span style="font-size:11px;color:{TEXT}">{d.get('nome','?')} <span style="color:{MUTED};font-size:10px">{d.get('gramas',0)}g</span></span>
+      <span style="display:flex;align-items:center"><span style="font-size:11px;font-family:{MONO};color:{d_cor}">{int(d.get('kcal',0))} kcal</span>{_macros_ing}</span>
     </div>"""
                 details_html += "\n  </div>\n</details>"
 
@@ -2570,10 +2689,15 @@ def barra(df, col, cor, name=""):
         hovertemplate=f"<b>%{{x|%d/%m}}</b><br>{name}: %{{y}}<extra></extra>",
     )
 
-if not df_hist.empty:
+_tem_qualquer_dado = not df_hist.empty or not df_macro_hist.empty
+
+if _tem_qualquer_dado:
 
     # ── Tabela resumo semanal ─────────────────────────────────────────────────
     st.markdown(sec("Resumo", f"Médias dos últimos {n_dias} dias"), unsafe_allow_html=True)
+
+    if df_hist.empty and not df_macro_hist.empty:
+        st.info("💡 Dados do Amazfit não encontrados para este período. Exibindo dados de nutrição disponíveis.")
 
     def media(df, col):
         return df[col].replace(0, pd.NA).mean() if col in df.columns else 0
@@ -2646,56 +2770,57 @@ if not df_hist.empty:
             )
 
     # ── Linha 1: Passos + Distância ───────────────────────────────────────────
-    h1a, h1b = st.columns(2)
+    if not df_hist.empty:
+        h1a, h1b = st.columns(2)
 
-    with h1a:
-        st.markdown(panel(
-            ptitl("👟 Passos diários") +
-            f'<div id="chart_passos"></div>'
-        ), unsafe_allow_html=True)
-        fig = go.Figure()
-        fig.add_trace(barra(df_hist, "passos", CYAN, "Passos"))
-        fig.add_hline(y=META_PASS, line_dash="dash", line_color=GREEN,
-                      line_width=1, opacity=0.5,
-                      annotation_text=f"Meta {META_PASS:,}",
-                      annotation_font_color=GREEN, annotation_font_size=9)
-        fig.update_layout(**chart_layout(180))
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        with h1a:
+            st.markdown(panel(
+                ptitl("👟 Passos diários") +
+                f'<div id="chart_passos"></div>'
+            ), unsafe_allow_html=True)
+            fig = go.Figure()
+            fig.add_trace(barra(df_hist, "passos", CYAN, "Passos"))
+            fig.add_hline(y=META_PASS, line_dash="dash", line_color=GREEN,
+                          line_width=1, opacity=0.5,
+                          annotation_text=f"Meta {META_PASS:,}",
+                          annotation_font_color=GREEN, annotation_font_size=9)
+            fig.update_layout(**chart_layout(180))
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
-    with h1b:
-        st.markdown(panel(ptitl("📍 Distância (km)")), unsafe_allow_html=True)
-        fig = go.Figure()
-        fig.add_trace(linha(df_hist, "distancia_km", CYAN, "km", fill=True))
-        fig.update_layout(**chart_layout(180))
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        with h1b:
+            st.markdown(panel(ptitl("📍 Distância (km)")), unsafe_allow_html=True)
+            fig = go.Figure()
+            fig.add_trace(linha(df_hist, "distancia_km", CYAN, "km", fill=True))
+            fig.update_layout(**chart_layout(180))
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
-    # ── Linha 2: Sono ─────────────────────────────────────────────────────────
-    h2a, h2b = st.columns(2)
+        # ── Linha 2: Sono ─────────────────────────────────────────────────────────
+        h2a, h2b = st.columns(2)
 
-    with h2a:
-        st.markdown(panel(ptitl("🌙 Sono total (min)")), unsafe_allow_html=True)
-        fig = go.Figure()
-        fig.add_trace(barra(df_hist, "sono_total_min", PURPLE, "Total"))
-        fig.add_trace(barra(df_hist, "sono_profundo_min", CYAN, "Profundo"))
-        fig.add_hline(y=META_SONO, line_dash="dash", line_color=RED,
-                      line_width=1, opacity=0.5,
-                      annotation_text=f"Meta prof. {META_SONO}min",
-                      annotation_font_color=RED, annotation_font_size=9)
-        fig.update_layout(**chart_layout(180, show_legend=True),
-                          barmode="overlay",
-                          legend=dict(font=dict(color=GHOST, size=9),
-                                      bgcolor="rgba(0,0,0,0)"))
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        with h2a:
+            st.markdown(panel(ptitl("🌙 Sono total (min)")), unsafe_allow_html=True)
+            fig = go.Figure()
+            fig.add_trace(barra(df_hist, "sono_total_min", PURPLE, "Total"))
+            fig.add_trace(barra(df_hist, "sono_profundo_min", CYAN, "Profundo"))
+            fig.add_hline(y=META_SONO, line_dash="dash", line_color=RED,
+                          line_width=1, opacity=0.5,
+                          annotation_text=f"Meta prof. {META_SONO}min",
+                          annotation_font_color=RED, annotation_font_size=9)
+            fig.update_layout(**chart_layout(180, show_legend=True),
+                              barmode="overlay",
+                              legend=dict(font=dict(color=GHOST, size=9),
+                                          bgcolor="rgba(0,0,0,0)"))
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
-    with h2b:
-        st.markdown(panel(ptitl("💓 HRV · PAI")), unsafe_allow_html=True)
-        fig = go.Figure()
-        fig.add_trace(linha(df_hist, "hrv_ms",  GREEN,  "HRV (ms)"))
-        fig.add_trace(linha(df_hist, "pai",      AMBER,  "PAI", dash="dot"))
-        fig.update_layout(**chart_layout(180, show_legend=True),
-                          legend=dict(font=dict(color=GHOST, size=9),
-                                      bgcolor="rgba(0,0,0,0)"))
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        with h2b:
+            st.markdown(panel(ptitl("💓 HRV · PAI")), unsafe_allow_html=True)
+            fig = go.Figure()
+            fig.add_trace(linha(df_hist, "hrv_ms",  GREEN,  "HRV (ms)"))
+            fig.add_trace(linha(df_hist, "pai",      AMBER,  "PAI", dash="dot"))
+            fig.update_layout(**chart_layout(180, show_legend=True),
+                              legend=dict(font=dict(color=GHOST, size=9),
+                                          bgcolor="rgba(0,0,0,0)"))
+            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
     # ── Linha 3: Nutrição ─────────────────────────────────────────────────────
     if not df_macro_hist.empty:
