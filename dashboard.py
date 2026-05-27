@@ -2711,6 +2711,51 @@ def barra(df, col, cor, name=""):
         hovertemplate=f"<b>%{{x|%d/%m}}</b><br>{name}: %{{y}}<extra></extra>",
     )
 
+def _trend_data(df, col):
+    """Regressão linear: retorna (x_vals, y_fit, slope)."""
+    import numpy as np
+    if len(df) < 3 or col not in df.columns:
+        return None, None, 0
+    y = pd.to_numeric(df[col], errors="coerce").fillna(0).values
+    x = np.arange(len(y))
+    coeffs = np.polyfit(x, y, 1)
+    slope = float(coeffs[0])
+    y_fit = np.polyval(coeffs, x)
+    return df["dia"].values, y_fit, slope
+
+def trend_line(df, col, cor="#aaaaaa", name="Tendência"):
+    """Trace de linha de tendência (regressão linear)."""
+    xs, ys, _ = _trend_data(df, col)
+    if xs is None:
+        return None
+    return go.Scatter(
+        x=xs, y=ys, mode="lines", name=name,
+        line=dict(color=cor, width=1.5, dash="dot"),
+        opacity=0.65,
+        hovertemplate=f"<b>%{{x|%d/%m}}</b><br>{name}: %{{y:.1f}}<extra></extra>",
+    )
+
+def _trend_badge(df, col, higher_is_better=True):
+    """Retorna (ícone, cor_hex, str_pct) comparando 1ª metade vs 2ª metade do período."""
+    if len(df) < 4 or col not in df.columns:
+        return "→", MUTED, ""
+    y = pd.to_numeric(df[col], errors="coerce").fillna(0).values
+    half = max(1, len(y) // 2)
+    avg1 = float(y[:half].mean())
+    avg2 = float(y[half:].mean())
+    if avg1 == 0:
+        return "→", MUTED, ""
+    pct = (avg2 - avg1) / abs(avg1) * 100
+    going_up   = pct >  2.5
+    going_down = pct < -2.5
+    if higher_is_better:
+        icon  = "↑" if going_up   else ("↓" if going_down  else "→")
+        color = GREEN if going_up  else (RED  if going_down  else AMBER)
+    else:
+        icon  = "↓" if going_down else ("↑" if going_up    else "→")
+        color = GREEN if going_down else (RED if going_up    else AMBER)
+    return icon, color, f"{pct:+.1f}%"
+
 _tem_qualquer_dado = not df_hist.empty or not df_macro_hist.empty
 
 if _tem_qualquer_dado:
@@ -2802,6 +2847,8 @@ if _tem_qualquer_dado:
             ), unsafe_allow_html=True)
             fig = go.Figure()
             fig.add_trace(barra(df_hist, "passos", CYAN, "Passos"))
+            _tl = trend_line(df_hist, "passos", CYAN, "Tendência")
+            if _tl: fig.add_trace(_tl)
             fig.add_hline(y=META_PASS, line_dash="dash", line_color=GREEN,
                           line_width=1, opacity=0.5,
                           annotation_text=f"Meta {META_PASS:,}",
@@ -2813,6 +2860,8 @@ if _tem_qualquer_dado:
             st.markdown(panel(ptitl("📍 Distância (km)")), unsafe_allow_html=True)
             fig = go.Figure()
             fig.add_trace(linha(df_hist, "distancia_km", CYAN, "km", fill=True))
+            _tl = trend_line(df_hist, "distancia_km", AMBER, "Tendência")
+            if _tl: fig.add_trace(_tl)
             fig.update_layout(**chart_layout(180))
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
@@ -2824,6 +2873,8 @@ if _tem_qualquer_dado:
             fig = go.Figure()
             fig.add_trace(barra(df_hist, "sono_total_min", PURPLE, "Total"))
             fig.add_trace(barra(df_hist, "sono_profundo_min", CYAN, "Profundo"))
+            _tl_sono = trend_line(df_hist, "sono_total_min", PURPLE, "Tend. Total")
+            if _tl_sono: fig.add_trace(_tl_sono)
             fig.add_hline(y=META_SONO, line_dash="dash", line_color=RED,
                           line_width=1, opacity=0.5,
                           annotation_text=f"Meta prof. {META_SONO}min",
@@ -2839,6 +2890,10 @@ if _tem_qualquer_dado:
             fig = go.Figure()
             fig.add_trace(linha(df_hist, "hrv_ms",  GREEN,  "HRV (ms)"))
             fig.add_trace(linha(df_hist, "pai",      AMBER,  "PAI", dash="dot"))
+            _tl_hrv = trend_line(df_hist, "hrv_ms", GREEN, "Tend. HRV")
+            if _tl_hrv: fig.add_trace(_tl_hrv)
+            _tl_pai = trend_line(df_hist, "pai", AMBER, "Tend. PAI")
+            if _tl_pai: fig.add_trace(_tl_pai)
             fig.update_layout(**chart_layout(180, show_legend=True),
                               legend=dict(font=dict(color=GHOST, size=9),
                                           bgcolor="rgba(0,0,0,0)"))
@@ -2852,6 +2907,8 @@ if _tem_qualquer_dado:
             st.markdown(panel(ptitl("🔥 Calorias diárias")), unsafe_allow_html=True)
             fig = go.Figure()
             fig.add_trace(barra(df_macro_hist, "cal", GREEN, "Calorias"))
+            _tl = trend_line(df_macro_hist, "cal", GREEN, "Tendência")
+            if _tl: fig.add_trace(_tl)
             fig.add_hline(y=TMB, line_dash="dash", line_color=CYAN,
                           line_width=1, opacity=0.5,
                           annotation_text=f"Meta {TMB}",
@@ -2863,6 +2920,8 @@ if _tem_qualquer_dado:
             st.markdown(panel(ptitl("🥩 Proteínas diárias (g)")), unsafe_allow_html=True)
             fig = go.Figure()
             fig.add_trace(barra(df_macro_hist, "prot", RED, "Proteínas"))
+            _tl = trend_line(df_macro_hist, "prot", RED, "Tendência")
+            if _tl: fig.add_trace(_tl)
             fig.add_hline(y=META_PROT, line_dash="dash", line_color=CYAN,
                           line_width=1, opacity=0.5,
                           annotation_text=f"Meta {META_PROT}g",
@@ -2883,6 +2942,8 @@ if _tem_qualquer_dado:
             
             fig = go.Figure()
             fig.add_trace(barra(df_merged, "deficit", PURPLE, "Déficit"))
+            _tl = trend_line(df_merged, "deficit", PURPLE, "Tendência")
+            if _tl: fig.add_trace(_tl)
             fig.add_hline(y=500, line_dash="dash", line_color=CYAN,
                           line_width=1, opacity=0.5,
                           annotation_text="Meta 500",
@@ -2903,9 +2964,11 @@ if _tem_qualquer_dado:
                 text=df_hevy_list["titulo"],
                 hovertemplate="<b>%{x|%d/%m}</b><br>Treino: %{text}<br>Volume: %{y:,.0f} kg<extra></extra>"
             ))
+            _tl_vol = trend_line(df_hevy_list, "volume_kg", GREEN, "Tendência")
+            if _tl_vol: fig.add_trace(_tl_vol)
             fig.update_layout(**chart_layout(180))
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-            
+
         with h4b:
             st.markdown(panel(ptitl("⏱️ Duração do Treino (min)")), unsafe_allow_html=True)
             fig = go.Figure()
@@ -2915,8 +2978,78 @@ if _tem_qualquer_dado:
                 text=df_hevy_list["titulo"],
                 hovertemplate="<b>%{x|%d/%m}</b><br>Treino: %{text}<br>Duração: %{y} min<extra></extra>"
             ))
+            _tl_dur = trend_line(df_hevy_list, "duracao_min", AMBER, "Tendência")
+            if _tl_dur: fig.add_trace(_tl_dur)
             fig.update_layout(**chart_layout(180))
             st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+    # ── Tendências ────────────────────────────────────────────────────────────
+    st.markdown(sec("Tendências", f"Direção dos indicadores nos últimos {n_dias} dias"), unsafe_allow_html=True)
+
+    # Montar lista de indicadores com badges
+    _tend_items = []
+
+    if not df_hist.empty:
+        _i_pass, _c_pass, _p_pass = _trend_badge(df_hist, "passos",           higher_is_better=True)
+        _i_dist, _c_dist, _p_dist = _trend_badge(df_hist, "distancia_km",     higher_is_better=True)
+        _i_sono, _c_sono, _p_sono = _trend_badge(df_hist, "sono_total_min",    higher_is_better=True)
+        _i_prof, _c_prof, _p_prof = _trend_badge(df_hist, "sono_profundo_min", higher_is_better=True)
+        _i_hrv,  _c_hrv,  _p_hrv  = _trend_badge(df_hist, "hrv_ms",           higher_is_better=True)
+        _i_pai,  _c_pai,  _p_pai  = _trend_badge(df_hist, "pai",               higher_is_better=True)
+        _tend_items += [
+            ("👟", "Passos/dia",       _i_pass, _c_pass, _p_pass, f"média {fmt_val(media(df_hist,'passos'),'',0)}"),
+            ("📍", "Distância/dia",    _i_dist, _c_dist, _p_dist, f"média {fmt_val(media(df_hist,'distancia_km'),' km',1)}"),
+            ("🌙", "Sono total",       _i_sono, _c_sono, _p_sono, f"média {fmt_val(media(df_hist,'sono_total_min'),' min',0)}"),
+            ("💤", "Sono profundo",    _i_prof, _c_prof, _p_prof, f"média {fmt_val(media(df_hist,'sono_profundo_min'),' min',0)}"),
+            ("💓", "HRV",             _i_hrv,  _c_hrv,  _p_hrv,  f"média {fmt_val(media(df_hist,'hrv_ms'),' ms',0)}"),
+            ("⚡", "PAI",             _i_pai,  _c_pai,  _p_pai,  f"média {fmt_val(media(df_hist,'pai'),'',0)}"),
+        ]
+
+    if not df_macro_hist.empty:
+        _i_cal,  _c_cal,  _p_cal  = _trend_badge(df_macro_hist, "cal",  higher_is_better=False)
+        _i_prot, _c_prot, _p_prot = _trend_badge(df_macro_hist, "prot", higher_is_better=True)
+        _i_carb, _c_carb, _p_carb = _trend_badge(df_macro_hist, "carb", higher_is_better=False)
+        _i_gord, _c_gord, _p_gord = _trend_badge(df_macro_hist, "gord", higher_is_better=False)
+        _tend_items += [
+            ("🔥", "Calorias/dia",    _i_cal,  _c_cal,  _p_cal,  f"média {fmt_val(media(df_macro_hist,'cal'),' kcal',0)}"),
+            ("🥩", "Proteínas/dia",   _i_prot, _c_prot, _p_prot, f"média {fmt_val(media(df_macro_hist,'prot'),' g',0)}"),
+            ("🍞", "Carboidratos",    _i_carb, _c_carb, _p_carb, f"média {fmt_val(media(df_macro_hist,'carb'),' g',0)}"),
+            ("🧈", "Gorduras",        _i_gord, _c_gord, _p_gord, f"média {fmt_val(media(df_macro_hist,'gord'),' g',0)}"),
+        ]
+
+    if not df_hevy_list.empty:
+        _i_vol,  _c_vol,  _p_vol  = _trend_badge(df_hevy_list, "volume_kg",  higher_is_better=True)
+        _i_dur,  _c_dur,  _p_dur  = _trend_badge(df_hevy_list, "duracao_min", higher_is_better=True)
+        _tend_items += [
+            ("🏋️", "Volume/treino",   _i_vol,  _c_vol,  _p_vol,  f"média {fmt_val(media_vol_treino,' kg',0)}"),
+            ("⏱️", "Duração/treino",  _i_dur,  _c_dur,  _p_dur,  f"média {fmt_val(media_dur_treino,' min',0)}"),
+        ]
+
+    # Renderizar grade de badges de tendência
+    if _tend_items:
+        _cols_t = st.columns(4)
+        for _ti, (icon_t, lbl_t, icon_dir, cor_dir, pct_str, ref_t) in enumerate(_tend_items):
+            with _cols_t[_ti % 4]:
+                st.markdown(
+                    f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:9px;'
+                    f'padding:12px 14px;margin-bottom:10px;min-height:88px;'
+                    f'display:flex;flex-direction:column;justify-content:space-between">'
+                    f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
+                    f'text-transform:uppercase;color:{GHOST};margin-bottom:6px">{icon_t} {lbl_t}</div>'
+                    f'<div style="display:flex;align-items:center;gap:8px">'
+                    f'  <span style="font-size:26px;font-weight:900;color:{cor_dir};line-height:1">{icon_dir}</span>'
+                    f'  <span style="font-family:{MONO};font-size:14px;font-weight:700;color:{cor_dir}">{pct_str}</span>'
+                    f'</div>'
+                    f'<div style="font-size:10px;color:{GHOST};margin-top:4px">{ref_t}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+    else:
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:11px;color:{MUTED};padding:16px;'
+            f'text-align:center">Dados insuficientes para calcular tendências neste período</div>',
+            unsafe_allow_html=True,
+        )
 
     # ── IA Coach ─────────────────────────────────────────────────────────────
     st.markdown(sec("IA Coach", "Análise de Emagrecimento & Performance"), unsafe_allow_html=True)
