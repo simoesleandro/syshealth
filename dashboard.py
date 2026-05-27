@@ -46,7 +46,7 @@ st.set_page_config(
     page_title="SYS.HEALTH // Leandro R.",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ── RESET STREAMLIT CHROME + SIDEBAR WIDGET THEME ───────────────────────────
@@ -353,29 +353,53 @@ html.sh-xs section[data-testid="stSidebar"]{
   [data-testid="stHorizontalBlock"]{flex-wrap:wrap!important}
   [data-testid="stHorizontalBlock"]>[data-testid="column"]{
     flex:1 1 220px!important;min-width:0!important}}
-@media(max-width:680px){
+
+/* ── MOBILE: sidebar nunca sobrepõe — FAB no canto inferior direito ── */
+@media(max-width:768px){
+  /* Força sidebar como drawer lateral, não overlay full-screen */
+  section[data-testid="stSidebar"]{
+    width:280px!important;max-width:88vw!important;
+    position:fixed!important;left:0!important;top:0!important;
+    height:100vh!important;z-index:1000!important;
+    box-shadow:4px 0 24px rgba(0,0,0,0.7)!important}
+
+  /* Garante que o conteúdo principal não fique coberto */
+  .main .block-container{
+    padding:0.75rem 0.75rem 80px!important;
+    margin-left:0!important;width:100%!important}
+
+  /* FAB circular para abrir/fechar sidebar */
+  [data-testid="collapsedControl"]{
+    position:fixed!important;bottom:20px!important;right:16px!important;
+    top:auto!important;left:auto!important;
+    width:50px!important;height:50px!important;min-height:50px!important;
+    border-radius:50%!important;
+    background:#080e1a!important;
+    border:2px solid #00d4ff!important;
+    box-shadow:0 0 20px rgba(0,212,255,.45),0 4px 16px rgba(0,0,0,.7)!important;
+    display:flex!important;align-items:center!important;justify-content:center!important;
+    z-index:9999!important;
+    transition:box-shadow .2s,transform .15s!important}
+  [data-testid="collapsedControl"]:active{transform:scale(0.93)!important}
+  [data-testid="collapsedControl"] svg{
+    color:#00d4ff!important;fill:#00d4ff!important;
+    width:20px!important;height:20px!important}
+
+  /* Colunas: 2 por linha em mobile */
   .block-container{padding:0.75rem!important}
   .sh-mobile-hint{display:flex!important}
   .sh-supp-grid{grid-template-columns:repeat(3,1fr)!important}
   [data-testid="stHorizontalBlock"]>[data-testid="column"]{
     flex:1 1 calc(50% - 10px)!important}
   .sh-topbar{flex-direction:column!important;gap:8px!important;align-items:flex-start!important}
-  .sh-topbar-right{text-align:left!important}
-  [data-testid="collapsedControl"]{
-    position:fixed!important;bottom:22px!important;right:18px!important;
-    top:auto!important;left:auto!important;
-    width:52px!important;height:52px!important;border-radius:50%!important;
-    background:#080e1a!important;border:1.5px solid #00d4ff!important;
-    box-shadow:0 0 20px rgba(0,212,255,.4),0 4px 18px rgba(0,0,0,.7)!important;
-    display:flex!important;align-items:center!important;justify-content:center!important;
-    z-index:9999!important}
-  [data-testid="collapsedControl"] svg{
-    color:#00d4ff!important;fill:#00d4ff!important;
-    width:22px!important;height:22px!important}
-  section[data-testid="stSidebar"]{width:100vw!important;max-width:340px!important}}
-@media(max-width:400px){
+  .sh-topbar-right{text-align:left!important}}
+
+@media(max-width:480px){
+  /* Mini mobile: 1 coluna */
   [data-testid="stHorizontalBlock"]>[data-testid="column"]{flex:1 1 100%!important}
-  .sh-supp-grid{grid-template-columns:repeat(2,1fr)!important}}
+  .sh-supp-grid{grid-template-columns:repeat(2,1fr)!important}
+  .block-container{padding:0.5rem!important}
+  section[data-testid="stSidebar"]{max-width:95vw!important}}
 </style>
 """, unsafe_allow_html=True)
 
@@ -743,15 +767,15 @@ def _q_supp_check(dia: str):
         "SELECT descricao, COUNT(*) as qtd FROM refeicoes "
         "WHERE date(data_hora,'localtime')=? GROUP BY descricao", [dia])
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def _q_alimentos_favoritos():
     return DB.query("SELECT id,descricao,categoria,calorias,proteinas,carboidratos,gorduras,componentes_json,favorito,vezes_usado FROM alimentos_favoritos ORDER BY favorito DESC, vezes_usado DESC")
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def _q_peso_historico():
     return DB.query("SELECT date(data) as dt, peso FROM medidas ORDER BY date(data) ASC")
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def _q_medicacao():
     return DB.query(
         "SELECT id, "
@@ -759,14 +783,14 @@ def _q_medicacao():
         "date(data_hora,'localtime') as data_iso, "
         "dose_mg FROM medicacao ORDER BY date(data_hora,'localtime') DESC")
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def _q_medidas():
     return DB.query(
         "SELECT strftime('%d/%m/%Y',data) as data, "
         "cintura, quadril, peito, braco, coxa FROM medidas "
         "WHERE cintura IS NOT NULL ORDER BY date(data) DESC LIMIT 10")
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=600)
 def _q_biometria():
     return DB.query("""
         SELECT date(data) as data_ord,
@@ -2668,70 +2692,103 @@ st.markdown('<div id="sec-historico"></div>', unsafe_allow_html=True)
 st.markdown(sec("Histórico", "Últimos 30 dias · Tendências"), unsafe_allow_html=True)
 
 # Seletor de período — radio horizontal
-st.markdown(
-    f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-    f'text-transform:uppercase;color:{MUTED};margin-bottom:4px">PERÍODO DE ANÁLISE</div>',
-    unsafe_allow_html=True,
-)
-periodo = st.radio(
-    "Período",
-    ["7 dias", "14 dias", "30 dias", "90 dias"],
-    index=1,
-    horizontal=True,
-    label_visibility="collapsed",
-    key="periodo_hist",
-)
+_hc1, _hc2 = st.columns([3, 1])
+with _hc1:
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
+        f'text-transform:uppercase;color:{MUTED};margin-bottom:4px">PERÍODO DE ANÁLISE</div>',
+        unsafe_allow_html=True,
+    )
+    periodo = st.radio(
+        "Período",
+        ["7 dias", "14 dias", "30 dias", "90 dias"],
+        index=1,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="periodo_hist",
+    )
+with _hc2:
+    st.markdown('<div style="height:24px"></div>', unsafe_allow_html=True)
+    if st.button("📊 Carregar", key="btn_hist_load", use_container_width=True):
+        st.session_state["hist_carregado"] = True
+        st.rerun()
+
 n_dias = int(periodo.split()[0])
 
-# ── Dados históricos ──────────────────────────────────────────────────────────
-df_hist = db(f"""
-    SELECT
-        date(data_hora) as dia,
-        passos, calorias_gastas, distancia_km,
-        sono_total_min, sono_profundo_min,
-        hrv_ms, pai,
-        corrida_km, corrida_cal
-    FROM amazfit_dados
-    WHERE date(data_hora) >= date('now', '-{n_dias} days')
-    ORDER BY dia ASC
-""")
+_hist_carregado = st.session_state.get("hist_carregado", False)
 
-df_macro_hist = db(f"""
-    SELECT
-        date(data_hora, 'localtime') as dia,
-        SUM(calorias)    as cal,
-        SUM(proteinas)   as prot,
-        SUM(carboidratos) as carb,
-        SUM(gorduras)    as gord
-    FROM refeicoes
-    WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
-    GROUP BY dia
-    ORDER BY dia ASC
-""")
+# Lazy-load: placeholder enquanto não solicitado
+if not _hist_carregado:
+    st.markdown(
+        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;'
+        f'padding:32px 24px;text-align:center;margin-bottom:16px">'
+        f'<div style="font-size:32px;margin-bottom:12px">📊</div>'
+        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1.5px;'
+        f'text-transform:uppercase;color:{MUTED};margin-bottom:8px">Histórico não carregado</div>'
+        f'<div style="font-size:12px;color:{GHOST}">Clique em <b style="color:{CYAN}">📊 Carregar</b> '
+        f'para buscar e exibir os gráficos do período selecionado</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
-# Hevy history query
-df_hevy_hist = db(f"""
-    SELECT 
-        COUNT(*) as count_treino,
-        SUM(duracao_min) as dur,
-        SUM(volume_kg) as vol
-    FROM hevy_treinos
-    WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
-""")
-total_treinos = int(df_hevy_hist["count_treino"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["count_treino"].iloc[0] is not None else 0
-total_vol = float(df_hevy_hist["vol"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["vol"].iloc[0] is not None else 0.0
-total_dur = int(df_hevy_hist["dur"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["dur"].iloc[0] is not None else 0
-media_vol_treino = total_vol / total_treinos if total_treinos > 0 else 0.0
-media_dur_treino = total_dur / total_treinos if total_treinos > 0 else 0.0
+# ── Dados históricos — só roda após o usuário clicar em Carregar ──────────────
+# Defaults vazios: os guards "if not df_hist.empty" saltam os gráficos automaticamente
+df_hist = pd.DataFrame()
+df_macro_hist = pd.DataFrame()
+df_hevy_hist = pd.DataFrame()
+df_hevy_list = pd.DataFrame()
+total_treinos = 0; total_vol = 0.0; total_dur = 0; media_vol_treino = 0.0; media_dur_treino = 0.0
+media_deficit = 0.0
 
-df_hevy_list = db(f"""
-    SELECT 
-        date(data_hora, 'localtime') as dia,
-        titulo, duracao_min, volume_kg
-    FROM hevy_treinos
-    WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
-    ORDER BY data_hora ASC
-""")
+if _hist_carregado:
+    df_hist = db(f"""
+        SELECT
+            date(data_hora) as dia,
+            passos, calorias_gastas, distancia_km,
+            sono_total_min, sono_profundo_min,
+            hrv_ms, pai,
+            corrida_km, corrida_cal
+        FROM amazfit_dados
+        WHERE date(data_hora) >= date('now', '-{n_dias} days')
+        ORDER BY dia ASC
+    """)
+
+    df_macro_hist = db(f"""
+        SELECT
+            date(data_hora, 'localtime') as dia,
+            SUM(calorias)    as cal,
+            SUM(proteinas)   as prot,
+            SUM(carboidratos) as carb,
+            SUM(gorduras)    as gord
+        FROM refeicoes
+        WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
+        GROUP BY dia
+        ORDER BY dia ASC
+    """)
+
+    # Hevy history query
+    df_hevy_hist = db(f"""
+        SELECT
+            COUNT(*) as count_treino,
+            SUM(duracao_min) as dur,
+            SUM(volume_kg) as vol
+        FROM hevy_treinos
+        WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
+    """)
+    total_treinos = int(df_hevy_hist["count_treino"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["count_treino"].iloc[0] is not None else 0
+    total_vol = float(df_hevy_hist["vol"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["vol"].iloc[0] is not None else 0.0
+    total_dur = int(df_hevy_hist["dur"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["dur"].iloc[0] is not None else 0
+    media_vol_treino = total_vol / total_treinos if total_treinos > 0 else 0.0
+    media_dur_treino = total_dur / total_treinos if total_treinos > 0 else 0.0
+
+    df_hevy_list = db(f"""
+        SELECT
+            date(data_hora, 'localtime') as dia,
+            titulo, duracao_min, volume_kg
+        FROM hevy_treinos
+        WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
+        ORDER BY data_hora ASC
+    """)
 
 def chart_layout(height=200, show_legend=False):
     return dict(
