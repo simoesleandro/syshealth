@@ -2018,12 +2018,13 @@ if st.session_state.get("treino_tab_open", False):
 
     _df_tw = DB.query(
         f"SELECT id, date(data_hora,'localtime') as data_treino, "
-        f"strftime('%d/%m/%Y',data_hora,'localtime') as data_fmt, "
         f"titulo, duracao_min, volume_kg, exercicios_json "
         f"FROM hevy_treinos "
         f"WHERE date(data_hora,'localtime') >= date('now','-{_tw_dias} days') "
         f"ORDER BY data_hora DESC"
     )
+    if not _df_tw.empty:
+        _df_tw["data_fmt"] = pd.to_datetime(_df_tw["data_treino"]).dt.strftime("%d/%m/%Y")
 
     if _df_tw.empty:
         st.markdown(
@@ -2178,8 +2179,7 @@ if st.session_state.get("corrida_tab_open", False):
 
     _df_rc = DB.query("""
         SELECT
-            strftime('%d/%m/%Y', date(data_hora)) as data_fmt,
-            date(data_hora) as data_ord,
+            data_hora,
             corrida_km,
             corrida_cal,
             passos,
@@ -2188,6 +2188,8 @@ if st.session_state.get("corrida_tab_open", False):
         WHERE corrida_km > 0
         ORDER BY data_hora DESC
     """)
+    if not _df_rc.empty:
+        _df_rc["data_fmt"] = pd.to_datetime(_df_rc["data_hora"]).dt.strftime("%d/%m/%Y")
 
     if _df_rc.empty:
         st.markdown(
