@@ -46,7 +46,7 @@ st.set_page_config(
     page_title="SYS.HEALTH // Leandro R.",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 # ── RESET STREAMLIT CHROME + SIDEBAR WIDGET THEME ───────────────────────────
@@ -1615,59 +1615,106 @@ _render_notif_pendente()
 # ── Painel de entrada inline (substituiu sidebar) ────────────────────────────
 _painel_entrada()
 
-# ── Sidebar — metas e atalhos ─────────────────────────────────────────────────
+# ── Sidebar — navegação + status + atalhos ────────────────────────────────────
 with st.sidebar:
+    # ── Cabeçalho ─────────────────────────────────────────────────────────────
     st.markdown(
-        f'<div style="font-family:{MONO};font-size:10px;font-weight:700;letter-spacing:2px;'
-        f'text-transform:uppercase;color:{CYAN};margin-bottom:16px;padding-bottom:8px;'
-        f'border-bottom:1px solid {BORDER}">⚡ SYS.HEALTH</div>',
+        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:2.5px;'
+        f'text-transform:uppercase;color:{CYAN};margin-bottom:14px;padding-bottom:10px;'
+        f'border-bottom:1px solid {BORDER};display:flex;align-items:center;gap:8px">'
+        f'<span style="font-size:16px">⚡</span> SYS.HEALTH</div>',
         unsafe_allow_html=True,
     )
-    # Status do dia
+
+    # ── Status do dia ──────────────────────────────────────────────────────────
     _def_cor_sb = GREEN if deficit > 0 else RED
     _def_icn_sb = "▲" if deficit > 0 else "▼"
+
+    def _sb_bar(pct, cor):
+        w = min(100, int(pct * 100))
+        return (f'<div style="background:{BORDER};border-radius:3px;height:3px;'
+                f'margin:3px 0 8px;overflow:hidden">'
+                f'<div style="width:{w}%;height:3px;background:{cor};border-radius:3px"></div>'
+                f'</div>')
+
+    def _sb_row(label, val_html):
+        return (f'<div style="display:flex;justify-content:space-between;'
+                f'align-items:center;margin-bottom:1px">'
+                f'<span style="font-size:10px;color:{MUTED}">{label}</span>'
+                f'{val_html}</div>')
+
     st.markdown(
-        f'<div style="margin-bottom:14px">'
-        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px">HOJE · {hoje_pt}</div>'
+        f'<div style="margin-bottom:4px">'
+        f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1.5px;'
+        f'text-transform:uppercase;margin-bottom:8px">STATUS · {hoje_pt}</div>'
         # Déficit
-        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-        f'<span style="font-size:11px;color:{MUTED}">Déficit</span>'
-        f'<span style="font-family:{MONO};font-size:13px;font-weight:700;color:{_def_cor_sb}">{_def_icn_sb} {abs(deficit):,} kcal</span>'
-        f'</div>'
+        + _sb_row("Déficit",
+            f'<span style="font-family:{MONO};font-size:11px;font-weight:700;'
+            f'color:{_def_cor_sb}">{_def_icn_sb} {abs(deficit):,} kcal</span>')
+        + f'<div style="background:{BORDER};border-radius:3px;height:3px;margin:3px 0 8px"></div>'
         # Calorias
-        f'<div style="background:{BORDER};border-radius:3px;height:4px;margin-bottom:8px;overflow:hidden">'
-        f'<div style="width:{min(100,int(cal_h/meta_cal_dinamica*100)) if meta_cal_dinamica else 0}%;height:4px;background:{GREEN};border-radius:3px"></div>'
-        f'</div>'
+        + _sb_row("Calorias",
+            f'<span style="font-family:{MONO};font-size:10px;color:{TEXT}">'
+            f'{int(cal_h):,}<span style="color:{GHOST};font-size:9px">/{int(meta_cal_dinamica):,}</span></span>')
+        + _sb_bar(cal_h / meta_cal_dinamica if meta_cal_dinamica else 0, GREEN)
         # Proteína
-        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
-        f'<span style="font-size:11px;color:{MUTED}">Proteína</span>'
-        f'<span style="font-family:{MONO};font-size:12px;color:{TEXT}">{int(prot_h)}<span style="color:{GHOST}">/{META_PROT}g</span></span>'
-        f'</div>'
-        f'<div style="background:{BORDER};border-radius:3px;height:4px;margin-bottom:8px;overflow:hidden">'
-        f'<div style="width:{min(100,int(prot_h/META_PROT*100))}%;height:4px;background:{RED};border-radius:3px"></div>'
-        f'</div>'
+        + _sb_row("Proteína",
+            f'<span style="font-family:{MONO};font-size:10px;color:{TEXT}">'
+            f'{int(prot_h)}<span style="color:{GHOST};font-size:9px">/{META_PROT}g</span></span>')
+        + _sb_bar(prot_h / META_PROT, RED)
         # Água
-        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
-        f'<span style="font-size:11px;color:{MUTED}">Água</span>'
-        f'<span style="font-family:{MONO};font-size:12px;color:{TEXT}">{agua_l:.1f}<span style="color:{GHOST}">/{META_AGUA}L</span></span>'
-        f'</div>'
-        f'<div style="background:{BORDER};border-radius:3px;height:4px;margin-bottom:8px;overflow:hidden">'
-        f'<div style="width:{min(100,int(agua_l/META_AGUA*100))}%;height:4px;background:{PURPLE};border-radius:3px"></div>'
-        f'</div>'
+        + _sb_row("Água",
+            f'<span style="font-family:{MONO};font-size:10px;color:{TEXT}">'
+            f'{agua_l:.1f}<span style="color:{GHOST};font-size:9px">/{META_AGUA}L</span></span>')
+        + _sb_bar(agua_l / META_AGUA, PURPLE)
         # Passos
-        f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
-        f'<span style="font-size:11px;color:{MUTED}">Passos</span>'
-        f'<span style="font-family:{MONO};font-size:12px;color:{TEXT}">{passos:,}<span style="color:{GHOST}">/{META_PASS:,}</span></span>'
-        f'</div>'
-        f'<div style="background:{BORDER};border-radius:3px;height:4px;overflow:hidden">'
-        f'<div style="width:{min(100,int(passos/META_PASS*100))}%;height:4px;background:{CYAN};border-radius:3px"></div>'
-        f'</div>'
-        f'</div>',
+        + _sb_row("Passos",
+            f'<span style="font-family:{MONO};font-size:10px;color:{TEXT}">'
+            f'{passos:,}<span style="color:{GHOST};font-size:9px">/{META_PASS:,}</span></span>')
+        + _sb_bar(passos / META_PASS, CYAN)
+        + f'</div>',
         unsafe_allow_html=True,
     )
+
+    # ── Navegação por seções ───────────────────────────────────────────────────
     st.markdown(
-        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;'
-        f'text-transform:uppercase;margin:10px 0 6px;padding-top:10px;border-top:1px solid {BORDER}">ATALHOS</div>',
+        f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1.5px;'
+        f'text-transform:uppercase;margin:12px 0 6px;padding-top:12px;border-top:1px solid {BORDER}">SEÇÕES</div>',
+        unsafe_allow_html=True,
+    )
+
+    _nav_items = [
+        ("sec-nutricao",   "🥗", "Nutrição"),
+        ("sec-wearable",   "⌚", "Wearable · Agenda"),
+        ("sec-evolucao",   "📈", "Evolução · Registros"),
+        ("sec-historico",  "📊", "Histórico · Tendências"),
+        ("sec-biometria",  "📏", "Biometria"),
+    ]
+    _nav_link_style = (
+        f"display:flex;align-items:center;gap:8px;padding:7px 10px;"
+        f"border-radius:6px;text-decoration:none;margin-bottom:2px;"
+        f"font-family:{MONO};font-size:10px;font-weight:600;letter-spacing:0.5px;"
+        f"color:{TEXT};background:transparent;border:1px solid transparent;"
+        f"transition:background .15s,border .15s"
+    )
+    _nav_html = ""
+    for _anchor, _icon, _label in _nav_items:
+        _nav_html += (
+            f'<a href="#{_anchor}" style="{_nav_link_style}" '
+            f'onmouseover="this.style.background=\'rgba(0,212,255,0.07)\';'
+            f'this.style.borderColor=\'rgba(0,212,255,0.25)\';this.style.color=\'{CYAN}\'" '
+            f'onmouseout="this.style.background=\'transparent\';'
+            f'this.style.borderColor=\'transparent\';this.style.color=\'{TEXT}\'">'
+            f'<span style="font-size:13px">{_icon}</span>'
+            f'<span>{_label}</span>'
+            f'</a>'
+        )
+    st.markdown(_nav_html, unsafe_allow_html=True)
+
+    # ── Atalhos rápidos ────────────────────────────────────────────────────────
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1.5px;'
+        f'text-transform:uppercase;margin:12px 0 6px;padding-top:12px;border-top:1px solid {BORDER}">ATALHOS RÁPIDOS</div>',
         unsafe_allow_html=True,
     )
     if st.button("➕  Refeição", key="sb_btn_ref", use_container_width=True):
@@ -1676,30 +1723,32 @@ with st.sidebar:
         st.session_state["painel_aberto"] = "agua"; st.rerun()
     if st.button("💊  Suplemento", key="sb_btn_supp", use_container_width=True):
         st.session_state["painel_aberto"] = "suplemento"; st.rerun()
+
+    # ── Mini Amazfit ───────────────────────────────────────────────────────────
     st.markdown(
-        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;'
-        f'text-transform:uppercase;margin:10px 0 6px;padding-top:10px;border-top:1px solid {BORDER}">AMAZFIT HOJE</div>',
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        f'<div style="display:flex;justify-content:space-between;margin-bottom:5px">'
-        f'<span style="font-size:11px;color:{MUTED}">👟 Passos</span>'
-        f'<span style="font-family:{MONO};font-size:11px;color:{CYAN}">{passos:,}</span></div>'
-        f'<div style="display:flex;justify-content:space-between;margin-bottom:5px">'
-        f'<span style="font-size:11px;color:{MUTED}">🌙 Sono</span>'
-        f'<span style="font-family:{MONO};font-size:11px;color:{PURPLE}">{sono_h_fmt}</span></div>'
-        f'<div style="display:flex;justify-content:space-between;margin-bottom:5px">'
-        f'<span style="font-size:11px;color:{MUTED}">💓 HRV</span>'
-        f'<span style="font-family:{MONO};font-size:11px;color:{hrv_cor}">{hrv} ms</span></div>'
-        f'<div style="display:flex;justify-content:space-between">'
-        f'<span style="font-size:11px;color:{MUTED}">⚡ PAI</span>'
-        f'<span style="font-family:{MONO};font-size:11px;color:{pai_cor}">{pai}</span></div>',
+        f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1.5px;'
+        f'text-transform:uppercase;margin:12px 0 6px;padding-top:12px;border-top:1px solid {BORDER}">AMAZFIT HOJE</div>'
+        f'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">'
+        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:5px;padding:6px 8px">'
+        f'<div style="font-size:9px;color:{MUTED}">👟 Passos</div>'
+        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;color:{CYAN}">{passos:,}</div></div>'
+        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:5px;padding:6px 8px">'
+        f'<div style="font-size:9px;color:{MUTED}">🌙 Sono</div>'
+        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;color:{PURPLE}">{sono_h_fmt}</div></div>'
+        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:5px;padding:6px 8px">'
+        f'<div style="font-size:9px;color:{MUTED}">💓 HRV</div>'
+        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;color:{hrv_cor}">{hrv} ms</div></div>'
+        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:5px;padding:6px 8px">'
+        f'<div style="font-size:9px;color:{MUTED}">⚡ PAI</div>'
+        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;color:{pai_cor}">{pai}</div></div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 1 — NUTRIÇÃO
 # ════════════════════════════════════════════════════════════════════════════
+st.markdown('<div id="sec-nutricao"></div>', unsafe_allow_html=True)
 st.markdown(sec("Nutrição", "Metas do dia"), unsafe_allow_html=True)
 
 k1, k2, k3, k4 = st.columns(4)
@@ -1761,6 +1810,7 @@ with k4:
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 2 — AMAZFIT
 # ════════════════════════════════════════════════════════════════════════════
+st.markdown('<div id="sec-wearable"></div>', unsafe_allow_html=True)
 st.markdown(sec("Amazfit Bip 6", "Atividade · Recovery · Sono"), unsafe_allow_html=True)
 
 def az_card(icon, lbl, val, unit, extra=""):
@@ -2016,6 +2066,7 @@ else:
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 4 — EVOLUÇÃO
 # ════════════════════════════════════════════════════════════════════════════
+st.markdown('<div id="sec-evolucao"></div>', unsafe_allow_html=True)
 st.markdown(sec("Evolução", "Peso histórico · Macros do dia"), unsafe_allow_html=True)
 
 c1, c2 = st.columns([2, 1])
@@ -2613,6 +2664,7 @@ with col_s:
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 6 — HISTÓRICO SEMANAL
 # ════════════════════════════════════════════════════════════════════════════
+st.markdown('<div id="sec-historico"></div>', unsafe_allow_html=True)
 st.markdown(sec("Histórico", "Últimos 30 dias · Tendências"), unsafe_allow_html=True)
 
 # Seletor de período — radio horizontal
@@ -3272,6 +3324,7 @@ else:
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 5 — EVOLUÇÃO DE MEDIDAS (largura total — 11 colunas cabem melhor)
 # ════════════════════════════════════════════════════════════════════════════
+st.markdown('<div id="sec-biometria"></div>', unsafe_allow_html=True)
 st.markdown(sec("Biometria", "Evolução de medidas — histórico completo"), unsafe_allow_html=True)
 
 # ── Botão + formulário de nova medida ────────────────────────────────────────
