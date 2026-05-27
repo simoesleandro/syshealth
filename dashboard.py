@@ -792,6 +792,26 @@ if "db_init_done" not in st.session_state:
     DB.init_tables()
     st.session_state["db_init_done"] = True
 
+# ── Migrações incrementais — roda 1x por sessão para criar tabelas novas ─────
+if "migrations_done" not in st.session_state:
+    try:
+        DB.execute("""CREATE TABLE IF NOT EXISTS alimentos_favoritos (
+            id SERIAL PRIMARY KEY,
+            descricao TEXT NOT NULL,
+            categoria TEXT DEFAULT 'Lanche',
+            calorias REAL DEFAULT 0,
+            proteinas REAL DEFAULT 0,
+            carboidratos REAL DEFAULT 0,
+            gorduras REAL DEFAULT 0,
+            componentes_json TEXT,
+            favorito INTEGER DEFAULT 0,
+            vezes_usado INTEGER DEFAULT 1,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(descricao))""")
+    except Exception:
+        pass
+    st.session_state["migrations_done"] = True
+
 # ── Seed: histórico de doses Tirzepatida ─────────────────────────────────────
 if "med_seeded" not in st.session_state:
     st.session_state["med_seeded"] = True
