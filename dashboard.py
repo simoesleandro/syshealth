@@ -46,7 +46,7 @@ st.set_page_config(
     page_title="SYS.HEALTH // Leandro R.",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="auto",
 )
 
 # ── RESET STREAMLIT CHROME + SIDEBAR WIDGET THEME ───────────────────────────
