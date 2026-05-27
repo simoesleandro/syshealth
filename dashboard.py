@@ -3305,7 +3305,7 @@ if st.session_state.get("bio_nova_open", False):
             unsafe_allow_html=True,
         )
 
-        _bio_data = st.date_input("Data", value=hoje, key="bio_data_in")
+        _bio_data = st.date_input("Data", value=datetime.now(_BR).date(), key="bio_data_in")
 
         st.markdown(
             f'<div style="font-family:{MONO};font-size:9px;color:{MUTED};letter-spacing:1px;'
