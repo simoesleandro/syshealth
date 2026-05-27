@@ -3582,63 +3582,293 @@ if _tem_qualquer_dado:
             )
 
     if executar_analise:
-        with st.spinner("🧠 IA Coach analisando dados clínicos, metabólicos e rotinas..."):
+        with st.spinner("🧠 IA Coach coletando todos os dados e gerando análise completa..."):
             try:
-                # Obter médias
-                media_passos = media(df_hist, "passos")
-                media_cal_gastas = media(df_hist, "calorias_gastas")
-                media_sono = media(df_hist, "sono_total_min")
-                media_sono_prof = media(df_hist, "sono_profundo_min")
-                media_hrv = media(df_hist, "hrv_ms")
-                media_pai = media(df_hist, "pai")
-                
-                media_cal_ingestao = media(df_macro_hist, "cal")
-                media_prot = media(df_macro_hist, "prot")
-                media_carb = media(df_macro_hist, "carb")
-                media_gord = media(df_macro_hist, "gord")
-                
-                media_corrida_km = media(df_hist, "corrida_km")
+                # ── 1. MÉDIAS DO PERÍODO SELECIONADO ─────────────────────────
+                media_passos      = media(df_hist, "passos")
+                media_cal_gastas  = media(df_hist, "calorias_gastas")
+                media_sono        = media(df_hist, "sono_total_min")
+                media_sono_prof   = media(df_hist, "sono_profundo_min")
+                media_hrv         = media(df_hist, "hrv_ms")
+                media_pai         = media(df_hist, "pai")
+                media_cal_ingestao= media(df_macro_hist, "cal")
+                media_prot        = media(df_macro_hist, "prot")
+                media_carb        = media(df_macro_hist, "carb")
+                media_gord        = media(df_macro_hist, "gord")
+                media_corrida_km  = media(df_hist, "corrida_km")
                 media_corrida_cal = media(df_hist, "corrida_cal")
-                
-                # Prompt clínico
-                prompt = (
-                    "Você é o IA Coach de Elite do Leandro — atuando como Arquiteto de Performance Humana, Nutricionista Esportivo de Elite e Endocrinologista de Alta Performance.\\n"
-                    "Sua missão é realizar uma análise clínica e metabólica extremamente crítica e sem rodeios sobre a evolução do Leandro.\\n\\n"
-                    "PARÂMETROS DE EVOLUÇÃO E ROTINA:\\n"
-                    "- Peso Inicial (Janeiro/2026): 115,3 kg\\n"
-                    f"- Peso Atual: {peso:.1f} kg (Evolução: -{115.3 - peso:.1f} kg)\\n"
-                    "- Protocolo Farmacológico: Tirzepatida (injetável semanal)\\n"
-                    "- Frequência de Treino: 6x por semana (Musculação + Cardio)\\n"
-                    "- Terça & Sexta: Cardio HIIT\\n"
-                    "- Segunda, Quarta, Quinta & Sábado: Corrida em Zona 2 (BPM entre 120 e 140 no máximo)\\n\\n"
-                    f"MÉDIAS REAIS REGISTRADAS NOS ÚLTIMOS {n_dias} DIAS:\\n"
-                    f"- Consumo de Calorias: {fmt_val(media_cal_ingestao, ' kcal', 0)}\\n"
-                    f"- Consumo de Proteínas: {fmt_val(media_prot, ' g', 0)}\\n"
-                    f"- Consumo de Carboidratos: {fmt_val(media_carb, ' g', 0)}\\n"
-                    f"- Consumo de Gorduras: {fmt_val(media_gord, ' g', 0)}\\n"
-                    f"- Gasto Calórico de Atividade (Amazfit): {fmt_val(media_cal_gastas, ' kcal', 0)}\\n"
-                    f"- Média de Corrida (Amazfit): {fmt_val(media_corrida_km, ' km/dia', 2)} ({fmt_val(media_corrida_cal, ' kcal/dia', 0)})\\n"
-                    f"- Treinos de Musculação (Hevy): {total_treinos} treinos realizados no período\\n"
-                    f"- Média de Volume de Treino: {fmt_val(media_vol_treino, ' kg', 0)}\\n"
-                    f"- Média de Duração de Treino: {fmt_val(media_dur_treino, ' min', 0)}\\n"
-                    f"- Déficit Calórico Médio Estimado: {fmt_val(media_deficit, ' kcal', 0)}\\n"
-                    f"- Média de Passos Diários: {fmt_val(media_passos, '', 0)}\\n"
-                    f"- Média de Sono Total: {fmt_val(media_sono, ' min', 0)}\\n"
-                    f"- Média de Sono Profundo: {fmt_val(media_sono_prof, ' min', 0)}\\n"
-                    f"- Média de HRV: {fmt_val(media_hrv, ' ms', 0)}\\n"
-                    f"- Média de PAI: {fmt_val(media_pai, '', 0)}\\n\\n"
-                    "Forneça um parecer crítico estruturado EXATAMENTE nos 4 tópicos abaixo:\\n"
-                    "1. 🔬 AJUSTE DE METABOLISMO & TIRZEPATIDA: Avalie o impacto metabólico da medicação associado ao déficit calórico atual e ingestão de proteínas (evitando perda de massa muscular).\\n"
-                    "2. 🏃 ANÁLISE DE CARDIO (ZONE 2 & HIIT): Avalie se o estímulo de Zone 2 (bpm 120-140) e HIIT nas terças/sextas está correto para otimização da lipólise, recuperação e melhora do HRV/PAI.\\n"
-                    "3. 📊 BALANÇO ENERGÉTICO & MACROS: Crítica sobre os números de ingestão x gasto energético.\\n"
-                    "4. ⚡ PLANO DE AÇÃO PRÁTICO: Próximos passos clínicos/alimentares para manter o emagrecimento saudável e quebrar platôs.\\n\\n"
-                    "Escreva com tom técnico, extremamente sênior e clínico, sem rodeios ou parágrafos introdutórios/conclusivos genéricos. Vá direto à análise de cada ponto."
+
+                # ── 2. DADOS BRUTOS COMPLETOS (queries extras) ────────────────
+
+                # Histórico de peso (medidas)
+                _ia_peso_df = DB.query(
+                    "SELECT data, peso FROM medidas WHERE peso IS NOT NULL ORDER BY data ASC"
                 )
-                
+
+                # Treinos detalhados — últimas 100 sessões
+                _ia_hevy_df = DB.query(
+                    "SELECT date(data_hora,'localtime') as dt, titulo, "
+                    "duracao_min, volume_kg, exercicios_json "
+                    "FROM hevy_treinos ORDER BY data_hora DESC LIMIT 100"
+                )
+
+                # Corridas completas
+                _ia_corridas_df = DB.query(
+                    "SELECT data_hora, corrida_km, corrida_cal, passos "
+                    "FROM amazfit_dados WHERE corrida_km > 0 ORDER BY data_hora DESC"
+                )
+
+                # Dados diários Amazfit (sono, HRV, PAI, passos) — últimos 90 dias
+                _ia_daily_df = DB.query(
+                    "SELECT date(data_hora) as dt, passos, calorias_gastas, "
+                    "sono_total_min, sono_profundo_min, hrv_ms, pai, corrida_km "
+                    "FROM amazfit_dados "
+                    "WHERE date(data_hora) >= date('now','-90 days') "
+                    "ORDER BY data_hora ASC"
+                )
+
+                # Nutrição diária — últimos 90 dias
+                _ia_nutri_df = DB.query(
+                    "SELECT date(data_hora,'localtime') as dt, "
+                    "SUM(calorias) as cal, SUM(proteinas) as prot, "
+                    "SUM(carboidratos) as carb, SUM(gorduras) as gord "
+                    "FROM refeicoes "
+                    "WHERE date(data_hora,'localtime') >= date('now','-90 days') "
+                    "GROUP BY dt ORDER BY dt ASC"
+                )
+
+                # Medicação (Tirzepatida)
+                _ia_med_df = DB.query(
+                    "SELECT date(data_hora,'localtime') as dt, dose_mg "
+                    "FROM medicacao ORDER BY data_hora ASC"
+                )
+
+                # ── 3. FORMATAR BLOCOS DE TEXTO ───────────────────────────────
+
+                def _fmt_df_linhas(header, df, cols_fmt):
+                    """Formata DataFrame como bloco de texto para o prompt."""
+                    if df is None or df.empty:
+                        return f"{header}\n  [Sem dados]\n\n"
+                    txt = header + "\n"
+                    for _, r in df.iterrows():
+                        linha = "  " + " | ".join(
+                            str(cols_fmt[c](r[c])) if c in r else "—"
+                            for c in cols_fmt
+                        )
+                        txt += linha + "\n"
+                    return txt + "\n"
+
+                # Peso
+                _txt_peso = "📊 HISTÓRICO DE PESO (todas as medidas registradas):\n"
+                if not _ia_peso_df.empty:
+                    for _, r in _ia_peso_df.iterrows():
+                        try:
+                            _d = pd.to_datetime(str(r["data"])).strftime("%d/%m/%Y")
+                        except Exception:
+                            _d = str(r["data"])
+                        _txt_peso += f"  {_d}: {float(r['peso']):.1f} kg\n"
+                else:
+                    _txt_peso += "  [Sem registros de peso]\n"
+                _txt_peso += "\n"
+
+                # Medicação Tirzepatida
+                _txt_med = "💊 HISTÓRICO TIRZEPATIDA (todas as aplicações):\n"
+                if not _ia_med_df.empty:
+                    for _, r in _ia_med_df.iterrows():
+                        try:
+                            _d = pd.to_datetime(str(r["dt"])).strftime("%d/%m/%Y")
+                        except Exception:
+                            _d = str(r["dt"])
+                        _txt_med += f"  {_d}: {float(r['dose_mg']):.1f} mg\n"
+                else:
+                    _txt_med += "  [Sem registros]\n"
+                _txt_med += "\n"
+
+                # Dados diários (Amazfit + Nutrição mesclados)
+                _txt_diario = f"📅 DADOS DIÁRIOS — ÚLTIMOS 90 DIAS (Amazfit + Nutrição):\n"
+                _txt_diario += "  Data | Passos | Cal.Gasto | Sono(min) | S.Prof(min) | HRV(ms) | PAI | Corrida(km) | Cal.Ingest | Prot(g) | Carb(g) | Gord(g)\n"
+                if not _ia_daily_df.empty:
+                    # merge com nutrição por dt
+                    _nutri_idx = {}
+                    if not _ia_nutri_df.empty:
+                        for _, nr in _ia_nutri_df.iterrows():
+                            _nutri_idx[str(nr["dt"])] = nr
+                    for _, dr in _ia_daily_df.iterrows():
+                        _dt_str = str(dr["dt"])
+                        try:
+                            _dt_fmt = pd.to_datetime(_dt_str).strftime("%d/%m")
+                        except Exception:
+                            _dt_fmt = _dt_str
+                        _nr = _nutri_idx.get(_dt_str)
+                        _cal_i = f"{int(_nr['cal'])}" if _nr is not None and not pd.isna(_nr.get('cal', float('nan'))) else "—"
+                        _prot_i = f"{int(_nr['prot'])}" if _nr is not None and not pd.isna(_nr.get('prot', float('nan'))) else "—"
+                        _carb_i = f"{int(_nr['carb'])}" if _nr is not None and not pd.isna(_nr.get('carb', float('nan'))) else "—"
+                        _gord_i = f"{int(_nr['gord'])}" if _nr is not None and not pd.isna(_nr.get('gord', float('nan'))) else "—"
+                        _txt_diario += (
+                            f"  {_dt_fmt} | {int(dr.get('passos',0) or 0):,} | "
+                            f"{int(dr.get('calorias_gastas',0) or 0)} | "
+                            f"{int(dr.get('sono_total_min',0) or 0)} | "
+                            f"{int(dr.get('sono_profundo_min',0) or 0)} | "
+                            f"{int(dr.get('hrv_ms',0) or 0)} | "
+                            f"{int(dr.get('pai',0) or 0)} | "
+                            f"{float(dr.get('corrida_km',0) or 0):.1f} | "
+                            f"{_cal_i} | {_prot_i} | {_carb_i} | {_gord_i}\n"
+                        )
+                elif not _ia_nutri_df.empty:
+                    _txt_diario += "  [Dados Amazfit indisponíveis — somente nutrição]\n"
+                    for _, nr in _ia_nutri_df.iterrows():
+                        try:
+                            _dt_fmt = pd.to_datetime(str(nr["dt"])).strftime("%d/%m")
+                        except Exception:
+                            _dt_fmt = str(nr["dt"])
+                        _txt_diario += (
+                            f"  {_dt_fmt} | — | — | — | — | — | — | — | "
+                            f"{int(nr.get('cal',0) or 0)} | {int(nr.get('prot',0) or 0)} | "
+                            f"{int(nr.get('carb',0) or 0)} | {int(nr.get('gord',0) or 0)}\n"
+                        )
+                else:
+                    _txt_diario += "  [Sem dados diários disponíveis]\n"
+                _txt_diario += "\n"
+
+                # Corridas
+                _txt_corridas = "🏃 HISTÓRICO DE CORRIDAS (Amazfit):\n"
+                _txt_corridas += "  Data | KM | Cal corrida | Passos dia\n"
+                if not _ia_corridas_df.empty:
+                    for _, cr in _ia_corridas_df.iterrows():
+                        try:
+                            _cd = pd.to_datetime(str(cr["data_hora"])).strftime("%d/%m/%Y")
+                        except Exception:
+                            _cd = str(cr["data_hora"])
+                        _txt_corridas += (
+                            f"  {_cd} | {float(cr.get('corrida_km',0) or 0):.2f} km | "
+                            f"{int(cr.get('corrida_cal',0) or 0)} kcal | "
+                            f"{int(cr.get('passos',0) or 0):,} passos\n"
+                        )
+                else:
+                    _txt_corridas += "  [Sem corridas registradas]\n"
+                _txt_corridas += "\n"
+
+                # Treinos detalhados (exercício por série)
+                _txt_treinos = "💪 TREINOS DE MUSCULAÇÃO (Hevy) — DETALHADO POR SÉRIE:\n"
+                _txt_treinos += "  Data | Treino | Exercício | Série | Tipo | Carga(kg) | Reps | Vol(kg) | RPE\n"
+                if not _ia_hevy_df.empty:
+                    for _, hw in _ia_hevy_df.iterrows():
+                        try:
+                            _hd = pd.to_datetime(str(hw["dt"])).strftime("%d/%m/%Y")
+                        except Exception:
+                            _hd = str(hw["dt"])
+                        _htit = str(hw["titulo"])
+                        _hdur = int(hw.get("duracao_min") or 0)
+                        try:
+                            _hexs = json.loads(hw["exercicios_json"] or "[]")
+                        except Exception:
+                            _hexs = []
+                        if not _hexs:
+                            _txt_treinos += f"  {_hd} | {_htit} | [sem exercícios] | — | — | — | — | — | —\n"
+                            continue
+                        for _hex in _hexs:
+                            _hex_nome = (_hex.get("title") or _hex.get("name") or
+                                         _hex.get("exercise_title") or "Exercício")
+                            _hsets = _hex.get("sets", [])
+                            for _hsi, _hs in enumerate(_hsets, 1):
+                                _hkg   = float(_hs.get("weight_kg") or 0)
+                                _hreps = int(_hs.get("reps") or 0)
+                                _hrpe  = _hs.get("rpe")
+                                _htipo = (_hs.get("set_type") or "normal").capitalize()
+                                _hvol  = round(_hkg * _hreps, 1)
+                                _txt_treinos += (
+                                    f"  {_hd} | {_htit} | {_hex_nome} | {_hsi} | {_htipo} | "
+                                    f"{_hkg:.1f} | {_hreps} | {_hvol:.1f} | "
+                                    f"{float(_hrpe):.1f}\n" if _hrpe else
+                                    f"  {_hd} | {_htit} | {_hex_nome} | {_hsi} | {_htipo} | "
+                                    f"{_hkg:.1f} | {_hreps} | {_hvol:.1f} | —\n"
+                                )
+                else:
+                    _txt_treinos += "  [Sem treinos registrados]\n"
+                _txt_treinos += "\n"
+
+                # ── 4. PROMPT COMPLETO ────────────────────────────────────────
+                _proto = st.session_state.get("coach_proto", {
+                    "rotina": "Musculação + Cardio (6x/sem)",
+                    "hiit": "Ter & Sex — Alta Intensidade / EPOC",
+                    "zona2": "Seg, Qua, Qui, Sáb — Corrida BPM 120-140",
+                    "peso_inicial": "115.3 kg (Jan/2026)",
+                })
+
+                prompt = (
+                    "Você é o IA Coach de Elite do Leandro — Arquiteto de Performance Humana, "
+                    "Nutricionista Esportivo de Elite e Endocrinologista de Alta Performance.\n"
+                    "Sua missão é gerar uma análise clínica e metabólica COMPLETA, extremamente crítica e sem rodeios, "
+                    "baseada nos dados reais abaixo. USE OS DADOS BRUTOS para identificar padrões, tendências, "
+                    "inconsistências e oportunidades concretas — não genéricos.\n\n"
+
+                    "═══════════════════════════════════════════════════\n"
+                    "CONTEXTO DO ATLETA\n"
+                    "═══════════════════════════════════════════════════\n"
+                    f"- Peso Inicial: {_proto['peso_inicial']}\n"
+                    f"- Peso Atual: {peso:.1f} kg  (Perda total: -{115.3 - peso:.1f} kg)\n"
+                    f"- Protocolo Farmacológico: Tirzepatida (injetável semanal)\n"
+                    f"- Rotina: {_proto['rotina']}\n"
+                    f"- HIIT: {_proto['hiit']}\n"
+                    f"- Zona 2: {_proto['zona2']}\n\n"
+
+                    f"═══════════════════════════════════════════════════\n"
+                    f"MÉDIAS DO PERÍODO ANALISADO ({n_dias} dias)\n"
+                    "═══════════════════════════════════════════════════\n"
+                    f"- Calorias ingeridas: {fmt_val(media_cal_ingestao,' kcal',0)} · "
+                    f"Proteínas: {fmt_val(media_prot,' g',0)} · "
+                    f"Carb: {fmt_val(media_carb,' g',0)} · "
+                    f"Gordura: {fmt_val(media_gord,' g',0)}\n"
+                    f"- Gasto calórico ativ: {fmt_val(media_cal_gastas,' kcal',0)} · "
+                    f"Déficit médio: {fmt_val(media_deficit,' kcal',0)}\n"
+                    f"- Corrida: {fmt_val(media_corrida_km,' km/dia',2)} · "
+                    f"{fmt_val(media_corrida_cal,' kcal/dia',0)}\n"
+                    f"- Musculação: {total_treinos} treinos · "
+                    f"Vol médio: {fmt_val(media_vol_treino,' kg',0)} · "
+                    f"Duração média: {fmt_val(media_dur_treino,' min',0)}\n"
+                    f"- Passos: {fmt_val(media_passos,'',0)}/dia · "
+                    f"Sono total: {fmt_val(media_sono,' min',0)} · "
+                    f"Sono profundo: {fmt_val(media_sono_prof,' min',0)}\n"
+                    f"- HRV: {fmt_val(media_hrv,' ms',0)} · PAI: {fmt_val(media_pai,'',0)}\n\n"
+
+                    "═══════════════════════════════════════════════════\n"
+                    "DADOS BRUTOS COMPLETOS\n"
+                    "═══════════════════════════════════════════════════\n"
+                    + _txt_peso
+                    + _txt_med
+                    + _txt_corridas
+                    + _txt_diario
+                    + _txt_treinos +
+
+                    "═══════════════════════════════════════════════════\n"
+                    "ANÁLISE SOLICITADA\n"
+                    "═══════════════════════════════════════════════════\n"
+                    "Com base em TODOS os dados acima — padrão diário de sono, HRV, PAI, carga dos treinos, "
+                    "exercícios específicos executados, progressão de cargas, frequência de corridas, "
+                    "histórico de peso e protocolo de Tirzepatida — forneça um parecer clínico estruturado "
+                    "EXATAMENTE nos 5 tópicos abaixo:\n\n"
+                    "1. 🔬 METABOLISMO & TIRZEPATIDA: Avalie o impacto real da medicação no ritmo de "
+                    "perda de peso (analise a curva do histórico), risco de catabolismo muscular dado "
+                    "o déficit e ingestão proteica, e adequação da dose atual.\n\n"
+                    "2. 💪 MUSCULAÇÃO — PROGRESSÃO DE CARGAS: Analise os treinos reais (exercícios, "
+                    "cargas, RPE, volume por sessão). Identifique pontos de estagnação, exercícios com "
+                    "RPE muito alto/baixo, desequilíbrios musculares e recomende ajustes específicos.\n\n"
+                    "3. 🏃 CARDIO (ZONA 2 & HIIT): Avalie a consistência das corridas, volume semanal "
+                    "real registrado, correlação com HRV/PAI (recuperação), e se o estímulo está correto "
+                    "para lipólise máxima sem comprometer recuperação muscular.\n\n"
+                    "4. 😴 RECUPERAÇÃO & BIOMARCADORES: Analise a qualidade do sono (total vs profundo), "
+                    "tendência do HRV (melhora ou piora de recuperação), PAI (carga cardiovascular "
+                    "acumulada). Identifique dias/semanas de sobrecarga ou subrecuperação.\n\n"
+                    "5. ⚡ PLANO DE AÇÃO — PRÓXIMAS 2 SEMANAS: Ações concretas e específicas "
+                    "(exercícios, cargas, volume, macros, sono) para maximizar perda de gordura, "
+                    "preservar/ganhar massa muscular e melhorar biomarcadores. Seja cirúrgico.\n\n"
+                    "Tom: técnico, sênior, clínico, sem introduções genéricas. Cite números reais dos dados."
+                )
+
                 vision = _gemini_model()
                 res = vision.generate_content(prompt)
                 st.session_state["ia_coach_result"] = res.text
-                
+
                 # Salvar no histórico
                 try:
                     DB.execute(
