@@ -838,6 +838,7 @@ def _q_biometria():
                MAX(coxa_dir)        as coxa_dir,
                MAX(coxa_esq)        as coxa_esq,
                MAX(panturrilha_dir) as panturrilha_dir,
+               MAX(panturrilha_esq) as panturrilha_esq,
                MAX(biceps_dir)      as biceps_dir,
                MAX(biceps_esq)      as biceps_esq
         FROM medidas
@@ -869,6 +870,11 @@ if "migrations_done" not in st.session_state:
             UNIQUE(descricao))""")
     except Exception:
         pass
+    # Adiciona panturrilha_esq se não existir (migração incremental)
+    try:
+        DB.execute("ALTER TABLE medidas ADD COLUMN panturrilha_esq REAL")
+    except Exception:
+        pass  # coluna já existe — ignorar
     st.session_state["migrations_done"] = True
 
 # ── Seed: histórico de doses Tirzepatida ─────────────────────────────────────
@@ -4055,7 +4061,7 @@ if st.session_state.get("bio_nova_open", False):
 
     with st.form("form_bio_nova", clear_on_submit=True):
         st.markdown(
-            f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
+            f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1.5px;'
             f'text-transform:uppercase;color:{CYAN};margin-bottom:12px">📏 REGISTRAR MEDIDAS CORPORAIS</div>',
             unsafe_allow_html=True,
         )
@@ -4063,7 +4069,7 @@ if st.session_state.get("bio_nova_open", False):
         _bio_data = st.date_input("Data", value=datetime.now(_BR).date(), key="bio_data_in")
 
         st.markdown(
-            f'<div style="font-family:{MONO};font-size:9px;color:{MUTED};letter-spacing:1px;'
+            f'<div style="font-family:{MONO};font-size:11px;color:{MUTED};letter-spacing:1px;'
             f'text-transform:uppercase;margin:10px 0 6px">COMPOSIÇÃO CORPORAL</div>',
             unsafe_allow_html=True,
         )
@@ -4087,6 +4093,8 @@ if st.session_state.get("bio_nova_open", False):
         with _bc3:
             _b_pant_d   = st.number_input("Pant. Dir (cm)", min_value=0.0, max_value=100.0,
                                           value=_bio_default("panturrilha_dir", 0.0), step=0.1, format="%.1f")
+            _b_pant_e   = st.number_input("Pant. Esq (cm)", min_value=0.0, max_value=100.0,
+                                          value=_bio_default("panturrilha_esq", 0.0), step=0.1, format="%.1f")
             _b_bic_d    = st.number_input("Bíceps Dir (cm)",min_value=0.0, max_value=80.0,
                                           value=_bio_default("biceps_dir", 0.0), step=0.1, format="%.1f")
             _b_bic_e    = st.number_input("Bíceps Esq (cm)",min_value=0.0, max_value=80.0,
@@ -4101,20 +4109,20 @@ if st.session_state.get("bio_nova_open", False):
         if _ex.empty:
             DB.execute(
                 "INSERT INTO medidas (data,peso,cintura,abdomen,peitoral,quadril,"
-                "coxa_dir,coxa_esq,panturrilha_dir,biceps_dir,biceps_esq) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "coxa_dir,coxa_esq,panturrilha_dir,panturrilha_esq,biceps_dir,biceps_esq) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 [_bio_data_sql, _nz(_b_peso), _nz(_b_cintura), _nz(_b_abdomen),
                  _nz(_b_peitoral), _nz(_b_quadril), _nz(_b_coxa_d), _nz(_b_coxa_e),
-                 _nz(_b_pant_d), _nz(_b_bic_d), _nz(_b_bic_e)],
+                 _nz(_b_pant_d), _nz(_b_pant_e), _nz(_b_bic_d), _nz(_b_bic_e)],
             )
         else:
             DB.execute(
                 "UPDATE medidas SET peso=?,cintura=?,abdomen=?,peitoral=?,quadril=?,"
-                "coxa_dir=?,coxa_esq=?,panturrilha_dir=?,biceps_dir=?,biceps_esq=? "
+                "coxa_dir=?,coxa_esq=?,panturrilha_dir=?,panturrilha_esq=?,biceps_dir=?,biceps_esq=? "
                 "WHERE date(data)=?",
                 [_nz(_b_peso), _nz(_b_cintura), _nz(_b_abdomen),
                  _nz(_b_peitoral), _nz(_b_quadril), _nz(_b_coxa_d), _nz(_b_coxa_e),
-                 _nz(_b_pant_d), _nz(_b_bic_d), _nz(_b_bic_e), _bio_data_sql],
+                 _nz(_b_pant_d), _nz(_b_pant_e), _nz(_b_bic_d), _nz(_b_bic_e), _bio_data_sql],
             )
         st.cache_data.clear()
         st.session_state["bio_nova_open"] = False
@@ -4129,7 +4137,7 @@ if True:  # bloco de escopo para df_bio
     if not df_bio.empty:
         df_bio = df_bio.sort_values("data_ord", ascending=True)
         COLS_NUM = ["peso","cintura","abdomen","peitoral","quadril",
-                    "coxa_dir","coxa_esq","panturrilha_dir","biceps_dir","biceps_esq"]
+                    "coxa_dir","coxa_esq","panturrilha_dir","panturrilha_esq","biceps_dir","biceps_esq"]
         idx_rec = df_bio.index[-1]
         diffs = {}
         for c in COLS_NUM:
@@ -4153,15 +4161,15 @@ if True:  # bloco de escopo para df_bio
             if not rec or not diff:
                 return f"<td style='{td_base}'><b style='color:{TEXT}'>{fmt}</b></td>"
             if diff < 0:
-                d = (f"<span style='color:{GREEN};font-size:9px;font-weight:700;"
+                d = (f"<span style='color:{GREEN};font-size:11px;font-weight:700;"
                      f"display:block'>▼ {abs(diff):.1f}{un}</span>")
             else:
-                d = (f"<span style='color:{RED};font-size:9px;font-weight:700;"
+                d = (f"<span style='color:{RED};font-size:11px;font-weight:700;"
                      f"display:block'>+{diff:.1f}{un}</span>")
             return f"<td style='{td_base}'><b style='color:{TEXT}'>{fmt}</b>{d}</td>"
 
         th_s  = (f"font-family:{MONO};background:{BG3};color:{GHOST};padding:9px 8px;"
-                 f"border-bottom:1px solid {BORDER2};text-transform:uppercase;font-size:9px;"
+                 f"border-bottom:1px solid {BORDER2};text-transform:uppercase;font-size:11px;"
                  f"letter-spacing:1px;text-align:right;white-space:nowrap")
         th_s1 = th_s.replace("text-align:right", "text-align:left")
 
@@ -4198,7 +4206,7 @@ if True:  # bloco de escopo para df_bio
                 panel(
                     ptitl("Evolução — Tronco & Composição Corporal") +
                     f'<div style="overflow-x:auto;border-radius:6px;border:1px solid {BORDER}">'
-                    f'<table style="width:100%;border-collapse:collapse;font-size:12px;'
+                    f'<table style="width:100%;border-collapse:collapse;font-size:13px;'
                     f'background:{BG2};min-width:400px">'
                     f'<thead><tr>{ths1}</tr></thead><tbody>{body1}</tbody></table></div>'
                 ),
@@ -4207,22 +4215,22 @@ if True:  # bloco de escopo para df_bio
 
         # ── Tab 2: Membros ────────────────────────────────────────────────────
         with _bio_tab2:
-            HEADS_T2 = ["Data","Coxa D","Coxa E","Pant. D","Bíceps D","Bíceps E"]
+            HEADS_T2 = ["Data","Coxa D","Coxa E","Pant. D","Pant. E","Bíceps D","Bíceps E"]
             ths2 = (f"<th style='{th_s1}'>{HEADS_T2[0]}</th>" +
                     "".join(f"<th style='{th_s}'>{h}</th>" for h in HEADS_T2[1:]))
             body2 = ""
             for i, (_, row) in enumerate(df_bio.iterrows()):
                 rec = (i == 0)
                 body2 += f"<tr>{_bio_row_head_data(row, rec)}"
-                for c in ["coxa_dir","coxa_esq","panturrilha_dir","biceps_dir","biceps_esq"]:
+                for c in ["coxa_dir","coxa_esq","panturrilha_dir","panturrilha_esq","biceps_dir","biceps_esq"]:
                     body2 += cel(row[c], diffs[c], rec=rec)
                 body2 += "</tr>"
             st.markdown(
                 panel(
                     ptitl("Evolução — Membros") +
                     f'<div style="overflow-x:auto;border-radius:6px;border:1px solid {BORDER}">'
-                    f'<table style="width:100%;border-collapse:collapse;font-size:12px;'
-                    f'background:{BG2};min-width:380px">'
+                    f'<table style="width:100%;border-collapse:collapse;font-size:13px;'
+                    f'background:{BG2};min-width:440px">'
                     f'<thead><tr>{ths2}</tr></thead><tbody>{body2}</tbody></table></div>'
                 ),
                 unsafe_allow_html=True,
