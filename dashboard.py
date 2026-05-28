@@ -4160,66 +4160,69 @@ if True:  # bloco de escopo para df_bio
 
         df_bio = df_bio.sort_values("data_ord", ascending=False)
 
-        # estilos centralizados para toda a tabela
-        td_base = (f"text-align:center;padding:8px 10px;border-bottom:1px solid #0a1020;"
-                   f"font-size:14px;")
-        td_rec  = (f"text-align:center;padding:8px 10px;border-bottom:1px solid #0a1020;"
-                   f"font-size:14px;background:rgba(0,212,255,0.07);")
+        # ── Primitivos de estilo ──────────────────────────────────────────────
+        _td  = ("padding:7px 6px;border-bottom:1px solid #0a1020;"
+                "text-align:center;vertical-align:middle;")
+        _tdr = _td + f"background:rgba(0,212,255,0.06);"
 
         def cel(val, diff, peso=False, rec=False):
-            base = td_rec if rec else td_base
+            base = _tdr if rec else _td
             if pd.isna(val):
                 return f"<td style='{base}color:{GHOST}'>—</td>"
-            fmt = f"{val:.2f}" if peso else f"{val:.1f}"
-            un  = "kg" if peso else "cm"
-            if not rec or not diff:
-                return (f"<td style='{base}'>"
-                        f"<b style='color:{TEXT};font-size:15px'>{fmt}</b></td>")
-            if diff < 0:
-                d = (f"<span style='color:{GREEN};font-size:11px;font-weight:700;"
-                     f"display:block;margin-top:2px'>▼ {abs(diff):.1f}{un}</span>")
-            else:
-                d = (f"<span style='color:{RED};font-size:11px;font-weight:700;"
-                     f"display:block;margin-top:2px'>+{diff:.1f}{un}</span>")
-            return (f"<td style='{base}'>"
-                    f"<b style='color:{CYAN};font-size:15px'>{fmt}</b>{d}</td>")
+            fmt  = f"{val:.1f}"
+            un   = "kg" if peso else "cm"
+            cor  = CYAN if rec else TEXT
+            num  = f"<b style='font-size:13px;font-weight:700;color:{cor}'>{fmt}</b>"
+            if rec and diff:
+                arrow      = "▼" if diff < 0 else "▲"
+                diff_color = GREEN if diff < 0 else RED
+                delta = (f"<span style='color:{diff_color};font-size:10px;"
+                         f"display:block;margin-top:1px;font-weight:600'>"
+                         f"{arrow} {abs(diff):.1f}{un}</span>")
+                return f"<td style='{base}'>{num}{delta}</td>"
+            return f"<td style='{base}'>{num}</td>"
 
-        th_s = (f"font-family:{MONO};background:{BG3};color:{MUTED};padding:10px 10px;"
-                f"border-bottom:2px solid {BORDER2};text-transform:uppercase;font-size:11px;"
-                f"letter-spacing:1.2px;text-align:center;white-space:nowrap")
+        _th = (f"font-family:{MONO};background:{BG3};color:{MUTED};"
+               f"padding:9px 6px;border-bottom:2px solid {BORDER2};"
+               f"text-transform:uppercase;font-size:10px;letter-spacing:1.5px;"
+               f"text-align:center;white-space:nowrap;font-weight:400")
 
-        def _bio_row_head_data(row, rec):
-            if rec:
-                data_val = (
-                    f'<span style="font-size:13px;font-weight:700;color:{CYAN};'
-                    f'white-space:nowrap">{row["data_fmt"]}</span>'
-                    f'<span style="display:block;background:{CYAN};color:{BG};font-size:9px;'
-                    f'font-weight:900;padding:2px 5px;border-radius:3px;margin-top:3px;'
-                    f'font-family:{MONO};letter-spacing:1px;width:fit-content;margin-inline:auto">'
-                    f'ATUAL</span>'
-                )
-                return (
-                    f"<td style='text-align:center;padding:8px 10px;border-bottom:1px solid #0a1020;"
-                    f"background:rgba(0,212,255,0.07);border-left:3px solid {CYAN}'>"
-                    f"{data_val}</td>"
-                )
-            else:
-                return (
-                    f"<td style='text-align:center;padding:8px 10px;border-bottom:1px solid #0a1020;"
-                    f"color:{GHOST};font-size:13px;white-space:nowrap'>{row['data_fmt']}</td>"
-                )
+        def _td_data(row, rec):
+            badge = (
+                f'<span style="background:{CYAN};color:{BG};font-size:8px;'
+                f'font-family:{MONO};font-weight:900;padding:1px 4px;border-radius:2px;'
+                f'letter-spacing:1px;margin-left:5px;vertical-align:middle">ATUAL</span>'
+                if rec else ""
+            )
+            left_bdr = f"border-left:2px solid {CYAN};" if rec else ""
+            bg       = f"background:rgba(0,212,255,0.06);" if rec else ""
+            cor      = CYAN if rec else GHOST
+            wt       = "700" if rec else "400"
+            return (
+                f"<td style='{_td}{bg}{left_bdr}'>"
+                f"<span style='font-family:{MONO};font-size:11px;color:{cor};"
+                f"font-weight:{wt};white-space:nowrap'>{row['data_fmt']}{badge}</span></td>"
+            )
+
+        # colgroup: data fixa + colunas de medida uniformes
+        _cg1 = ('<colgroup><col style="width:95px">'
+                + '<col style="width:68px">' * 5 + '</colgroup>')
+        _cg2 = ('<colgroup><col style="width:95px">'
+                + '<col style="width:68px">' * 6 + '</colgroup>')
+        _tbl = (f"width:100%;border-collapse:collapse;table-layout:fixed;"
+                f"background:{BG2}")
 
         _bio_tab1, _bio_tab2 = st.tabs(["🏛️ Tronco · Composição", "💪 Membros"])
 
         # ── Tab 1: Peso + medidas do tronco ──────────────────────────────────
         with _bio_tab1:
             HEADS_T1 = ["Data","Peso","Cintura","Abdômen","Peitoral","Quadril"]
-            ths1 = "".join(f"<th style='{th_s}'>{h}</th>" for h in HEADS_T1)
+            ths1  = "".join(f"<th style='{_th}'>{h}</th>" for h in HEADS_T1)
             body1 = ""
             for i, (_, row) in enumerate(df_bio.iterrows()):
-                rec = (i == 0)
-                body1 += f"<tr>{_bio_row_head_data(row, rec)}"
-                body1 += cel(row["peso"],    diffs["peso"],    peso=True, rec=rec)
+                rec    = (i == 0)
+                body1 += f"<tr>{_td_data(row, rec)}"
+                body1 += cel(row["peso"], diffs["peso"], peso=True, rec=rec)
                 for c in ["cintura","abdomen","peitoral","quadril"]:
                     body1 += cel(row[c], diffs[c], rec=rec)
                 body1 += "</tr>"
@@ -4227,9 +4230,9 @@ if True:  # bloco de escopo para df_bio
                 panel(
                     ptitl("Evolução — Tronco & Composição Corporal") +
                     f'<div style="overflow-x:auto;border-radius:6px;border:1px solid {BORDER}">'
-                    f'<table style="width:100%;border-collapse:collapse;font-size:14px;'
-                    f'background:{BG2};min-width:420px">'
-                    f'<thead><tr>{ths1}</tr></thead><tbody>{body1}</tbody></table></div>'
+                    f'<table style="{_tbl}">{_cg1}'
+                    f'<thead><tr>{ths1}</tr></thead>'
+                    f'<tbody>{body1}</tbody></table></div>'
                 ),
                 unsafe_allow_html=True,
             )
@@ -4237,11 +4240,11 @@ if True:  # bloco de escopo para df_bio
         # ── Tab 2: Membros ────────────────────────────────────────────────────
         with _bio_tab2:
             HEADS_T2 = ["Data","Coxa D","Coxa E","Pant. D","Pant. E","Bíceps D","Bíceps E"]
-            ths2 = "".join(f"<th style='{th_s}'>{h}</th>" for h in HEADS_T2)
+            ths2  = "".join(f"<th style='{_th}'>{h}</th>" for h in HEADS_T2)
             body2 = ""
             for i, (_, row) in enumerate(df_bio.iterrows()):
-                rec = (i == 0)
-                body2 += f"<tr>{_bio_row_head_data(row, rec)}"
+                rec    = (i == 0)
+                body2 += f"<tr>{_td_data(row, rec)}"
                 for c in ["coxa_dir","coxa_esq","panturrilha_dir","panturrilha_esq","biceps_dir","biceps_esq"]:
                     body2 += cel(row[c], diffs[c], rec=rec)
                 body2 += "</tr>"
@@ -4249,9 +4252,9 @@ if True:  # bloco de escopo para df_bio
                 panel(
                     ptitl("Evolução — Membros") +
                     f'<div style="overflow-x:auto;border-radius:6px;border:1px solid {BORDER}">'
-                    f'<table style="width:100%;border-collapse:collapse;font-size:14px;'
-                    f'background:{BG2};min-width:460px">'
-                    f'<thead><tr>{ths2}</tr></thead><tbody>{body2}</tbody></table></div>'
+                    f'<table style="{_tbl}">{_cg2}'
+                    f'<thead><tr>{ths2}</tr></thead>'
+                    f'<tbody>{body2}</tbody></table></div>'
                 ),
                 unsafe_allow_html=True,
             )
