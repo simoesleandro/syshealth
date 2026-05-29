@@ -4607,104 +4607,56 @@ if True:  # bloco de escopo para df_bio
                 unsafe_allow_html=True,
             )
 
-    # ── Gerenciar registros (editar / excluir por linha) ──────────────────
-    st.markdown(
-        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1.5px;'
-        f'text-transform:uppercase;color:{MUTED};margin:20px 0 8px">✏️ GERENCIAR REGISTROS</div>',
-        unsafe_allow_html=True,
-    )
+        # ── Botão Editar Biometria ───────────────────────────────────────────
+        _bio_edit_open = st.session_state.get("bio_edit_open", False)
+        _bio_edit_lbl  = "✏️ EDITAR BIOMETRIA ▴" if _bio_edit_open else "✏️ EDITAR BIOMETRIA ▾"
+        if st.button(_bio_edit_lbl, key="btn_bio_edit_toggle", use_container_width=True):
+            st.session_state["bio_edit_open"] = not _bio_edit_open
+            st.session_state.pop("bio_del_confirm", None)
+            st.rerun()
 
-    _bio_edit_date   = st.session_state.get("bio_edit_date")
-    _bio_del_confirm = st.session_state.get("bio_del_confirm")
-
-    for _bi, (_, _brow) in enumerate(df_bio.iterrows()):
-        _bdate = _brow["data_ord"]
-        _bfmt  = _brow["data_fmt"]
-        _bpeso = _brow.get("peso")
-
-        _bline = st.container()
-        with _bline:
-            _col_d, _col_p, _col_e, _col_del = st.columns([3, 2, 1, 1])
-            with _col_d:
-                st.markdown(
-                    f'<span style="font-family:{MONO};font-size:12px;color:{TEXT};font-weight:600">{_bfmt}</span>',
-                    unsafe_allow_html=True,
-                )
-            with _col_p:
-                _peso_txt = f"{_bpeso:.1f} kg" if _bpeso is not None and not pd.isna(_bpeso) else "—"
-                st.markdown(
-                    f'<span style="font-family:{MONO};font-size:12px;color:{MUTED}">{_peso_txt}</span>',
-                    unsafe_allow_html=True,
-                )
-            with _col_e:
-                if st.button("✏️", key=f"bio_edit_btn_{_bi}", use_container_width=True):
-                    st.session_state["bio_edit_date"]   = _bdate
-                    st.session_state.pop("bio_del_confirm", None)
-                    st.rerun()
-            with _col_del:
-                if st.button("🗑️", key=f"bio_del_btn_{_bi}", use_container_width=True):
-                    st.session_state["bio_del_confirm"] = _bdate
-                    st.session_state.pop("bio_edit_date", None)
-                    st.rerun()
-
-        # Confirmação de exclusão inline
-        if _bio_del_confirm == _bdate:
-            _dc1, _dc2 = st.columns(2)
-            with _dc1:
-                if st.button(f"✓ Confirmar exclusão de {_bfmt}", key=f"bio_del_conf_{_bi}", use_container_width=True):
-                    DB.execute("DELETE FROM medidas WHERE date(data)=?", [_bdate])
-                    st.cache_data.clear()
-                    st.session_state.pop("bio_del_confirm", None)
-                    _notif(f"Registro de {_bfmt} excluído ✓")
-                    st.rerun()
-            with _dc2:
-                if st.button("✗ Cancelar", key=f"bio_del_cancel_{_bi}", use_container_width=True):
-                    st.session_state.pop("bio_del_confirm", None)
-                    st.rerun()
-
-        st.markdown(f'<div style="border-bottom:1px solid {BORDER2};margin:2px 0 6px"></div>', unsafe_allow_html=True)
-
-    # Formulário de edição inline (aparece abaixo da lista quando uma data é selecionada)
-    if _bio_edit_date:
-        _bio_edit_row = df_bio[df_bio["data_ord"] == _bio_edit_date]
-        if not _bio_edit_row.empty:
-            _er = _bio_edit_row.iloc[0]
-            def _ev(col, fallback=0.0):
-                v = _er.get(col, None)
-                return float(v) if v is not None and not pd.isna(v) else fallback
-
+        if st.session_state.get("bio_edit_open", False):
             st.markdown(
                 f'<div style="background:{BG3};border:1px solid {CYAN}33;border-top:2px solid {CYAN};'
-                f'border-radius:0 0 10px 10px;padding:16px 18px 18px;margin-top:8px">',
+                f'border-radius:0 0 10px 10px;padding:16px 18px 18px;margin-bottom:16px">',
                 unsafe_allow_html=True,
             )
             st.markdown(
                 f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1.5px;'
-                f'text-transform:uppercase;color:{CYAN};margin-bottom:12px">'
-                f'✏️ EDITANDO MEDIDAS — {_er["data_fmt"]}</div>',
+                f'text-transform:uppercase;color:{CYAN};margin-bottom:14px">✏️ EDITAR REGISTRO DE MEDIDAS</div>',
                 unsafe_allow_html=True,
             )
+
+            _datas_bio = [(row["data_fmt"], row["data_ord"]) for _, row in df_bio.iterrows()]
+            _sel_fmt   = st.selectbox("Selecionar data", [d[0] for d in _datas_bio], key="bio_edit_sel")
+            _sel_ord   = next(d[1] for d in _datas_bio if d[0] == _sel_fmt)
+            _er2       = df_bio[df_bio["data_ord"] == _sel_ord].iloc[0]
+
+            def _ev2(col, fallback=0.0):
+                v = _er2.get(col, None)
+                return float(v) if v is not None and not pd.isna(v) else fallback
+
             with st.form("form_bio_edit", clear_on_submit=False):
                 _ec1, _ec2, _ec3 = st.columns(3)
                 with _ec1:
-                    _e_peso    = st.number_input("Peso (kg)",      min_value=0.0, max_value=300.0, value=_ev("peso"),             step=0.1, format="%.1f")
-                    _e_cintura = st.number_input("Cintura (cm)",   min_value=0.0, max_value=200.0, value=_ev("cintura"),          step=0.1, format="%.1f")
-                    _e_abdomen = st.number_input("Abdômen (cm)",   min_value=0.0, max_value=200.0, value=_ev("abdomen"),          step=0.1, format="%.1f")
+                    _e_peso    = st.number_input("Peso (kg)",      min_value=0.0, max_value=300.0, value=_ev2("peso"),            step=0.1, format="%.1f")
+                    _e_cintura = st.number_input("Cintura (cm)",   min_value=0.0, max_value=200.0, value=_ev2("cintura"),         step=0.1, format="%.1f")
+                    _e_abdomen = st.number_input("Abdômen (cm)",   min_value=0.0, max_value=200.0, value=_ev2("abdomen"),         step=0.1, format="%.1f")
                 with _ec2:
-                    _e_peit    = st.number_input("Peitoral (cm)",  min_value=0.0, max_value=200.0, value=_ev("peitoral"),         step=0.1, format="%.1f")
-                    _e_quad    = st.number_input("Quadril (cm)",   min_value=0.0, max_value=200.0, value=_ev("quadril"),          step=0.1, format="%.1f")
-                    _e_coxa_d  = st.number_input("Coxa Dir (cm)",  min_value=0.0, max_value=150.0, value=_ev("coxa_dir"),         step=0.1, format="%.1f")
-                    _e_coxa_e  = st.number_input("Coxa Esq (cm)",  min_value=0.0, max_value=150.0, value=_ev("coxa_esq"),         step=0.1, format="%.1f")
+                    _e_peit    = st.number_input("Peitoral (cm)",  min_value=0.0, max_value=200.0, value=_ev2("peitoral"),        step=0.1, format="%.1f")
+                    _e_quad    = st.number_input("Quadril (cm)",   min_value=0.0, max_value=200.0, value=_ev2("quadril"),         step=0.1, format="%.1f")
+                    _e_coxa_d  = st.number_input("Coxa Dir (cm)",  min_value=0.0, max_value=150.0, value=_ev2("coxa_dir"),        step=0.1, format="%.1f")
+                    _e_coxa_e  = st.number_input("Coxa Esq (cm)",  min_value=0.0, max_value=150.0, value=_ev2("coxa_esq"),        step=0.1, format="%.1f")
                 with _ec3:
-                    _e_pant_d  = st.number_input("Pant. Dir (cm)", min_value=0.0, max_value=100.0, value=_ev("panturrilha_dir"), step=0.1, format="%.1f")
-                    _e_pant_e  = st.number_input("Pant. Esq (cm)", min_value=0.0, max_value=100.0, value=_ev("panturrilha_esq"), step=0.1, format="%.1f")
-                    _e_bic_d   = st.number_input("Bíceps Dir (cm)",min_value=0.0, max_value=80.0,  value=_ev("biceps_dir"),      step=0.1, format="%.1f")
-                    _e_bic_e   = st.number_input("Bíceps Esq (cm)",min_value=0.0, max_value=80.0,  value=_ev("biceps_esq"),      step=0.1, format="%.1f")
+                    _e_pant_d  = st.number_input("Pant. Dir (cm)", min_value=0.0, max_value=100.0, value=_ev2("panturrilha_dir"), step=0.1, format="%.1f")
+                    _e_pant_e  = st.number_input("Pant. Esq (cm)", min_value=0.0, max_value=100.0, value=_ev2("panturrilha_esq"), step=0.1, format="%.1f")
+                    _e_bic_d   = st.number_input("Bíceps Dir (cm)",min_value=0.0, max_value=80.0,  value=_ev2("biceps_dir"),      step=0.1, format="%.1f")
+                    _e_bic_e   = st.number_input("Bíceps Esq (cm)",min_value=0.0, max_value=80.0,  value=_ev2("biceps_esq"),      step=0.1, format="%.1f")
 
-                _ef_save, _ef_cancel = st.columns(2)
-                with _ef_save:
+                _ef_sv, _ef_cx = st.columns(2)
+                with _ef_sv:
                     _edit_salvar = st.form_submit_button("✓ SALVAR ALTERAÇÕES", use_container_width=True)
-                with _ef_cancel:
+                with _ef_cx:
                     _edit_cancel = st.form_submit_button("✗ CANCELAR", use_container_width=True)
 
             if _edit_salvar:
@@ -4716,16 +4668,38 @@ if True:  # bloco de escopo para df_bio
                     [_nz2(_e_peso), _nz2(_e_cintura), _nz2(_e_abdomen),
                      _nz2(_e_peit), _nz2(_e_quad), _nz2(_e_coxa_d), _nz2(_e_coxa_e),
                      _nz2(_e_pant_d), _nz2(_e_pant_e), _nz2(_e_bic_d), _nz2(_e_bic_e),
-                     _bio_edit_date],
+                     _sel_ord],
                 )
                 st.cache_data.clear()
-                st.session_state.pop("bio_edit_date", None)
-                _notif(f"Medidas de {_er['data_fmt']} atualizadas ✓")
+                st.session_state.pop("bio_edit_open", None)
+                _notif(f"Medidas de {_sel_fmt} atualizadas ✓")
                 st.rerun()
 
             if _edit_cancel:
-                st.session_state.pop("bio_edit_date", None)
+                st.session_state.pop("bio_edit_open", None)
                 st.rerun()
+
+            # Excluir registro selecionado
+            st.markdown(f'<hr style="border:none;border-top:1px solid {BORDER2};margin:16px 0 12px">', unsafe_allow_html=True)
+            _del_confirm = st.session_state.get("bio_del_confirm")
+            if _del_confirm == _sel_ord:
+                _dc1, _dc2 = st.columns(2)
+                with _dc1:
+                    if st.button(f"✓ Confirmar exclusão de {_sel_fmt}", key="bio_del_conf2", use_container_width=True):
+                        DB.execute("DELETE FROM medidas WHERE date(data)=?", [_sel_ord])
+                        st.cache_data.clear()
+                        st.session_state.pop("bio_del_confirm", None)
+                        st.session_state.pop("bio_edit_open", None)
+                        _notif(f"Registro de {_sel_fmt} excluído ✓")
+                        st.rerun()
+                with _dc2:
+                    if st.button("✗ Cancelar exclusão", key="bio_del_cancel2", use_container_width=True):
+                        st.session_state.pop("bio_del_confirm", None)
+                        st.rerun()
+            else:
+                if st.button(f"🗑️ EXCLUIR REGISTRO DE {_sel_fmt}", key="bio_del_btn2", use_container_width=True):
+                    st.session_state["bio_del_confirm"] = _sel_ord
+                    st.rerun()
 
             st.markdown('</div>', unsafe_allow_html=True)
 
