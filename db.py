@@ -233,13 +233,20 @@ def init_tables():
             if not cols:
                 conn.run("ALTER TABLE refeicoes ADD COLUMN componentes_json TEXT")
                 print("✅ Supabase: Coluna 'componentes_json' adicionada à tabela 'refeicoes'.")
-            
+
             # Check and migrate Supabase columns corrida_km and corrida_cal
             cols_corrida = conn.run("SELECT column_name FROM information_schema.columns WHERE table_name='amazfit_dados' AND column_name='corrida_km'")
             if not cols_corrida:
                 conn.run("ALTER TABLE amazfit_dados ADD COLUMN corrida_km REAL DEFAULT 0")
                 conn.run("ALTER TABLE amazfit_dados ADD COLUMN corrida_cal INTEGER DEFAULT 0")
                 print("✅ Supabase: Colunas 'corrida_km' e 'corrida_cal' adicionadas à tabela 'amazfit_dados'.")
+
+            # Check and migrate qtd_referencia / unidade_referencia em alimentos_favoritos
+            cols_qtd = conn.run("SELECT column_name FROM information_schema.columns WHERE table_name='alimentos_favoritos' AND column_name='qtd_referencia'")
+            if not cols_qtd:
+                conn.run("ALTER TABLE alimentos_favoritos ADD COLUMN qtd_referencia REAL DEFAULT 100")
+                conn.run("ALTER TABLE alimentos_favoritos ADD COLUMN unidade_referencia TEXT DEFAULT 'g'")
+                print("✅ Supabase: Colunas 'qtd_referencia' e 'unidade_referencia' adicionadas à tabela 'alimentos_favoritos'.")
         except Exception as e:
             print(f"⚠️ Erro ao verificar/adicionar colunas no Supabase: {e}")
     else:

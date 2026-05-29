@@ -804,11 +804,20 @@ def _q_supp_check(dia: str):
 
 @st.cache_data(ttl=300)
 def _q_alimentos_favoritos():
-    return DB.query(
-        "SELECT id,descricao,categoria,calorias,proteinas,carboidratos,gorduras,componentes_json,favorito,vezes_usado,"
-        "COALESCE(qtd_referencia,100) as qtd_referencia,COALESCE(unidade_referencia,'g') as unidade_referencia "
-        "FROM alimentos_favoritos ORDER BY favorito DESC, vezes_usado DESC"
-    )
+    try:
+        return DB.query(
+            "SELECT id,descricao,categoria,calorias,proteinas,carboidratos,gorduras,componentes_json,favorito,vezes_usado,"
+            "COALESCE(qtd_referencia,100) as qtd_referencia,COALESCE(unidade_referencia,'g') as unidade_referencia "
+            "FROM alimentos_favoritos ORDER BY favorito DESC, vezes_usado DESC"
+        )
+    except Exception:
+        df = DB.query(
+            "SELECT id,descricao,categoria,calorias,proteinas,carboidratos,gorduras,componentes_json,favorito,vezes_usado "
+            "FROM alimentos_favoritos ORDER BY favorito DESC, vezes_usado DESC"
+        )
+        df["qtd_referencia"] = 100.0
+        df["unidade_referencia"] = "g"
+        return df
 
 @st.cache_data(ttl=600)
 def _q_peso_historico():
