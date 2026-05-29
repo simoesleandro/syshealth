@@ -1277,7 +1277,7 @@ def _render_fav_row(frow, key_prefix=""):
             _hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S")
             DB.execute(
                 "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json,data_hora) VALUES (?,?,?,?,?,?,?,?)",
-                [fcat, fdesc, fkcal, fprot, fcarb, fgord, fcomp, _hoje]
+                [_cat_hora(), fdesc, fkcal, fprot, fcarb, fgord, fcomp, _hoje]
             )
             DB.execute("UPDATE alimentos_favoritos SET vezes_usado=vezes_usado+1 WHERE id=?", [fid])
             st.cache_data.clear()
@@ -1331,7 +1331,7 @@ def _tab_refeicao():
                         _agora = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S")
                         DB.execute(
                             "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json,data_hora) VALUES (?,?,?,?,?,?,?,?)",
-                            [str(_hr["categoria"] or "Lanche"), str(_hr["descricao"]),
+                            [_cat_hora(), str(_hr["descricao"]),
                              float(_hr["calorias"] or 0), float(_hr["proteinas"] or 0),
                              float(_hr["carboidratos"] or 0), float(_hr["gorduras"] or 0),
                              str(_hr["componentes_json"] or "[]"), _agora],
@@ -1366,7 +1366,7 @@ def _tab_refeicao():
                         _agora2 = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S")
                         DB.execute(
                             "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json,data_hora) VALUES (?,?,?,?,?,?,?,?)",
-                            [str(_fr["categoria"] or "Lanche"), str(_fr["descricao"]),
+                            [_cat_hora(), str(_fr["descricao"]),
                              float(_fr["calorias"] or 0), float(_fr["proteinas"] or 0),
                              float(_fr["carboidratos"] or 0), float(_fr["gorduras"] or 0),
                              str(_fr["componentes_json"] or "[]"), _agora2],
@@ -3084,194 +3084,179 @@ with col_s:
                 st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 
 # ── BLOCO: ANÁLISE ───────────────────────────────────────────────────────────
-st.markdown(
-    f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:2.5px;'
-    f'text-transform:uppercase;color:{GHOST};margin:24px 0 10px;'
-    f'padding:6px 10px;background:rgba(0,212,255,0.04);border-left:2px solid {CYAN}33;'
-    f'border-radius:0 4px 4px 0">▸ BANCO DE REFEIÇÕES — CADASTRO E EDIÇÃO</div>',
-    unsafe_allow_html=True,
-)
-
 # ════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 7 — BANCO DE REFEIÇÕES
+# SEÇÃO 7 — BANCO DE REFEIÇÕES (colapsável)
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown('<div id="sec-banco"></div>', unsafe_allow_html=True)
-st.markdown(sec("Banco de Refeições", "Cadastro · Edição · Favoritos"), unsafe_allow_html=True)
 
-_banco_cols = st.columns([1.1, 1.9])
+with st.expander("🍽️  BANCO DE REFEIÇÕES  ·  Cadastro · Edição · Favoritos", expanded=False):
+    _banco_cols = st.columns([1.1, 1.9])
 
-with _banco_cols[0]:
-    # ── Adicionar novo alimento ───────────────────────────────────────────────
-    st.markdown(
-        f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
-        f'letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">'
-        f'➕ CADASTRAR NOVO ALIMENTO</div>',
-        unsafe_allow_html=True,
-    )
-    with st.form("form_banco_add", clear_on_submit=True):
-        b_desc = st.text_input("Nome do alimento *", placeholder="Ex: Frango Grelhado, Whey Protein...")
-        b_cat  = st.selectbox("Categoria", CATEGORIAS)
-        bcq1, bcq2 = st.columns([2, 1])
-        with bcq1:
-            b_qtd = st.number_input("Qtd. de referência", min_value=0.0, value=100.0, step=1.0, format="%.0f")
-        with bcq2:
-            b_unit = st.selectbox("Unidade", ["g", "kg", "ml", "L", "und"])
-        bc1, bc2 = st.columns(2)
-        with bc1:
-            b_kcal = st.number_input("Kcal", min_value=0.0, step=1.0, format="%.0f")
-            b_carb = st.number_input("Carb (g)", min_value=0.0, step=0.5, format="%.1f")
-        with bc2:
-            b_prot = st.number_input("Prot (g)", min_value=0.0, step=0.5, format="%.1f")
-            b_gord = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f")
-        if st.form_submit_button("✅ CADASTRAR", use_container_width=True):
-            if b_desc.strip():
-                _existente = DB.query(
-                    "SELECT id FROM alimentos_favoritos WHERE descricao=?",
-                    [b_desc.strip()]
-                )
-                if _existente.empty:
-                    DB.execute(
-                        "INSERT INTO alimentos_favoritos "
-                        "(descricao,categoria,calorias,proteinas,carboidratos,gorduras,componentes_json) "
-                        "VALUES (?,?,?,?,?,?,?)",
-                        [b_desc.strip(), b_cat, b_kcal, b_prot, b_carb, b_gord,
-                         json.dumps([{"nome": b_desc.strip(), "gramas": b_qtd,
-                                      "unidade": b_unit, "kcal": b_kcal,
-                                      "prot": b_prot, "carb": b_carb, "gord": b_gord}])],
-                    )
-                    st.cache_data.clear()
-                    _notif(f"'{b_desc.strip()}' cadastrado no banco!")
-                    st.rerun()
-                else:
-                    st.warning("Já existe um alimento com este nome. Edite-o na lista ao lado.")
-            else:
-                st.warning("Nome do alimento obrigatório.")
-
-with _banco_cols[1]:
-    # ── Lista editável de todos os alimentos ──────────────────────────────────
-    st.markdown(
-        f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
-        f'letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">'
-        f'📋 TODOS OS ALIMENTOS CADASTRADOS</div>',
-        unsafe_allow_html=True,
-    )
-    _banco_busca = st.text_input(
-        "🔍 Filtrar",
-        placeholder="buscar alimento...",
-        key="banco_search",
-        label_visibility="collapsed",
-    )
-    _df_banco_all = _q_alimentos_favoritos()
-
-    if _df_banco_all.empty:
+    with _banco_cols[0]:
+        # ── Adicionar novo alimento ───────────────────────────────────────────
         st.markdown(
-            f'<div style="text-align:center;padding:24px;color:{GHOST};font-size:12px">'
-            f'Nenhum alimento cadastrado ainda. Use o formulário ao lado.</div>',
+            f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
+            f'letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">'
+            f'➕ CADASTRAR NOVO ALIMENTO</div>',
             unsafe_allow_html=True,
         )
-    else:
-        if _banco_busca:
-            _df_banco_all = _df_banco_all[
-                _df_banco_all["descricao"].str.contains(_banco_busca, case=False, na=False)
-            ]
-
-        _banco_edit_id = st.session_state.get("banco_edit_id", None)
-
-        for _, _brow in _df_banco_all.iterrows():
-            _bid   = int(_brow["id"])
-            _bdesc = str(_brow["descricao"])
-            _bcat  = str(_brow["categoria"] or "Lanche")
-            _bkcal = float(_brow["calorias"] or 0)
-            _bprot = float(_brow["proteinas"] or 0)
-            _bcarb = float(_brow["carboidratos"] or 0)
-            _bgord = float(_brow["gorduras"] or 0)
-            _bfav  = int(_brow["favorito"] or 0)
-            _bused = int(_brow["vezes_usado"] or 0)
-
-            if _banco_edit_id == _bid:
-                # ── Modo edição ──────────────────────────────────────────────
-                with st.container(border=True):
-                    st.markdown(
-                        f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};'
-                        f'font-weight:700;letter-spacing:1px;margin-bottom:6px">'
-                        f'✏️ EDITANDO: {_bdesc}</div>',
-                        unsafe_allow_html=True,
+        with st.form("form_banco_add", clear_on_submit=True):
+            b_desc = st.text_input("Nome do alimento *", placeholder="Ex: Frango Grelhado, Whey Protein...")
+            bcq1, bcq2 = st.columns([2, 1])
+            with bcq1:
+                b_qtd = st.number_input("Qtd. de referência", min_value=0.0, value=100.0, step=1.0, format="%.0f")
+            with bcq2:
+                b_unit = st.selectbox("Unidade", ["g", "kg", "ml", "L", "und"])
+            bc1, bc2 = st.columns(2)
+            with bc1:
+                b_kcal = st.number_input("Kcal", min_value=0.0, step=1.0, format="%.0f")
+                b_carb = st.number_input("Carb (g)", min_value=0.0, step=0.5, format="%.1f")
+            with bc2:
+                b_prot = st.number_input("Prot (g)", min_value=0.0, step=0.5, format="%.1f")
+                b_gord = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f")
+            if st.form_submit_button("✅ CADASTRAR", use_container_width=True):
+                if b_desc.strip():
+                    _existente = DB.query(
+                        "SELECT id FROM alimentos_favoritos WHERE descricao=?",
+                        [b_desc.strip()]
                     )
-                    with st.form(f"form_banco_edit_{_bid}"):
-                        _ec1, _ec2 = st.columns([2, 1])
-                        with _ec1:
-                            _e_desc = st.text_input("Nome", value=_bdesc)
-                        with _ec2:
-                            _e_cat_idx = CATEGORIAS.index(_bcat) if _bcat in CATEGORIAS else 0
-                            _e_cat = st.selectbox("Categoria", CATEGORIAS, index=_e_cat_idx)
-                        _em1, _em2 = st.columns(2)
-                        with _em1:
-                            _e_kcal = st.number_input("Kcal", value=_bkcal, min_value=0.0, step=1.0, format="%.0f")
-                            _e_carb = st.number_input("Carb (g)", value=_bcarb, min_value=0.0, step=0.5, format="%.1f")
-                        with _em2:
-                            _e_prot = st.number_input("Prot (g)", value=_bprot, min_value=0.0, step=0.5, format="%.1f")
-                            _e_gord = st.number_input("Gord (g)", value=_bgord, min_value=0.0, step=0.5, format="%.1f")
-                        _esb, _ecb = st.columns(2)
-                        with _esb:
-                            if st.form_submit_button("✅ Salvar", use_container_width=True):
-                                DB.execute(
-                                    "UPDATE alimentos_favoritos SET descricao=?,categoria=?,calorias=?,proteinas=?,carboidratos=?,gorduras=? WHERE id=?",
-                                    [_e_desc.strip(), _e_cat, _e_kcal, _e_prot, _e_carb, _e_gord, _bid],
-                                )
-                                st.session_state["banco_edit_id"] = None
-                                st.cache_data.clear()
-                                _notif(f"'{_e_desc.strip()}' atualizado!")
-                                st.rerun()
-                        with _ecb:
-                            if st.form_submit_button("✗ Cancelar", use_container_width=True):
-                                st.session_state["banco_edit_id"] = None
-                                st.rerun()
-            else:
-                # ── Modo visualização ────────────────────────────────────────
-                _bv, _bstar, _bedit, _bdel = st.columns([1, 0.07, 0.1, 0.1])
-                with _bv:
-                    st.markdown(
-                        f'<div style="padding:5px 0;border-bottom:1px solid {BORDER2}">'
-                        f'<div style="font-size:12px;color:{TEXT};font-weight:600">{_bdesc}</div>'
-                        f'<div style="display:flex;gap:10px;margin-top:2px">'
-                        f'<span style="font-family:{MONO};font-size:9px;color:{AMBER}">🔥{int(_bkcal)}</span>'
-                        f'<span style="font-size:9px;color:{GREEN}">P:{_bprot:.0f}g</span>'
-                        f'<span style="font-size:9px;color:#2dd4bf">C:{_bcarb:.0f}g</span>'
-                        f'<span style="font-size:9px;color:{PURPLE}">G:{_bgord:.0f}g</span>'
-                        f'<span style="font-size:9px;color:{GHOST}">×{_bused} · {_bcat}</span>'
-                        f'</div></div>',
-                        unsafe_allow_html=True,
-                    )
-                with _bstar:
-                    _star_lbl = "⭐" if _bfav else "☆"
-                    if st.button(_star_lbl, key=f"banco_star_{_bid}", use_container_width=True, help="Favoritar"):
-                        DB.execute("UPDATE alimentos_favoritos SET favorito=? WHERE id=?", [1 - _bfav, _bid])
+                    if _existente.empty:
+                        DB.execute(
+                            "INSERT INTO alimentos_favoritos "
+                            "(descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) "
+                            "VALUES (?,?,?,?,?,?)",
+                            [b_desc.strip(), b_kcal, b_prot, b_carb, b_gord,
+                             json.dumps([{"nome": b_desc.strip(), "gramas": b_qtd,
+                                          "unidade": b_unit, "kcal": b_kcal,
+                                          "prot": b_prot, "carb": b_carb, "gord": b_gord}])],
+                        )
                         st.cache_data.clear()
+                        _notif(f"'{b_desc.strip()}' cadastrado no banco!")
                         st.rerun()
-                with _bedit:
-                    if st.button("✏️", key=f"banco_edit_{_bid}", use_container_width=True, help="Editar"):
-                        st.session_state["banco_edit_id"] = _bid
-                        st.rerun()
-                with _bdel:
-                    if st.button("🗑️", key=f"banco_del_{_bid}", use_container_width=True, help="Excluir"):
-                        st.session_state["banco_del_confirm"] = _bid
-                        st.rerun()
+                    else:
+                        st.warning("Já existe um alimento com este nome. Edite-o na lista ao lado.")
+                else:
+                    st.warning("Nome do alimento obrigatório.")
 
-                # Confirmação inline de exclusão
-                if st.session_state.get("banco_del_confirm") == _bid:
-                    st.warning(f"Excluir **{_bdesc}** permanentemente?")
-                    _cc1, _cc2 = st.columns(2)
-                    with _cc1:
-                        if st.button("✅ Confirmar", key=f"banco_del_ok_{_bid}", use_container_width=True):
-                            DB.execute("DELETE FROM alimentos_favoritos WHERE id=?", [_bid])
-                            st.session_state.pop("banco_del_confirm", None)
+    with _banco_cols[1]:
+        # ── Lista editável de todos os alimentos ──────────────────────────────
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
+            f'letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">'
+            f'📋 TODOS OS ALIMENTOS CADASTRADOS</div>',
+            unsafe_allow_html=True,
+        )
+        _banco_busca = st.text_input(
+            "🔍 Filtrar",
+            placeholder="buscar alimento...",
+            key="banco_search",
+            label_visibility="collapsed",
+        )
+        _df_banco_all = _q_alimentos_favoritos()
+
+        if _df_banco_all.empty:
+            st.markdown(
+                f'<div style="text-align:center;padding:24px;color:{GHOST};font-size:12px">'
+                f'Nenhum alimento cadastrado ainda. Use o formulário ao lado.</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            if _banco_busca:
+                _df_banco_all = _df_banco_all[
+                    _df_banco_all["descricao"].str.contains(_banco_busca, case=False, na=False)
+                ]
+
+            _banco_edit_id = st.session_state.get("banco_edit_id", None)
+
+            for _, _brow in _df_banco_all.iterrows():
+                _bid   = int(_brow["id"])
+                _bdesc = str(_brow["descricao"])
+                _bkcal = float(_brow["calorias"] or 0)
+                _bprot = float(_brow["proteinas"] or 0)
+                _bcarb = float(_brow["carboidratos"] or 0)
+                _bgord = float(_brow["gorduras"] or 0)
+                _bfav  = int(_brow["favorito"] or 0)
+                _bused = int(_brow["vezes_usado"] or 0)
+
+                if _banco_edit_id == _bid:
+                    # ── Modo edição ──────────────────────────────────────────
+                    with st.container(border=True):
+                        st.markdown(
+                            f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};'
+                            f'font-weight:700;letter-spacing:1px;margin-bottom:6px">'
+                            f'✏️ EDITANDO: {_bdesc}</div>',
+                            unsafe_allow_html=True,
+                        )
+                        with st.form(f"form_banco_edit_{_bid}"):
+                            _e_desc = st.text_input("Nome", value=_bdesc)
+                            _em1, _em2 = st.columns(2)
+                            with _em1:
+                                _e_kcal = st.number_input("Kcal", value=_bkcal, min_value=0.0, step=1.0, format="%.0f")
+                                _e_carb = st.number_input("Carb (g)", value=_bcarb, min_value=0.0, step=0.5, format="%.1f")
+                            with _em2:
+                                _e_prot = st.number_input("Prot (g)", value=_bprot, min_value=0.0, step=0.5, format="%.1f")
+                                _e_gord = st.number_input("Gord (g)", value=_bgord, min_value=0.0, step=0.5, format="%.1f")
+                            _esb, _ecb = st.columns(2)
+                            with _esb:
+                                if st.form_submit_button("✅ Salvar", use_container_width=True):
+                                    DB.execute(
+                                        "UPDATE alimentos_favoritos SET descricao=?,calorias=?,proteinas=?,carboidratos=?,gorduras=? WHERE id=?",
+                                        [_e_desc.strip(), _e_kcal, _e_prot, _e_carb, _e_gord, _bid],
+                                    )
+                                    st.session_state["banco_edit_id"] = None
+                                    st.cache_data.clear()
+                                    _notif(f"'{_e_desc.strip()}' atualizado!")
+                                    st.rerun()
+                            with _ecb:
+                                if st.form_submit_button("✗ Cancelar", use_container_width=True):
+                                    st.session_state["banco_edit_id"] = None
+                                    st.rerun()
+                else:
+                    # ── Modo visualização ────────────────────────────────────
+                    _bv, _bstar, _bedit, _bdel = st.columns([1, 0.07, 0.1, 0.1])
+                    with _bv:
+                        st.markdown(
+                            f'<div style="padding:5px 0;border-bottom:1px solid {BORDER2}">'
+                            f'<div style="font-size:12px;color:{TEXT};font-weight:600">{_bdesc}</div>'
+                            f'<div style="display:flex;gap:10px;margin-top:2px">'
+                            f'<span style="font-family:{MONO};font-size:9px;color:{AMBER}">🔥{int(_bkcal)}</span>'
+                            f'<span style="font-size:9px;color:{GREEN}">P:{_bprot:.0f}g</span>'
+                            f'<span style="font-size:9px;color:#2dd4bf">C:{_bcarb:.0f}g</span>'
+                            f'<span style="font-size:9px;color:{PURPLE}">G:{_bgord:.0f}g</span>'
+                            f'<span style="font-size:9px;color:{GHOST}">×{_bused}</span>'
+                            f'</div></div>',
+                            unsafe_allow_html=True,
+                        )
+                    with _bstar:
+                        _star_lbl = "⭐" if _bfav else "☆"
+                        if st.button(_star_lbl, key=f"banco_star_{_bid}", use_container_width=True, help="Favoritar"):
+                            DB.execute("UPDATE alimentos_favoritos SET favorito=? WHERE id=?", [1 - _bfav, _bid])
                             st.cache_data.clear()
-                            _notif(f"'{_bdesc}' excluído do banco.")
                             st.rerun()
-                    with _cc2:
-                        if st.button("✗ Cancelar", key=f"banco_del_cancel_{_bid}", use_container_width=True):
-                            st.session_state.pop("banco_del_confirm", None)
+                    with _bedit:
+                        if st.button("✏️", key=f"banco_edit_{_bid}", use_container_width=True, help="Editar"):
+                            st.session_state["banco_edit_id"] = _bid
                             st.rerun()
+                    with _bdel:
+                        if st.button("🗑️", key=f"banco_del_{_bid}", use_container_width=True, help="Excluir"):
+                            st.session_state["banco_del_confirm"] = _bid
+                            st.rerun()
+
+                    # Confirmação inline de exclusão
+                    if st.session_state.get("banco_del_confirm") == _bid:
+                        st.warning(f"Excluir **{_bdesc}** permanentemente?")
+                        _cc1, _cc2 = st.columns(2)
+                        with _cc1:
+                            if st.button("✅ Confirmar", key=f"banco_del_ok_{_bid}", use_container_width=True):
+                                DB.execute("DELETE FROM alimentos_favoritos WHERE id=?", [_bid])
+                                st.session_state.pop("banco_del_confirm", None)
+                                st.cache_data.clear()
+                                _notif(f"'{_bdesc}' excluído do banco.")
+                                st.rerun()
+                        with _cc2:
+                            if st.button("✗ Cancelar", key=f"banco_del_cancel_{_bid}", use_container_width=True):
+                                st.session_state.pop("banco_del_confirm", None)
+                                st.rerun()
 
 st.markdown(
     f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:2.5px;'
