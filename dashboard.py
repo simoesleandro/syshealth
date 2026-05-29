@@ -1287,36 +1287,96 @@ def _render_fav_row(frow, key_prefix=""):
 
 
 def _tab_refeicao():
-    # ── Banco de Refeições ────────────────────────────────────────────────────
-    _fav_open = st.session_state.get("fav_panel_open", False)
-    _fav_lbl  = "✕ FECHAR BANCO" if _fav_open else "📋 BANCO DE REFEIÇÕES"
-    if st.button(_fav_lbl, key="btn_fav_toggle", use_container_width=True):
-        st.session_state["fav_panel_open"] = not _fav_open
-        st.rerun()
-
-    if st.session_state.get("fav_panel_open", False):
-        df_fav = _q_alimentos_favoritos()
-        if df_fav.empty:
-            st.markdown(f'<div style="font-size:12px;color:{GHOST};padding:8px 0">Nenhuma refeição cadastrada ainda. Registre refeições para popular o banco.</div>', unsafe_allow_html=True)
+    """Painel de registro rápido — apenas loga o que foi consumido hoje."""
+    # ── Busca rápida no banco ─────────────────────────────────────────────────
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
+        f'letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px">'
+        f'🔍 O que você comeu?</div>',
+        unsafe_allow_html=True,
+    )
+    _busca_ref = st.text_input(
+        "busca",
+        placeholder="Digite para buscar no banco de refeições...",
+        key="ref_busca_rapida",
+        label_visibility="collapsed",
+    )
+    _df_banco = _q_alimentos_favoritos()
+    if _busca_ref and len(_busca_ref) >= 2 and not _df_banco.empty:
+        _hits = _df_banco[_df_banco["descricao"].str.contains(_busca_ref, case=False, na=False)].head(8)
+        if _hits.empty:
+            st.markdown(
+                f'<div style="font-size:11px;color:{GHOST};padding:4px 0">'
+                f'Nenhum resultado. Cadastre o alimento no <b>Banco de Refeições</b> abaixo.</div>',
+                unsafe_allow_html=True,
+            )
         else:
-            _fav_busca = st.text_input("🔍 Buscar no banco", placeholder="filtrar alimento...", key="fav_search", label_visibility="collapsed")
-            _df_show = df_fav[df_fav["descricao"].str.contains(_fav_busca, case=False, na=False)] if _fav_busca else df_fav
+            for _, _hr in _hits.iterrows():
+                _hc, _hb = st.columns([1, 0.22])
+                with _hc:
+                    st.markdown(
+                        f'<div style="padding:5px 0;border-bottom:1px solid {BORDER2}">'
+                        f'<div style="font-size:12px;color:{TEXT};font-weight:600">'
+                        f'{"⭐ " if int(_hr["favorito"] or 0) else ""}{_hr["descricao"]}</div>'
+                        f'<div style="display:flex;gap:10px;margin-top:2px">'
+                        f'<span style="font-family:{MONO};font-size:9px;color:{AMBER}">🔥{int(_hr["calorias"] or 0)}</span>'
+                        f'<span style="font-size:9px;color:{GREEN}">P:{float(_hr["proteinas"] or 0):.0f}g</span>'
+                        f'<span style="font-size:9px;color:#2dd4bf">C:{float(_hr["carboidratos"] or 0):.0f}g</span>'
+                        f'<span style="font-size:9px;color:{PURPLE}">G:{float(_hr["gorduras"] or 0):.0f}g</span>'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                with _hb:
+                    if st.button("➕ Usar", key=f"ref_usar_{_hr['id']}", use_container_width=True):
+                        _agora = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S")
+                        DB.execute(
+                            "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json,data_hora) VALUES (?,?,?,?,?,?,?,?)",
+                            [str(_hr["categoria"] or "Lanche"), str(_hr["descricao"]),
+                             float(_hr["calorias"] or 0), float(_hr["proteinas"] or 0),
+                             float(_hr["carboidratos"] or 0), float(_hr["gorduras"] or 0),
+                             str(_hr["componentes_json"] or "[]"), _agora],
+                        )
+                        DB.execute("UPDATE alimentos_favoritos SET vezes_usado=vezes_usado+1 WHERE id=?", [int(_hr["id"])])
+                        st.cache_data.clear()
+                        _notif(f"{_hr['descricao']} · {int(_hr['calorias'] or 0)} kcal")
+                        st.rerun()
+    elif not _busca_ref and not _df_banco.empty:
+        # Mostra os favoritos/mais usados sem busca
+        _fav_df = _df_banco[_df_banco["favorito"] == 1].head(5)
+        if not _fav_df.empty:
+            st.markdown(
+                f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
+                f'letter-spacing:1px;margin:4px 0 4px">⭐ FAVORITOS:</div>',
+                unsafe_allow_html=True,
+            )
+            for _, _fr in _fav_df.iterrows():
+                _fc2, _fb2 = st.columns([1, 0.22])
+                with _fc2:
+                    st.markdown(
+                        f'<div style="padding:4px 0;border-bottom:1px solid {BORDER2}">'
+                        f'<div style="font-size:12px;color:{TEXT};font-weight:600">{_fr["descricao"]}</div>'
+                        f'<div style="display:flex;gap:8px;margin-top:1px">'
+                        f'<span style="font-family:{MONO};font-size:9px;color:{AMBER}">🔥{int(_fr["calorias"] or 0)}</span>'
+                        f'<span style="font-size:9px;color:{GREEN}">P:{float(_fr["proteinas"] or 0):.0f}g</span>'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                with _fb2:
+                    if st.button("➕", key=f"ref_fav_{_fr['id']}", use_container_width=True):
+                        _agora2 = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S")
+                        DB.execute(
+                            "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json,data_hora) VALUES (?,?,?,?,?,?,?,?)",
+                            [str(_fr["categoria"] or "Lanche"), str(_fr["descricao"]),
+                             float(_fr["calorias"] or 0), float(_fr["proteinas"] or 0),
+                             float(_fr["carboidratos"] or 0), float(_fr["gorduras"] or 0),
+                             str(_fr["componentes_json"] or "[]"), _agora2],
+                        )
+                        DB.execute("UPDATE alimentos_favoritos SET vezes_usado=vezes_usado+1 WHERE id=?", [int(_fr["id"])])
+                        st.cache_data.clear()
+                        _notif(f"{_fr['descricao']} · {int(_fr['calorias'] or 0)} kcal")
+                        st.rerun()
 
-            _fav_tab, _all_tab = st.tabs(["⭐ Favoritos", "📋 Todos"])
-
-            with _fav_tab:
-                _df_starred = _df_show[_df_show["favorito"] == 1]
-                if _df_starred.empty:
-                    st.markdown(f'<div style="font-size:12px;color:{GHOST};padding:6px 0">Marque alimentos como favorito com ⭐</div>', unsafe_allow_html=True)
-                else:
-                    for _, _frow in _df_starred.iterrows():
-                        _render_fav_row(_frow, key_prefix="s_")
-
-            with _all_tab:
-                for _, _frow in _df_show.iterrows():
-                    _render_fav_row(_frow, key_prefix="a_")
-
-    st.markdown(f'<div style="height:1px;background:{BORDER};margin:10px 0 8px"></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="height:1px;background:{BORDER};margin:12px 0 8px"></div>', unsafe_allow_html=True)
 
     # ── Análise por foto ─────────────────────────────────────────────────────
     foto_up = st.file_uploader(
@@ -1428,113 +1488,6 @@ def _tab_refeicao():
             if st.button("✗ Descartar", key="desc_ia_text", width="stretch"):
                 del st.session_state["ia_text_result"]
                 st.rerun()
-
-    st.markdown(
-        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
-        f'letter-spacing:1.5px;text-align:center;margin:14px 0 6px">'
-        f'── OU PREENCHA MANUALMENTE ──</div>',
-        unsafe_allow_html=True,
-    )
-
-    # ── Form manual com autocomplete e unidade de medida ─────────────────────
-    # Inicializa chaves de session_state para pré-preenchimento
-    for _mk, _mv in [("man_kcal", 0.0), ("man_prot", 0.0), ("man_carb", 0.0), ("man_gord", 0.0)]:
-        if _mk not in st.session_state:
-            st.session_state[_mk] = _mv
-
-    # Categoria e alimento fora do form para permitir autocomplete reativo
-    _cat_idx = 0
-    if "man_cat" in st.session_state and st.session_state["man_cat"] in CATEGORIAS:
-        _cat_idx = CATEGORIAS.index(st.session_state["man_cat"])
-    cat_sel = st.selectbox("Categoria", CATEGORIAS, index=_cat_idx, key="man_cat")
-
-    desc_in = st.text_input(
-        "🔍 Alimento",
-        placeholder="Digite para buscar no banco ou adicionar novo...",
-        key="man_desc",
-        label_visibility="visible",
-    )
-
-    # Sugestões de autocomplete
-    _desc_typed = st.session_state.get("man_desc", "")
-    if _desc_typed and len(_desc_typed) >= 2:
-        _df_all = _q_alimentos_favoritos()
-        if not _df_all.empty:
-            _matches = _df_all[_df_all["descricao"].str.contains(_desc_typed, case=False, na=False)].head(6)
-            if not _matches.empty:
-                st.markdown(
-                    f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
-                    f'letter-spacing:1px;margin:2px 0 4px">↓ SUGESTÕES DO BANCO:</div>',
-                    unsafe_allow_html=True,
-                )
-                for _, _mr in _matches.iterrows():
-                    _sug_lbl = (
-                        f"↳ {_mr['descricao']}  ·  {int(_mr['calorias'] or 0)} kcal  "
-                        f"|  P {_mr['proteinas']:.0f}g  C {_mr['carboidratos']:.0f}g  G {_mr['gorduras']:.0f}g"
-                    )
-                    if st.button(_sug_lbl, key=f"sug_{_mr['id']}", use_container_width=True):
-                        st.session_state["man_desc"]  = str(_mr["descricao"])
-                        st.session_state["man_kcal"]  = float(_mr["calorias"] or 0)
-                        st.session_state["man_prot"]  = float(_mr["proteinas"] or 0)
-                        st.session_state["man_carb"]  = float(_mr["carboidratos"] or 0)
-                        st.session_state["man_gord"]  = float(_mr["gorduras"] or 0)
-                        if str(_mr["categoria"]) in CATEGORIAS:
-                            st.session_state["man_cat"] = str(_mr["categoria"])
-                        st.rerun()
-
-    # Quantidade + Unidade de medida
-    cq1, cq2 = st.columns([2, 1])
-    with cq1:
-        qtd_in = st.number_input("Quantidade", min_value=0.0, value=100.0, step=1.0, format="%.0f", key="man_qtd")
-    with cq2:
-        unit_sel = st.selectbox("Unidade", ["g", "kg", "ml", "L", "und"], key="man_unit")
-
-    # Macros pré-preenchíveis via session_state
-    c1, c2 = st.columns(2)
-    with c1:
-        kcal_in = st.number_input("Kcal", min_value=0.0, step=1.0, format="%.0f", key="man_kcal")
-        carb_in = st.number_input("Carb (g)", min_value=0.0, step=0.5, format="%.1f", key="man_carb")
-    with c2:
-        prot_in = st.number_input("Prot (g)", min_value=0.0, step=0.5, format="%.1f", key="man_prot")
-        gord_in = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f", key="man_gord")
-
-    if st.button("✅ SALVAR REFEIÇÃO", key="man_salvar", use_container_width=True):
-        _desc_val = st.session_state.get("man_desc", "").strip()
-        if _desc_val:
-            _qtd_val  = st.session_state.get("man_qtd", 100.0)
-            _unit_val = st.session_state.get("man_unit", "g")
-            _kcal_val = float(st.session_state.get("man_kcal", 0.0))
-            _prot_val = float(st.session_state.get("man_prot", 0.0))
-            _carb_val = float(st.session_state.get("man_carb", 0.0))
-            _gord_val = float(st.session_state.get("man_gord", 0.0))
-            _cat_val  = st.session_state.get("man_cat", "Lanche")
-            _desc_completo = f"{_desc_val} ({_qtd_val:.0f}{_unit_val})"
-            DB.execute(
-                "INSERT INTO refeicoes "
-                "(categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) "
-                "VALUES (?,?,?,?,?,?,?)",
-                [_cat_val, _desc_completo, _kcal_val, _prot_val, _carb_val, _gord_val,
-                 json.dumps([{
-                     "nome": _desc_val,
-                     "gramas": _qtd_val,
-                     "unidade": _unit_val,
-                     "kcal": _kcal_val,
-                     "prot": _prot_val,
-                     "carb": _carb_val,
-                     "gord": _gord_val,
-                     "fonte": "Manual"
-                 }])],
-            )
-            _salvar_alimento_db(_desc_val, _cat_val, _kcal_val, _prot_val, _carb_val, _gord_val)
-            # Limpa campos após salvar
-            for _mk in ["man_desc", "man_kcal", "man_prot", "man_carb", "man_gord", "man_qtd"]:
-                if _mk in st.session_state:
-                    del st.session_state[_mk]
-            st.cache_data.clear()
-            _notif(f"Refeição salva · {int(_kcal_val)} kcal")
-            st.rerun()
-        else:
-            st.warning("Digite o nome do alimento.")
 
 def _tab_suplemento():
     st.markdown(
@@ -1824,6 +1777,7 @@ with st.sidebar:
         ("sec-nutricao",   "🥗", "Nutrição"),
         ("sec-wearable",   "⌚", "Wearable · Agenda"),
         ("sec-evolucao",   "📈", "Evolução · Registros"),
+        ("sec-banco",      "🍽️", "Banco de Refeições"),
         ("sec-historico",  "📊", "Histórico · Tendências"),
         ("sec-biometria",  "📏", "Biometria"),
     ]
@@ -3130,6 +3084,195 @@ with col_s:
                 st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 
 # ── BLOCO: ANÁLISE ───────────────────────────────────────────────────────────
+st.markdown(
+    f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:2.5px;'
+    f'text-transform:uppercase;color:{GHOST};margin:24px 0 10px;'
+    f'padding:6px 10px;background:rgba(0,212,255,0.04);border-left:2px solid {CYAN}33;'
+    f'border-radius:0 4px 4px 0">▸ BANCO DE REFEIÇÕES — CADASTRO E EDIÇÃO</div>',
+    unsafe_allow_html=True,
+)
+
+# ════════════════════════════════════════════════════════════════════════════
+# SEÇÃO 7 — BANCO DE REFEIÇÕES
+# ════════════════════════════════════════════════════════════════════════════
+st.markdown('<div id="sec-banco"></div>', unsafe_allow_html=True)
+st.markdown(sec("Banco de Refeições", "Cadastro · Edição · Favoritos"), unsafe_allow_html=True)
+
+_banco_cols = st.columns([1.1, 1.9])
+
+with _banco_cols[0]:
+    # ── Adicionar novo alimento ───────────────────────────────────────────────
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
+        f'letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">'
+        f'➕ CADASTRAR NOVO ALIMENTO</div>',
+        unsafe_allow_html=True,
+    )
+    with st.form("form_banco_add", clear_on_submit=True):
+        b_desc = st.text_input("Nome do alimento *", placeholder="Ex: Frango Grelhado, Whey Protein...")
+        b_cat  = st.selectbox("Categoria", CATEGORIAS)
+        bcq1, bcq2 = st.columns([2, 1])
+        with bcq1:
+            b_qtd = st.number_input("Qtd. de referência", min_value=0.0, value=100.0, step=1.0, format="%.0f")
+        with bcq2:
+            b_unit = st.selectbox("Unidade", ["g", "kg", "ml", "L", "und"])
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            b_kcal = st.number_input("Kcal", min_value=0.0, step=1.0, format="%.0f")
+            b_carb = st.number_input("Carb (g)", min_value=0.0, step=0.5, format="%.1f")
+        with bc2:
+            b_prot = st.number_input("Prot (g)", min_value=0.0, step=0.5, format="%.1f")
+            b_gord = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f")
+        if st.form_submit_button("✅ CADASTRAR", use_container_width=True):
+            if b_desc.strip():
+                _existente = DB.query(
+                    "SELECT id FROM alimentos_favoritos WHERE descricao=?",
+                    [b_desc.strip()]
+                )
+                if _existente.empty:
+                    DB.execute(
+                        "INSERT INTO alimentos_favoritos "
+                        "(descricao,categoria,calorias,proteinas,carboidratos,gorduras,componentes_json) "
+                        "VALUES (?,?,?,?,?,?,?)",
+                        [b_desc.strip(), b_cat, b_kcal, b_prot, b_carb, b_gord,
+                         json.dumps([{"nome": b_desc.strip(), "gramas": b_qtd,
+                                      "unidade": b_unit, "kcal": b_kcal,
+                                      "prot": b_prot, "carb": b_carb, "gord": b_gord}])],
+                    )
+                    st.cache_data.clear()
+                    _notif(f"'{b_desc.strip()}' cadastrado no banco!")
+                    st.rerun()
+                else:
+                    st.warning("Já existe um alimento com este nome. Edite-o na lista ao lado.")
+            else:
+                st.warning("Nome do alimento obrigatório.")
+
+with _banco_cols[1]:
+    # ── Lista editável de todos os alimentos ──────────────────────────────────
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
+        f'letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">'
+        f'📋 TODOS OS ALIMENTOS CADASTRADOS</div>',
+        unsafe_allow_html=True,
+    )
+    _banco_busca = st.text_input(
+        "🔍 Filtrar",
+        placeholder="buscar alimento...",
+        key="banco_search",
+        label_visibility="collapsed",
+    )
+    _df_banco_all = _q_alimentos_favoritos()
+
+    if _df_banco_all.empty:
+        st.markdown(
+            f'<div style="text-align:center;padding:24px;color:{GHOST};font-size:12px">'
+            f'Nenhum alimento cadastrado ainda. Use o formulário ao lado.</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        if _banco_busca:
+            _df_banco_all = _df_banco_all[
+                _df_banco_all["descricao"].str.contains(_banco_busca, case=False, na=False)
+            ]
+
+        _banco_edit_id = st.session_state.get("banco_edit_id", None)
+
+        for _, _brow in _df_banco_all.iterrows():
+            _bid   = int(_brow["id"])
+            _bdesc = str(_brow["descricao"])
+            _bcat  = str(_brow["categoria"] or "Lanche")
+            _bkcal = float(_brow["calorias"] or 0)
+            _bprot = float(_brow["proteinas"] or 0)
+            _bcarb = float(_brow["carboidratos"] or 0)
+            _bgord = float(_brow["gorduras"] or 0)
+            _bfav  = int(_brow["favorito"] or 0)
+            _bused = int(_brow["vezes_usado"] or 0)
+
+            if _banco_edit_id == _bid:
+                # ── Modo edição ──────────────────────────────────────────────
+                with st.container(border=True):
+                    st.markdown(
+                        f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};'
+                        f'font-weight:700;letter-spacing:1px;margin-bottom:6px">'
+                        f'✏️ EDITANDO: {_bdesc}</div>',
+                        unsafe_allow_html=True,
+                    )
+                    with st.form(f"form_banco_edit_{_bid}"):
+                        _ec1, _ec2 = st.columns([2, 1])
+                        with _ec1:
+                            _e_desc = st.text_input("Nome", value=_bdesc)
+                        with _ec2:
+                            _e_cat_idx = CATEGORIAS.index(_bcat) if _bcat in CATEGORIAS else 0
+                            _e_cat = st.selectbox("Categoria", CATEGORIAS, index=_e_cat_idx)
+                        _em1, _em2 = st.columns(2)
+                        with _em1:
+                            _e_kcal = st.number_input("Kcal", value=_bkcal, min_value=0.0, step=1.0, format="%.0f")
+                            _e_carb = st.number_input("Carb (g)", value=_bcarb, min_value=0.0, step=0.5, format="%.1f")
+                        with _em2:
+                            _e_prot = st.number_input("Prot (g)", value=_bprot, min_value=0.0, step=0.5, format="%.1f")
+                            _e_gord = st.number_input("Gord (g)", value=_bgord, min_value=0.0, step=0.5, format="%.1f")
+                        _esb, _ecb = st.columns(2)
+                        with _esb:
+                            if st.form_submit_button("✅ Salvar", use_container_width=True):
+                                DB.execute(
+                                    "UPDATE alimentos_favoritos SET descricao=?,categoria=?,calorias=?,proteinas=?,carboidratos=?,gorduras=? WHERE id=?",
+                                    [_e_desc.strip(), _e_cat, _e_kcal, _e_prot, _e_carb, _e_gord, _bid],
+                                )
+                                st.session_state["banco_edit_id"] = None
+                                st.cache_data.clear()
+                                _notif(f"'{_e_desc.strip()}' atualizado!")
+                                st.rerun()
+                        with _ecb:
+                            if st.form_submit_button("✗ Cancelar", use_container_width=True):
+                                st.session_state["banco_edit_id"] = None
+                                st.rerun()
+            else:
+                # ── Modo visualização ────────────────────────────────────────
+                _bv, _bstar, _bedit, _bdel = st.columns([1, 0.07, 0.1, 0.1])
+                with _bv:
+                    st.markdown(
+                        f'<div style="padding:5px 0;border-bottom:1px solid {BORDER2}">'
+                        f'<div style="font-size:12px;color:{TEXT};font-weight:600">{_bdesc}</div>'
+                        f'<div style="display:flex;gap:10px;margin-top:2px">'
+                        f'<span style="font-family:{MONO};font-size:9px;color:{AMBER}">🔥{int(_bkcal)}</span>'
+                        f'<span style="font-size:9px;color:{GREEN}">P:{_bprot:.0f}g</span>'
+                        f'<span style="font-size:9px;color:#2dd4bf">C:{_bcarb:.0f}g</span>'
+                        f'<span style="font-size:9px;color:{PURPLE}">G:{_bgord:.0f}g</span>'
+                        f'<span style="font-size:9px;color:{GHOST}">×{_bused} · {_bcat}</span>'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                with _bstar:
+                    _star_lbl = "⭐" if _bfav else "☆"
+                    if st.button(_star_lbl, key=f"banco_star_{_bid}", use_container_width=True, help="Favoritar"):
+                        DB.execute("UPDATE alimentos_favoritos SET favorito=? WHERE id=?", [1 - _bfav, _bid])
+                        st.cache_data.clear()
+                        st.rerun()
+                with _bedit:
+                    if st.button("✏️", key=f"banco_edit_{_bid}", use_container_width=True, help="Editar"):
+                        st.session_state["banco_edit_id"] = _bid
+                        st.rerun()
+                with _bdel:
+                    if st.button("🗑️", key=f"banco_del_{_bid}", use_container_width=True, help="Excluir"):
+                        st.session_state["banco_del_confirm"] = _bid
+                        st.rerun()
+
+                # Confirmação inline de exclusão
+                if st.session_state.get("banco_del_confirm") == _bid:
+                    st.warning(f"Excluir **{_bdesc}** permanentemente?")
+                    _cc1, _cc2 = st.columns(2)
+                    with _cc1:
+                        if st.button("✅ Confirmar", key=f"banco_del_ok_{_bid}", use_container_width=True):
+                            DB.execute("DELETE FROM alimentos_favoritos WHERE id=?", [_bid])
+                            st.session_state.pop("banco_del_confirm", None)
+                            st.cache_data.clear()
+                            _notif(f"'{_bdesc}' excluído do banco.")
+                            st.rerun()
+                    with _cc2:
+                        if st.button("✗ Cancelar", key=f"banco_del_cancel_{_bid}", use_container_width=True):
+                            st.session_state.pop("banco_del_confirm", None)
+                            st.rerun()
+
 st.markdown(
     f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:2.5px;'
     f'text-transform:uppercase;color:{GHOST};margin:24px 0 10px;'
