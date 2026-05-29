@@ -7,7 +7,7 @@
 - IA: Gemini 2.5 Flash via `google-generativeai==0.8.3`
 
 ## Arquivos principais
-- `dashboard.py` — Streamlit app (~1400 linhas)
+- `dashboard.py` — Streamlit app (~4700 linhas)
 - `bot.py` — Telegram bot com Gemini NLP e Vision
 - `db.py` — abstração SQLite/PostgreSQL com `_pg_sql()` para dialect translation
 - `main.py` — entrypoint Fly.io (bot + scheduler Zepp 07:00 BRT)
@@ -35,6 +35,9 @@
 - Timezone: todas as datas usam `_BR = ZoneInfo("America/Sao_Paulo")`
 - SQL params: usar `db(query, params)` com lista de params — nunca f-string com valores
 - Categorias dinâmicas: `_cat_hora()` retorna categoria pela hora atual de Brasília
+- Toggle panels: `st.session_state.get("chave_open", False)` + botão `▾/▴` + `st.rerun()` — padrão usado em nova medida, banco, biometria
+- Edição de registros: selectbox de datas + form pré-preenchido com helper `_ev(col)` que retorna `float(v) if v is not None and not pd.isna(v) else fallback`
+- Imports de data: usar `from datetime import datetime, timedelta` — `timedelta` necessário para cálculos de datas
 
 ## Gemini Vision
 - Usar prompt unificado que detecta tipo (refeição/medidas/outro) + extrai dados numa chamada
