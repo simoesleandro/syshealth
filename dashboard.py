@@ -932,7 +932,7 @@ corrida_cal = int(_az["corrida_cal"].iloc[0])   if not _az.empty and "corrida_ca
 
 # Derivações — Método Dinâmico
 gasto_total_dia   = TMB + cal_gasta                    # TMB + atividade registrada
-meta_cal_dinamica = gasto_total_dia - 500              # déficit fixo de 500 kcal/dia
+meta_cal_dinamica = 1980                               # meta calórica fixa
 deficit           = gasto_total_dia - int(cal_h)       # gasto real - consumido
 def_cor   = GREEN if deficit > 0 else RED
 def_txt   = (f"Déficit {abs(deficit):,}" if deficit > 0
@@ -1287,9 +1287,9 @@ def _render_fav_row(frow, key_prefix=""):
 
 
 def _tab_refeicao():
-    # ── Favoritos / Banco de Alimentos ───────────────────────────────────────
+    # ── Banco de Refeições ────────────────────────────────────────────────────
     _fav_open = st.session_state.get("fav_panel_open", False)
-    _fav_lbl  = "✕ FECHAR" if _fav_open else "⭐ FAVORITOS"
+    _fav_lbl  = "✕ FECHAR BANCO" if _fav_open else "📋 BANCO DE REFEIÇÕES"
     if st.button(_fav_lbl, key="btn_fav_toggle", use_container_width=True):
         st.session_state["fav_panel_open"] = not _fav_open
         st.rerun()
@@ -1297,13 +1297,11 @@ def _tab_refeicao():
     if st.session_state.get("fav_panel_open", False):
         df_fav = _q_alimentos_favoritos()
         if df_fav.empty:
-            st.markdown(f'<div style="font-size:12px;color:{GHOST};padding:8px 0">Nenhum alimento salvo ainda. Registre refeições para popular o banco.</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:12px;color:{GHOST};padding:8px 0">Nenhuma refeição cadastrada ainda. Registre refeições para popular o banco.</div>', unsafe_allow_html=True)
         else:
-            # Barra de busca
-            _fav_busca = st.text_input("🔍 Buscar", placeholder="filtrar alimento...", key="fav_search", label_visibility="collapsed")
+            _fav_busca = st.text_input("🔍 Buscar no banco", placeholder="filtrar alimento...", key="fav_search", label_visibility="collapsed")
             _df_show = df_fav[df_fav["descricao"].str.contains(_fav_busca, case=False, na=False)] if _fav_busca else df_fav
 
-            # Tabs: Favoritos | Todos
             _fav_tab, _all_tab = st.tabs(["⭐ Favoritos", "📋 Todos"])
 
             with _fav_tab:
@@ -1438,40 +1436,105 @@ def _tab_refeicao():
         unsafe_allow_html=True,
     )
 
-    # ── Form manual ──────────────────────────────────────────────────────────
-    with st.form("form_add_refeicao", clear_on_submit=True):
-        cat_sel = st.selectbox("Categoria", CATEGORIAS)
-        desc_in = st.text_input("Descrição do alimento")
-        c1, c2  = st.columns(2)
-        with c1:
-            kcal_in = st.number_input("Kcal", min_value=0.0, step=1.0, format="%.0f")
-            carb_in = st.number_input("Carb (g)", min_value=0.0, step=0.5, format="%.1f")
-        with c2:
-            prot_in = st.number_input("Prot (g)", min_value=0.0, step=0.5, format="%.1f")
-            gord_in = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f")
-        if st.form_submit_button("SALVAR REFEIÇÃO", width="stretch"):
-            if desc_in.strip():
-                DB.execute(
-                    "INSERT INTO refeicoes "
-                    "(categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) "
-                    "VALUES (?,?,?,?,?,?,?)",
-                    [cat_sel, desc_in.strip(), kcal_in, prot_in, carb_in, gord_in,
-                     json.dumps([{
-                         "nome": desc_in.strip(),
-                         "gramas": 0,
-                         "kcal": kcal_in,
-                         "prot": prot_in,
-                         "carb": carb_in,
-                         "gord": gord_in,
-                         "fonte": "Manual"
-                     }])],
+    # ── Form manual com autocomplete e unidade de medida ─────────────────────
+    # Inicializa chaves de session_state para pré-preenchimento
+    for _mk, _mv in [("man_kcal", 0.0), ("man_prot", 0.0), ("man_carb", 0.0), ("man_gord", 0.0)]:
+        if _mk not in st.session_state:
+            st.session_state[_mk] = _mv
+
+    # Categoria e alimento fora do form para permitir autocomplete reativo
+    _cat_idx = 0
+    if "man_cat" in st.session_state and st.session_state["man_cat"] in CATEGORIAS:
+        _cat_idx = CATEGORIAS.index(st.session_state["man_cat"])
+    cat_sel = st.selectbox("Categoria", CATEGORIAS, index=_cat_idx, key="man_cat")
+
+    desc_in = st.text_input(
+        "🔍 Alimento",
+        placeholder="Digite para buscar no banco ou adicionar novo...",
+        key="man_desc",
+        label_visibility="visible",
+    )
+
+    # Sugestões de autocomplete
+    _desc_typed = st.session_state.get("man_desc", "")
+    if _desc_typed and len(_desc_typed) >= 2:
+        _df_all = _q_alimentos_favoritos()
+        if not _df_all.empty:
+            _matches = _df_all[_df_all["descricao"].str.contains(_desc_typed, case=False, na=False)].head(6)
+            if not _matches.empty:
+                st.markdown(
+                    f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
+                    f'letter-spacing:1px;margin:2px 0 4px">↓ SUGESTÕES DO BANCO:</div>',
+                    unsafe_allow_html=True,
                 )
-                _salvar_alimento_db(desc_in.strip(), cat_sel, kcal_in, prot_in, carb_in, gord_in)
-                st.cache_data.clear()
-                _notif(f"Refeicao salva · {int(kcal_in)} kcal")
-                st.rerun()
-            else:
-                st.error("Descrição obrigatória.")
+                for _, _mr in _matches.iterrows():
+                    _sug_lbl = (
+                        f"↳ {_mr['descricao']}  ·  {int(_mr['calorias'] or 0)} kcal  "
+                        f"|  P {_mr['proteinas']:.0f}g  C {_mr['carboidratos']:.0f}g  G {_mr['gorduras']:.0f}g"
+                    )
+                    if st.button(_sug_lbl, key=f"sug_{_mr['id']}", use_container_width=True):
+                        st.session_state["man_desc"]  = str(_mr["descricao"])
+                        st.session_state["man_kcal"]  = float(_mr["calorias"] or 0)
+                        st.session_state["man_prot"]  = float(_mr["proteinas"] or 0)
+                        st.session_state["man_carb"]  = float(_mr["carboidratos"] or 0)
+                        st.session_state["man_gord"]  = float(_mr["gorduras"] or 0)
+                        if str(_mr["categoria"]) in CATEGORIAS:
+                            st.session_state["man_cat"] = str(_mr["categoria"])
+                        st.rerun()
+
+    # Quantidade + Unidade de medida
+    cq1, cq2 = st.columns([2, 1])
+    with cq1:
+        qtd_in = st.number_input("Quantidade", min_value=0.0, value=100.0, step=1.0, format="%.0f", key="man_qtd")
+    with cq2:
+        unit_sel = st.selectbox("Unidade", ["g", "kg", "ml", "L", "und"], key="man_unit")
+
+    # Macros pré-preenchíveis via session_state
+    c1, c2 = st.columns(2)
+    with c1:
+        kcal_in = st.number_input("Kcal", min_value=0.0, step=1.0, format="%.0f", key="man_kcal")
+        carb_in = st.number_input("Carb (g)", min_value=0.0, step=0.5, format="%.1f", key="man_carb")
+    with c2:
+        prot_in = st.number_input("Prot (g)", min_value=0.0, step=0.5, format="%.1f", key="man_prot")
+        gord_in = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f", key="man_gord")
+
+    if st.button("✅ SALVAR REFEIÇÃO", key="man_salvar", use_container_width=True):
+        _desc_val = st.session_state.get("man_desc", "").strip()
+        if _desc_val:
+            _qtd_val  = st.session_state.get("man_qtd", 100.0)
+            _unit_val = st.session_state.get("man_unit", "g")
+            _kcal_val = float(st.session_state.get("man_kcal", 0.0))
+            _prot_val = float(st.session_state.get("man_prot", 0.0))
+            _carb_val = float(st.session_state.get("man_carb", 0.0))
+            _gord_val = float(st.session_state.get("man_gord", 0.0))
+            _cat_val  = st.session_state.get("man_cat", "Lanche")
+            _desc_completo = f"{_desc_val} ({_qtd_val:.0f}{_unit_val})"
+            DB.execute(
+                "INSERT INTO refeicoes "
+                "(categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) "
+                "VALUES (?,?,?,?,?,?,?)",
+                [_cat_val, _desc_completo, _kcal_val, _prot_val, _carb_val, _gord_val,
+                 json.dumps([{
+                     "nome": _desc_val,
+                     "gramas": _qtd_val,
+                     "unidade": _unit_val,
+                     "kcal": _kcal_val,
+                     "prot": _prot_val,
+                     "carb": _carb_val,
+                     "gord": _gord_val,
+                     "fonte": "Manual"
+                 }])],
+            )
+            _salvar_alimento_db(_desc_val, _cat_val, _kcal_val, _prot_val, _carb_val, _gord_val)
+            # Limpa campos após salvar
+            for _mk in ["man_desc", "man_kcal", "man_prot", "man_carb", "man_gord", "man_qtd"]:
+                if _mk in st.session_state:
+                    del st.session_state[_mk]
+            st.cache_data.clear()
+            _notif(f"Refeição salva · {int(_kcal_val)} kcal")
+            st.rerun()
+        else:
+            st.warning("Digite o nome do alimento.")
 
 def _tab_suplemento():
     st.markdown(
@@ -1538,7 +1601,7 @@ def _tab_agua():
             if st.button("+ 200ml", key="agua_200", width="stretch"): _reg_agua(200)
             if st.button("+ 500ml", key="agua_500", width="stretch"): _reg_agua(500)
         with wa2:
-            if st.button("+ 350ml", key="agua_350", width="stretch"): _reg_agua(350)
+            if st.button("+ 1000ml", key="agua_350", width="stretch"): _reg_agua(1000)
             if st.button("+ 750ml", key="agua_750", width="stretch"): _reg_agua(750)
         with st.form("form_agua_custom", clear_on_submit=True):
             ml_in = st.number_input("Outro (ml)", min_value=50, max_value=2000, value=300, step=50)
@@ -1851,7 +1914,7 @@ def kpi_card(acento, lbl, val, unit, extra=""):
     return panel(
         f'<div style="position:absolute;top:0;left:0;right:0;height:3px;'
         f'border-radius:10px 10px 0 0;background:{acento}"></div>'
-        f'<div style="text-align:center">'
+        f'<div style="text-align:center;flex:1;display:flex;flex-direction:column;justify-content:center">'
         f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1.5px;'
         f'text-transform:uppercase;color:{MUTED};margin-bottom:10px">{lbl}</div>'
         f'<div><span style="font-size:36px;font-weight:800;color:{TEXT};line-height:1;'
@@ -1859,7 +1922,7 @@ def kpi_card(acento, lbl, val, unit, extra=""):
         f'<span style="font-size:18px;color:{MUTED};margin-left:5px">{unit}</span></div>'
         f'{extra}'
         f'</div>',
-        extra="position:relative;overflow:hidden;min-height:210px"
+        extra="position:relative;overflow:hidden;min-height:210px;display:flex;flex-direction:column"
     )
 
 with k1:
