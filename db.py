@@ -164,6 +164,8 @@ _TABLES_PG = [
         componentes_json TEXT,
         favorito INTEGER DEFAULT 0,
         vezes_usado INTEGER DEFAULT 1,
+        qtd_referencia REAL DEFAULT 100,
+        unidade_referencia TEXT DEFAULT 'g',
         criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(descricao))""",
     "CREATE INDEX IF NOT EXISTS idx_refeicoes_data ON refeicoes(data_hora)",
@@ -213,6 +215,8 @@ _TABLES_SQLITE = [
         componentes_json TEXT,
         favorito INTEGER DEFAULT 0,
         vezes_usado INTEGER DEFAULT 1,
+        qtd_referencia REAL DEFAULT 100,
+        unidade_referencia TEXT DEFAULT 'g',
         criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(descricao))""",
     "CREATE INDEX IF NOT EXISTS idx_refeicoes_data ON refeicoes(data_hora)",
@@ -242,11 +246,8 @@ def init_tables():
                 print("✅ Supabase: Colunas 'corrida_km' e 'corrida_cal' adicionadas à tabela 'amazfit_dados'.")
 
             # Check and migrate qtd_referencia / unidade_referencia em alimentos_favoritos
-            cols_qtd = conn.run("SELECT column_name FROM information_schema.columns WHERE table_name='alimentos_favoritos' AND column_name='qtd_referencia'")
-            if not cols_qtd:
-                conn.run("ALTER TABLE alimentos_favoritos ADD COLUMN qtd_referencia REAL DEFAULT 100")
-                conn.run("ALTER TABLE alimentos_favoritos ADD COLUMN unidade_referencia TEXT DEFAULT 'g'")
-                print("✅ Supabase: Colunas 'qtd_referencia' e 'unidade_referencia' adicionadas à tabela 'alimentos_favoritos'.")
+            conn.run("ALTER TABLE alimentos_favoritos ADD COLUMN IF NOT EXISTS qtd_referencia REAL DEFAULT 100")
+            conn.run("ALTER TABLE alimentos_favoritos ADD COLUMN IF NOT EXISTS unidade_referencia TEXT DEFAULT 'g'")
         except Exception as e:
             print(f"⚠️ Erro ao verificar/adicionar colunas no Supabase: {e}")
     else:
@@ -272,6 +273,15 @@ def init_tables():
                 conn.execute("ALTER TABLE amazfit_dados ADD COLUMN corrida_cal INTEGER DEFAULT 0")
                 conn.commit()
                 print("✅ SQLite: Colunas 'corrida_km' e 'corrida_cal' adicionadas à tabela 'amazfit_dados'.")
+
+            # Check and migrate qtd_referencia / unidade_referencia em alimentos_favoritos
+            cursor.execute("PRAGMA table_info(alimentos_favoritos)")
+            columns_af = [info[1] for info in cursor.fetchall()]
+            if 'qtd_referencia' not in columns_af:
+                conn.execute("ALTER TABLE alimentos_favoritos ADD COLUMN qtd_referencia REAL DEFAULT 100")
+                conn.execute("ALTER TABLE alimentos_favoritos ADD COLUMN unidade_referencia TEXT DEFAULT 'g'")
+                conn.commit()
+                print("✅ SQLite: Colunas 'qtd_referencia' e 'unidade_referencia' adicionadas à tabela 'alimentos_favoritos'.")
         except Exception as e:
             print(f"⚠️ Erro ao verificar/adicionar colunas no SQLite: {e}")
         finally:
