@@ -1237,7 +1237,7 @@ def _painel_entrada():
     _nav_cols = st.columns(4)
     for i, (icon, label, key) in enumerate(PAINEIS):
         with _nav_cols[i]:
-            ativo = (atual == key) if key not in ("agua", "suplemento") else False
+            ativo = (atual == key) if key not in ("agua", "suplemento", "refeicao") else False
             lbl   = f"{icon}  {label}" + ("  ▲" if ativo else "")
             if st.button(lbl, key=f"nav_{key}", use_container_width=True,
                          type="primary" if ativo else "secondary"):
@@ -1245,6 +1245,8 @@ def _painel_entrada():
                     _tab_agua()
                 elif key == "suplemento":
                     _tab_suplemento()
+                elif key == "refeicao":
+                    _tab_refeicao()
                 else:
                     st.session_state["painel_aberto"] = None if ativo else key
                     st.rerun()
@@ -1254,9 +1256,7 @@ def _painel_entrada():
         return  # nada aberto → dashboard renderiza normalmente
 
     with st.container(border=True):
-        if atual == "refeicao":
-            _tab_refeicao()
-        elif atual == "editar":
+        if atual == "editar":
             _tab_editar()
 
 
@@ -1305,6 +1305,7 @@ def _render_fav_row(frow, key_prefix=""):
             st.rerun()
 
 
+@st.dialog("➕ Nova Refeição", width="large")
 def _tab_refeicao():
     """Painel de registro — múltiplos itens com cálculo proporcional por porção."""
     if "carrinho_refeicao" not in st.session_state:
@@ -1385,7 +1386,7 @@ def _tab_refeicao():
                             "carb_ref": float(_hr.get("carboidratos") or 0),
                             "gord_ref": float(_hr.get("gorduras") or 0),
                         })
-                        st.rerun()
+                        st.rerun(scope="fragment")
             st.markdown('</div>', unsafe_allow_html=True)
     else:
         # Favoritos rápidos quando o campo está vazio
@@ -1418,7 +1419,7 @@ def _tab_refeicao():
                             "carb_ref": float(_fr["carboidratos"] or 0),
                             "gord_ref": float(_fr["gorduras"] or 0),
                         })
-                        st.rerun()
+                        st.rerun(scope="fragment")
 
     # ── Carrinho: itens adicionados + porções ─────────────────────────────────
     if st.session_state["carrinho_refeicao"]:
@@ -1490,7 +1491,7 @@ def _tab_refeicao():
         if _remover:
             for _idx in sorted(_remover, reverse=True):
                 st.session_state["carrinho_refeicao"].pop(_idx)
-            st.rerun()
+            st.rerun(scope="fragment")
 
         # Total
         st.markdown(
@@ -1604,7 +1605,7 @@ def _tab_refeicao():
         with cd:
             if st.button("✗ Descartar", key="desc_foto", width="stretch"):
                 del st.session_state["foto_resultado"]
-                st.rerun()
+                st.rerun(scope="fragment")
 
     # ── IA por texto ─────────────────────────────────────────────────────────
     st.markdown(
@@ -1656,7 +1657,7 @@ def _tab_refeicao():
         with cd2:
             if st.button("✗ Descartar", key="desc_ia_text", width="stretch"):
                 del st.session_state["ia_text_result"]
-                st.rerun()
+                st.rerun(scope="fragment")
 
 @st.dialog("💊 Suplementação")
 def _tab_suplemento():
@@ -2051,7 +2052,7 @@ a.sh-nav-active span { color: #00d4ff !important; }
         unsafe_allow_html=True,
     )
     if st.button("➕  Refeição", key="sb_btn_ref", use_container_width=True):
-        st.session_state["painel_aberto"] = "refeicao"; st.rerun()
+        _tab_refeicao()
     if st.button("💧  Água", key="sb_btn_agua", use_container_width=True):
         _tab_agua()
     if st.button("💊  Suplemento", key="sb_btn_supp", use_container_width=True):
