@@ -3096,8 +3096,8 @@ with col_s:
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div id="sec-medicacao"></div>', unsafe_allow_html=True)
     if st.session_state.get("sidebar_avancado_open", False):
+        st.markdown('<div id="sec-medicacao"></div>', unsafe_allow_html=True)
         st.markdown(
             f'<div style="height:1px;background:{BORDER2};margin:14px 0 12px"></div>',
             unsafe_allow_html=True,
@@ -3968,8 +3968,8 @@ if _tem_qualquer_dado:
         )
 
     # ── IA Coach ─────────────────────────────────────────────────────────────
-    st.markdown('<div id="sec-ia"></div>', unsafe_allow_html=True)
     if st.session_state.get("sidebar_avancado_open", False):
+        st.markdown('<div id="sec-ia"></div>', unsafe_allow_html=True)
         st.markdown(sec("IA Coach", "Análise de Emagrecimento & Performance"), unsafe_allow_html=True)
 
         # Valores padrão do protocolo
