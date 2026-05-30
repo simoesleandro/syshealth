@@ -860,10 +860,10 @@ def _q_biometria():
         ORDER BY date(data) ASC
     """)
 
-# Garante que as tabelas existem — UMA vez por sessão
-if "db_init_done" not in st.session_state:
+# Garante que as tabelas existem — chave versionada força remigração em sessões antigas
+if "db_init_v3" not in st.session_state:
     DB.init_tables()
-    st.session_state["db_init_done"] = True
+    st.session_state["db_init_v3"] = True
 
 # ── Migrações incrementais — roda 1x por sessão para criar tabelas novas ─────
 if "migrations_done" not in st.session_state:
