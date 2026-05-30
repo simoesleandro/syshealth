@@ -1314,104 +1314,95 @@ def _tab_refeicao():
 
     _df_banco = _q_alimentos_favoritos()
 
-    # ── Busca com autocomplete inline ────────────────────────────────────────
-    st.markdown(
-        f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
-        f'letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px">'
-        f'🔍 BUSCAR ALIMENTO</div>',
-        unsafe_allow_html=True,
-    )
-    _busca_ref = st.text_input(
-        "busca",
-        placeholder="Digite para buscar no banco de refeições...",
-        key="ref_busca_rapida",
-        label_visibility="collapsed",
-    )
+    # ── Autocomplete — selectbox pesquisável ──────────────────────────────────
+    if not _df_banco.empty:
+        _df_sorted = _df_banco.sort_values(["favorito", "vezes_usado"], ascending=[False, False])
+        _NONE_OPT  = "— buscar / selecionar alimento —"
+        _sel_opts  = [_NONE_OPT]
+        _sel_map   = {}
+        for _, _r in _df_sorted.iterrows():
+            _star = "⭐ " if int(_r.get("favorito") or 0) else ""
+            _kcal = int(_r.get("calorias") or 0)
+            _prot = float(_r.get("proteinas") or 0)
+            _carb = float(_r.get("carboidratos") or 0)
+            _gord = float(_r.get("gorduras") or 0)
+            _qtd  = float(_r.get("qtd_referencia") or 100)
+            _unit = str(_r.get("unidade_referencia") or "g")
+            _lbl  = (f"{_star}{_r['descricao']}  ·  🔥{_kcal} kcal  "
+                     f"P:{_prot:.0f}g  C:{_carb:.0f}g  G:{_gord:.0f}g  ({_qtd:.0f} {_unit})")
+            _sel_opts.append(_lbl)
+            _sel_map[_lbl] = _r
 
-    if _busca_ref and len(_busca_ref) >= 2 and not _df_banco.empty:
-        _hits = _df_banco[_df_banco["descricao"].str.contains(_busca_ref, case=False, na=False)].head(8)
-        if _hits.empty:
-            st.markdown(
-                f'<div style="font-size:11px;color:{GHOST};padding:4px 0">'
-                f'Nenhum resultado. Cadastre o alimento no <b>Banco de Refeições</b> abaixo.</div>',
-                unsafe_allow_html=True,
+        _sa, _sb = st.columns([1, 0.18])
+        with _sa:
+            _sel_alim = st.selectbox(
+                "alimento",
+                _sel_opts,
+                key="ref_sel_alimento",
+                label_visibility="collapsed",
             )
-        else:
-            for _, _hr in _hits.iterrows():
-                _qtd_ref = float(_hr.get("qtd_referencia") or 100)
-                _unit_ref = str(_hr.get("unidade_referencia") or "g")
-                _already = any(c["id"] == int(_hr["id"]) for c in st.session_state["carrinho_refeicao"])
-                _hc, _hb = st.columns([1, 0.24])
-                with _hc:
-                    st.markdown(
-                        f'<div style="padding:5px 8px;background:{BG2};border:1px solid {BORDER};'
-                        f'border-radius:6px;margin-bottom:3px">'
-                        f'<div style="font-size:12px;color:{TEXT};font-weight:600">'
-                        f'{"⭐ " if int(_hr["favorito"] or 0) else ""}{_hr["descricao"]}'
-                        f'<span style="font-family:{MONO};font-size:9px;color:{GHOST};margin-left:8px">'
-                        f'ref:{_qtd_ref:.0f}{_unit_ref}</span></div>'
-                        f'<div style="display:flex;gap:10px;margin-top:2px">'
-                        f'<span style="font-family:{MONO};font-size:9px;color:{AMBER}">🔥{int(_hr["calorias"] or 0)}</span>'
-                        f'<span style="font-size:9px;color:{GREEN}">P:{float(_hr["proteinas"] or 0):.0f}g</span>'
-                        f'<span style="font-size:9px;color:#2dd4bf">C:{float(_hr["carboidratos"] or 0):.0f}g</span>'
-                        f'<span style="font-size:9px;color:{PURPLE}">G:{float(_hr["gorduras"] or 0):.0f}g</span>'
-                        f'</div></div>',
-                        unsafe_allow_html=True,
-                    )
-                with _hb:
-                    _lbl = "✓ Add" if _already else "➕ Add"
-                    if st.button(_lbl, key=f"ref_add_cart_{_hr['id']}", use_container_width=True):
-                        if not _already:
-                            st.session_state["carrinho_refeicao"].append({
-                                "id": int(_hr["id"]),
-                                "descricao": str(_hr["descricao"]),
-                                "qtd_ref": _qtd_ref,
-                                "unidade": _unit_ref,
-                                "kcal_ref": float(_hr["calorias"] or 0),
-                                "prot_ref": float(_hr["proteinas"] or 0),
-                                "carb_ref": float(_hr["carboidratos"] or 0),
-                                "gord_ref": float(_hr["gorduras"] or 0),
-                            })
-                        st.rerun()
+        with _sb:
+            _can_add  = bool(_sel_alim and _sel_alim != _NONE_OPT)
+            _sel_row  = _sel_map.get(_sel_alim) if _can_add else None
+            _already_sel = (
+                _sel_row is not None
+                and any(c["id"] == int(_sel_row["id"]) for c in st.session_state["carrinho_refeicao"])
+            )
+            if st.button(
+                "✓" if _already_sel else "➕ Add",
+                key="btn_add_sel_alim",
+                use_container_width=True,
+                disabled=not _can_add or _already_sel,
+            ):
+                _qtd_ref = float(_sel_row.get("qtd_referencia") or 100)
+                _unit_ref = str(_sel_row.get("unidade_referencia") or "g")
+                st.session_state["carrinho_refeicao"].append({
+                    "id": int(_sel_row["id"]),
+                    "descricao": str(_sel_row["descricao"]),
+                    "qtd_ref": _qtd_ref,
+                    "unidade": _unit_ref,
+                    "kcal_ref": float(_sel_row.get("calorias") or 0),
+                    "prot_ref": float(_sel_row.get("proteinas") or 0),
+                    "carb_ref": float(_sel_row.get("carboidratos") or 0),
+                    "gord_ref": float(_sel_row.get("gorduras") or 0),
+                })
+                st.rerun()
 
-    elif not _busca_ref and not _df_banco.empty:
-        _fav_df = _df_banco[_df_banco["favorito"] == 1].head(5)
+        # ── Atalhos: top favoritos como botões rápidos ────────────────────────
+        _fav_df = _df_banco[_df_banco["favorito"] == 1].head(6)
         if not _fav_df.empty:
             st.markdown(
-                f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
-                f'letter-spacing:1px;margin:4px 0 4px">⭐ FAVORITOS:</div>',
+                f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};'
+                f'letter-spacing:1px;margin:8px 0 4px">⭐ FAVORITOS RÁPIDOS</div>',
                 unsafe_allow_html=True,
             )
-            for _, _fr in _fav_df.iterrows():
+            _fav_cols = st.columns(3)
+            for _fi, (_, _fr) in enumerate(_fav_df.iterrows()):
                 _qtd_ref_f = float(_fr.get("qtd_referencia") or 100)
                 _unit_ref_f = str(_fr.get("unidade_referencia") or "g")
                 _already_f = any(c["id"] == int(_fr["id"]) for c in st.session_state["carrinho_refeicao"])
-                _fc2, _fb2 = st.columns([1, 0.22])
-                with _fc2:
-                    st.markdown(
-                        f'<div style="padding:4px 0;border-bottom:1px solid {BORDER2}">'
-                        f'<div style="font-size:12px;color:{TEXT};font-weight:600">{_fr["descricao"]}</div>'
-                        f'<div style="display:flex;gap:8px;margin-top:1px">'
-                        f'<span style="font-family:{MONO};font-size:9px;color:{AMBER}">🔥{int(_fr["calorias"] or 0)}</span>'
-                        f'<span style="font-size:9px;color:{GREEN}">P:{float(_fr["proteinas"] or 0):.0f}g</span>'
-                        f'</div></div>',
-                        unsafe_allow_html=True,
-                    )
-                with _fb2:
-                    _lbl_f = "✓" if _already_f else "➕"
-                    if st.button(_lbl_f, key=f"ref_fav_cart_{_fr['id']}", use_container_width=True):
-                        if not _already_f:
-                            st.session_state["carrinho_refeicao"].append({
-                                "id": int(_fr["id"]),
-                                "descricao": str(_fr["descricao"]),
-                                "qtd_ref": _qtd_ref_f,
-                                "unidade": _unit_ref_f,
-                                "kcal_ref": float(_fr["calorias"] or 0),
-                                "prot_ref": float(_fr["proteinas"] or 0),
-                                "carb_ref": float(_fr["carboidratos"] or 0),
-                                "gord_ref": float(_fr["gorduras"] or 0),
-                            })
+                with _fav_cols[_fi % 3]:
+                    _fav_lbl = f"{'✓ ' if _already_f else ''}{str(_fr['descricao'])[:18]}"
+                    if st.button(_fav_lbl, key=f"ref_fav_cart_{_fr['id']}",
+                                 use_container_width=True, disabled=_already_f,
+                                 help=f"🔥{int(_fr['calorias'] or 0)} kcal · P:{float(_fr['proteinas'] or 0):.0f}g"):
+                        st.session_state["carrinho_refeicao"].append({
+                            "id": int(_fr["id"]),
+                            "descricao": str(_fr["descricao"]),
+                            "qtd_ref": _qtd_ref_f,
+                            "unidade": _unit_ref_f,
+                            "kcal_ref": float(_fr["calorias"] or 0),
+                            "prot_ref": float(_fr["proteinas"] or 0),
+                            "carb_ref": float(_fr["carboidratos"] or 0),
+                            "gord_ref": float(_fr["gorduras"] or 0),
+                        })
                         st.rerun()
+    else:
+        st.markdown(
+            f'<div style="font-size:11px;color:{GHOST};padding:6px 0">'
+            f'Banco vazio. Cadastre alimentos no <b>Banco de Refeições</b> abaixo.</div>',
+            unsafe_allow_html=True,
+        )
 
     # ── Carrinho: itens adicionados + porções ─────────────────────────────────
     if st.session_state["carrinho_refeicao"]:
