@@ -1,5 +1,4 @@
 import streamlit as st
-from streamlit_searchbox import st_searchbox
 import os, pandas as pd, re, json, requests
 import plotly.graph_objects as go
 import google.generativeai as genai
@@ -1315,29 +1314,13 @@ def _tab_refeicao():
 
     _df_banco = _q_alimentos_favoritos()
 
-    # ── Autocomplete — searchbox com dropdown em tempo real ───────────────────
-    def _search_alim_fn(q: str):
-        if _df_banco.empty:
-            return []
-        _mask = _df_banco["descricao"].str.contains(q or "", case=False, na=False)
-        _hits = (
-            _df_banco[_mask]
-            .sort_values(["favorito", "vezes_usado"], ascending=[False, False])
-            .head(10)
-        )
-        results = []
-        for _, _r in _hits.iterrows():
-            _star = "⭐ " if int(_r.get("favorito") or 0) else ""
-            _kcal = int(_r.get("calorias") or 0)
-            _prot = float(_r.get("proteinas") or 0)
-            _carb = float(_r.get("carboidratos") or 0)
-            _gord = float(_r.get("gorduras") or 0)
-            _qtd  = float(_r.get("qtd_referencia") or 100)
-            _unit = str(_r.get("unidade_referencia") or "g")
-            _lbl  = (f"{_star}{_r['descricao']}  —  🔥{_kcal} kcal  "
-                     f"P:{_prot:.0f}g  C:{_carb:.0f}g  G:{_gord:.0f}g  ({_qtd:.0f}{_unit})")
-            results.append((_lbl, dict(_r)))
-        return results
+    # ── Busca com dropdown inline ─────────────────────────────────────────────
+    _busca_ref = st.text_input(
+        "busca",
+        placeholder="🔍 Digite para buscar alimento...",
+        key="ref_busca_rapida",
+        label_visibility="collapsed",
+    )
 
     if _df_banco.empty:
         st.markdown(
@@ -1345,65 +1328,74 @@ def _tab_refeicao():
             f'Banco vazio. Cadastre alimentos no <b>Banco de Refeições</b> abaixo.</div>',
             unsafe_allow_html=True,
         )
-    else:
-        _sel_row = st_searchbox(
-            _search_alim_fn,
-            key="sb_refeicao",
-            placeholder="🔍 Digite para buscar no banco...",
-            label="alimento",
-            label_visibility="collapsed",
-            clear_on_submit=True,
+    elif _busca_ref:
+        _hits = (
+            _df_banco[_df_banco["descricao"].str.contains(_busca_ref, case=False, na=False)]
+            .sort_values(["favorito", "vezes_usado"], ascending=[False, False])
+            .head(8)
         )
-
-        if _sel_row:
-            _already_sel = any(
-                c["id"] == int(_sel_row["id"]) for c in st.session_state["carrinho_refeicao"]
+        if _hits.empty:
+            st.markdown(
+                f'<div style="font-size:11px;color:{GHOST};padding:4px 8px;'
+                f'background:{BG2};border-radius:6px;margin-top:2px">'
+                f'Nenhum resultado. Cadastre no <b>Banco de Refeições</b> abaixo.</div>',
+                unsafe_allow_html=True,
             )
-            _qtd_ref = float(_sel_row.get("qtd_referencia") or 100)
-            _unit_ref = str(_sel_row.get("unidade_referencia") or "g")
-            _kcal_sel = int(_sel_row.get("calorias") or 0)
-            _prot_sel = float(_sel_row.get("proteinas") or 0)
-            _carb_sel = float(_sel_row.get("carboidratos") or 0)
-            _gord_sel = float(_sel_row.get("gorduras") or 0)
-            _ia, _ib = st.columns([1, 0.22])
-            with _ia:
-                st.markdown(
-                    f'<div style="padding:6px 10px;background:{BG2};border:1px solid {CYAN}44;'
-                    f'border-radius:6px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">'
-                    f'<span style="font-size:12px;color:{TEXT};font-weight:600">{_sel_row["descricao"]}</span>'
-                    f'<span style="font-family:{MONO};font-size:10px;color:{AMBER}">🔥{_kcal_sel}</span>'
-                    f'<span style="font-size:10px;color:{GREEN}">P:{_prot_sel:.0f}g</span>'
-                    f'<span style="font-size:10px;color:#2dd4bf">C:{_carb_sel:.0f}g</span>'
-                    f'<span style="font-size:10px;color:{PURPLE}">G:{_gord_sel:.0f}g</span>'
-                    f'<span style="font-size:9px;color:{GHOST}">{_qtd_ref:.0f}{_unit_ref}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-            with _ib:
-                if st.button(
-                    "✓ Add" if not _already_sel else "✓ já add",
-                    key="btn_add_searchbox",
-                    use_container_width=True,
-                    disabled=_already_sel,
-                ):
-                    st.session_state["carrinho_refeicao"].append({
-                        "id": int(_sel_row["id"]),
-                        "descricao": str(_sel_row["descricao"]),
-                        "qtd_ref": _qtd_ref,
-                        "unidade": _unit_ref,
-                        "kcal_ref": float(_sel_row.get("calorias") or 0),
-                        "prot_ref": float(_sel_row.get("proteinas") or 0),
-                        "carb_ref": float(_sel_row.get("carboidratos") or 0),
-                        "gord_ref": float(_sel_row.get("gorduras") or 0),
-                    })
-                    st.rerun()
-
-        # ── Favoritos rápidos ─────────────────────────────────────────────────
+        else:
+            # Dropdown estilizado imediatamente abaixo do input
+            st.markdown(
+                f'<div style="background:{BG2};border:1px solid {BORDER};'
+                f'border-radius:0 0 8px 8px;margin-top:-6px;padding:4px 0">',
+                unsafe_allow_html=True,
+            )
+            for _, _hr in _hits.iterrows():
+                _qtd_ref = float(_hr.get("qtd_referencia") or 100)
+                _unit_ref = str(_hr.get("unidade_referencia") or "g")
+                _already  = any(c["id"] == int(_hr["id"]) for c in st.session_state["carrinho_refeicao"])
+                _star     = "⭐ " if int(_hr.get("favorito") or 0) else ""
+                _kcal     = int(_hr.get("calorias") or 0)
+                _prot     = float(_hr.get("proteinas") or 0)
+                _carb     = float(_hr.get("carboidratos") or 0)
+                _gord     = float(_hr.get("gorduras") or 0)
+                _rc, _rb  = st.columns([1, 0.22])
+                with _rc:
+                    st.markdown(
+                        f'<div style="padding:5px 10px;border-bottom:1px solid {BORDER2}">'
+                        f'<div style="font-size:12px;color:{TEXT};font-weight:600">'
+                        f'{_star}{_hr["descricao"]}'
+                        f'<span style="font-family:{MONO};font-size:9px;color:{GHOST};margin-left:6px">'
+                        f'{_qtd_ref:.0f}{_unit_ref}</span></div>'
+                        f'<div style="display:flex;gap:10px;margin-top:1px">'
+                        f'<span style="font-family:{MONO};font-size:9px;color:{AMBER}">🔥{_kcal}</span>'
+                        f'<span style="font-size:9px;color:{GREEN}">P:{_prot:.0f}g</span>'
+                        f'<span style="font-size:9px;color:#2dd4bf">C:{_carb:.0f}g</span>'
+                        f'<span style="font-size:9px;color:{PURPLE}">G:{_gord:.0f}g</span>'
+                        f'</div></div>',
+                        unsafe_allow_html=True,
+                    )
+                with _rb:
+                    _lbl = "✓" if _already else "➕"
+                    if st.button(_lbl, key=f"ref_add_cart_{_hr['id']}",
+                                 use_container_width=True, disabled=_already):
+                        st.session_state["carrinho_refeicao"].append({
+                            "id": int(_hr["id"]),
+                            "descricao": str(_hr["descricao"]),
+                            "qtd_ref": _qtd_ref,
+                            "unidade": _unit_ref,
+                            "kcal_ref": float(_hr.get("calorias") or 0),
+                            "prot_ref": float(_hr.get("proteinas") or 0),
+                            "carb_ref": float(_hr.get("carboidratos") or 0),
+                            "gord_ref": float(_hr.get("gorduras") or 0),
+                        })
+                        st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+    else:
+        # Favoritos rápidos quando o campo está vazio
         _fav_df = _df_banco[_df_banco["favorito"] == 1].head(6)
         if not _fav_df.empty:
             st.markdown(
                 f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};'
-                f'letter-spacing:1px;margin:8px 0 4px">⭐ FAVORITOS RÁPIDOS</div>',
+                f'letter-spacing:1px;margin:6px 0 4px">⭐ FAVORITOS RÁPIDOS</div>',
                 unsafe_allow_html=True,
             )
             _fav_cols = st.columns(3)
@@ -3333,27 +3325,10 @@ if _banco_open:
             unsafe_allow_html=True,
         )
         _df_banco_all = _q_alimentos_favoritos()
-
-        def _search_banco_fn(q: str):
-            if _df_banco_all.empty:
-                return []
-            _mask = _df_banco_all["descricao"].str.contains(q or "", case=False, na=False)
-            _hits = _df_banco_all[_mask].head(10)
-            results = []
-            for _, _r in _hits.iterrows():
-                _kcal = int(_r.get("calorias") or 0)
-                _prot = float(_r.get("proteinas") or 0)
-                _carb = float(_r.get("carboidratos") or 0)
-                _gord = float(_r.get("gorduras") or 0)
-                _lbl  = f"{_r['descricao']}  —  🔥{_kcal}  P:{_prot:.0f}g  C:{_carb:.0f}g  G:{_gord:.0f}g"
-                results.append((_lbl, dict(_r)))
-            return results
-
-        _banco_sel = st_searchbox(
-            _search_banco_fn,
-            key="sb_banco_search",
+        _banco_busca  = st.text_input(
+            "banco_busca",
             placeholder="🔍 Buscar alimento...",
-            label="banco_busca",
+            key="banco_search",
             label_visibility="collapsed",
         )
 
@@ -3364,9 +3339,9 @@ if _banco_open:
                 unsafe_allow_html=True,
             )
         else:
-            if _banco_sel:
+            if _banco_busca:
                 _df_banco_all = _df_banco_all[
-                    _df_banco_all["id"] == int(_banco_sel["id"])
+                    _df_banco_all["descricao"].str.contains(_banco_busca, case=False, na=False)
                 ]
 
             _banco_edit_id = st.session_state.get("banco_edit_id", None)
