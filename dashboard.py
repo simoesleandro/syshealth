@@ -1887,6 +1887,60 @@ _painel_entrada()
 
 # ── Sidebar — navegação + status + atalhos ────────────────────────────────────
 with st.sidebar:
+    st.markdown("""
+<style>
+/* Pill ativo no sidebar */
+a.sh-nav-active {
+    background: rgba(0,212,255,0.12) !important;
+    border-color: rgba(0,212,255,0.35) !important;
+    color: #00d4ff !important;
+    border-left: 2px solid #00d4ff !important;
+}
+a.sh-nav-active span { color: #00d4ff !important; }
+</style>
+<script>
+(function() {
+  // Smooth scroll ao clicar em links #sec-*
+  function initScrollLinks() {
+    document.querySelectorAll('a[href^="#sec-"]').forEach(function(link) {
+      link.addEventListener('click', function(e) {
+        var target = document.querySelector(link.getAttribute('href'));
+        if (target) {
+          e.preventDefault();
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  }
+
+  // Pill ativo via IntersectionObserver
+  function initActiveObserver() {
+    var links = document.querySelectorAll('a[href^="#sec-"]');
+    if (!links.length) return;
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          var id = entry.target.id;
+          links.forEach(function(l) { l.classList.remove('sh-nav-active'); });
+          var active = document.querySelector('a[href="#' + id + '"]');
+          if (active) active.classList.add('sh-nav-active');
+        }
+      });
+    }, { threshold: 0.2 });
+    document.querySelectorAll('div[id^="sec-"]').forEach(function(sec) {
+      observer.observe(sec);
+    });
+  }
+
+  // Aguarda DOM estabilizar após Streamlit renderizar
+  setTimeout(function() { initScrollLinks(); initActiveObserver(); }, 800);
+  // Re-inicializa quando Streamlit faz rerun (MutationObserver no body)
+  new MutationObserver(function() {
+    setTimeout(function() { initScrollLinks(); initActiveObserver(); }, 400);
+  }).observe(document.body, { childList: true, subtree: true });
+})();
+</script>
+""", unsafe_allow_html=True)
     # ── Cabeçalho ─────────────────────────────────────────────────────────────
     st.markdown(
         f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:2.5px;'
