@@ -920,6 +920,14 @@ if "evac_table_ok" not in st.session_state:
         pass
     st.session_state["evac_table_ok"] = True
 
+# Coluna esforco em evacuacoes — chave própria
+if "evac_esforco_col_ok" not in st.session_state:
+    try:
+        DB.execute("ALTER TABLE evacuacoes ADD COLUMN esforco INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    st.session_state["evac_esforco_col_ok"] = True
+
 # ── Seed: histórico de doses Tirzepatida ─────────────────────────────────────
 if "med_seeded" not in st.session_state:
     st.session_state["med_seeded"] = True
@@ -4734,7 +4742,7 @@ st.markdown(sec("Evacuação", "Registro intestinal — intervalo e histórico")
 
 # ── Busca todos os registros de evacuação ────────────────────────────────────
 _ev_df = DB.query(
-    "SELECT id, data_hora, observacao FROM evacuacoes ORDER BY data_hora DESC"
+    "SELECT id, data_hora, esforco, observacao FROM evacuacoes ORDER BY data_hora DESC"
 )
 
 # ── Card de resumo ────────────────────────────────────────────────────────────
@@ -4807,6 +4815,14 @@ if st.session_state.get("evac_nova_open", False):
         f'border-radius:0 0 10px 10px;padding:16px 18px 18px;margin-bottom:16px">',
         unsafe_allow_html=True,
     )
+    _ESFORCO_OPTS = [
+        "0 — Sem esforço · saiu sozinho, muito suave",
+        "1 — Esforço normal · saiu sem machucar",
+        "2 — Esforço leve+ · acima do normal, não machucou",
+        "3 — Esforço grande · dificuldade para sair",
+        "4 — Esforço forte · machucou e sangrou",
+        "5 — Esforço máximo · não saia, ficou muito tempo no banheiro",
+    ]
     with st.form("form_evac_nova", clear_on_submit=True):
         _ec1, _ec2 = st.columns(2)
         with _ec1:
@@ -4818,15 +4834,19 @@ if st.session_state.get("evac_nova_open", False):
                 "Hora", value=datetime.now(_BR).time().replace(second=0, microsecond=0),
                 key="evac_hora_input"
             )
+        _evac_esforco_sel = st.selectbox(
+            "Intensidade de esforço", _ESFORCO_OPTS, index=0, key="evac_esforco_input"
+        )
         _evac_obs = st.text_input(
-            "Observação (opcional)", placeholder="Ex: consistência normal, com esforço…",
+            "Observação (opcional)", placeholder="Ex: consistência normal, dor abdominal…",
             key="evac_obs_input"
         )
         if st.form_submit_button("💾 SALVAR", use_container_width=True):
             _evac_dt = f"{_evac_data} {_evac_hora}"
+            _evac_esforco_val = int(_evac_esforco_sel[0])
             DB.execute(
-                "INSERT INTO evacuacoes (data_hora, observacao) VALUES (?, ?)",
-                [_evac_dt, _evac_obs.strip() or None]
+                "INSERT INTO evacuacoes (data_hora, esforco, observacao) VALUES (?, ?, ?)",
+                [_evac_dt, _evac_esforco_val, _evac_obs.strip() or None]
             )
             st.cache_data.clear()
             st.session_state["evac_nova_open"] = False
@@ -4857,13 +4877,27 @@ if st.session_state.get("evac_hist_open", False) and not _ev_df.empty:
             _intervalos.append("—")
     _ev_show["intervalo"] = _intervalos
 
+    # Mapa de esforço: cor e rótulo curto
+    _ESFORCO_COR  = {0: GREEN, 1: GREEN, 2: CYAN, 3: AMBER, 4: RED, 5: "#ff2d55"}
+    _ESFORCO_LABEL = {
+        0: "0 · suave", 1: "1 · normal", 2: "2 · leve+",
+        3: "3 · grande", 4: "4 · sangrou", 5: "5 · máximo",
+    }
+
     # Renderiza tabela estilizada
     _ev_rows_html = ""
     for _, _row in _ev_show.iterrows():
+        _esf = int(_row["esforco"]) if _row["esforco"] is not None and not pd.isna(_row["esforco"]) else 0
+        _esf_cor = _ESFORCO_COR.get(_esf, MUTED)
+        _esf_lbl = _ESFORCO_LABEL.get(_esf, str(_esf))
         _ev_rows_html += (
             f'<tr style="border-bottom:1px solid {BORDER}">'
             f'<td style="padding:8px 12px;font-family:{MONO};font-size:12px;color:{TEXT}">{_row["data_hora_fmt"]}</td>'
             f'<td style="padding:8px 12px;font-family:{MONO};font-size:12px;color:{CYAN};text-align:center">{_row["intervalo"]}</td>'
+            f'<td style="padding:6px 12px;text-align:center">'
+            f'<span style="font-family:{MONO};font-size:11px;font-weight:700;color:{_esf_cor};'
+            f'background:{_esf_cor}18;border:1px solid {_esf_cor}44;border-radius:4px;padding:2px 8px">'
+            f'{_esf_lbl}</span></td>'
             f'<td style="padding:8px 12px;font-size:12px;color:{MUTED}">{_row["observacao"]}</td>'
             f'</tr>'
         )
@@ -4873,6 +4907,7 @@ if st.session_state.get("evac_hist_open", False) and not _ev_df.empty:
         f'<thead><tr style="background:{BG3};border-bottom:2px solid {BORDER}">'
         f'<th style="padding:8px 12px;font-family:{MONO};font-size:10px;color:{MUTED};text-align:left;letter-spacing:1px">DATA / HORA</th>'
         f'<th style="padding:8px 12px;font-family:{MONO};font-size:10px;color:{MUTED};text-align:center;letter-spacing:1px">INTERVALO</th>'
+        f'<th style="padding:8px 12px;font-family:{MONO};font-size:10px;color:{MUTED};text-align:center;letter-spacing:1px">ESFORÇO</th>'
         f'<th style="padding:8px 12px;font-family:{MONO};font-size:10px;color:{MUTED};text-align:left;letter-spacing:1px">OBSERVAÇÃO</th>'
         f'</tr></thead>'
         f'<tbody>{_ev_rows_html}</tbody>'
