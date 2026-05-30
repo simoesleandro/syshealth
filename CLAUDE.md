@@ -36,8 +36,16 @@
 - SQL params: usar `db(query, params)` com lista de params — nunca f-string com valores
 - Categorias dinâmicas: `_cat_hora()` retorna categoria pela hora atual de Brasília
 - Toggle panels: `st.session_state.get("chave_open", False)` + botão `▾/▴` + `st.rerun()` — padrão usado em nova medida, banco, biometria
+- Modais de registro: usar `@st.dialog("Título")` — chamar a função diretamente no clique do botão, sem session_state flag; definir em nível de módulo
+- `st.rerun(scope="fragment")` dentro de `@st.dialog` mantém o modal aberto; bare `st.rerun()` fecha o modal — Streamlit ≥ 1.37 exigido
 - Edição de registros: selectbox de datas + form pré-preenchido com helper `_ev(col)` que retorna `float(v) if v is not None and not pd.isna(v) else fallback`
 - Imports de data: usar `from datetime import datetime, timedelta` — `timedelta` necessário para cálculos de datas
+
+## Streamlit — Gotchas
+- JS injection: `st.markdown(unsafe_allow_html=True)` NÃO executa `<script>` (stripped pelo DOMPurify) — usar `st.html()` para scripts
+- CSS em `st.markdown` funciona normalmente; separar CSS (`st.markdown`) de JS (`st.html`) quando injetando ambos
+- Widget keys dentro de `@st.dialog` devem ser distintas das keys de forms inline — usar sufixo `_modal` para evitar conflitos
+- IntersectionObserver existente em `st.html` ~linha 418 (breakpoint detection + antigo nav observer) — não duplicar observers de scroll
 
 ## Gemini Vision
 - Usar prompt unificado que detecta tipo (refeição/medidas/outro) + extrai dados numa chamada
