@@ -4815,39 +4815,49 @@ if st.session_state.get("evac_nova_open", False):
         f'border-radius:0 0 10px 10px;padding:16px 18px 18px;margin-bottom:16px">',
         unsafe_allow_html=True,
     )
-    _ESFORCO_OPTS = [
-        "0 — Sem esforço · saiu sozinho, muito suave",
-        "1 — Esforço normal · saiu sem machucar",
-        "2 — Esforço leve+ · acima do normal, não machucou",
-        "3 — Esforço grande · dificuldade para sair",
-        "4 — Esforço forte · machucou e sangrou",
-        "5 — Esforço máximo · não saia, ficou muito tempo no banheiro",
+    _ESF_DATA = [
+        (0, "#00e676", "Suave",   "saiu sozinho"),
+        (1, "#7ed321", "Normal",  "sem machucar"),
+        (2, "#fde047", "Leve+",   "não machucou"),
+        (3, "#fbbf24", "Grande",  "dificuldade"),
+        (4, "#f97316", "Sangrou", "machucou"),
+        (5, "#ff6b6b", "Máximo",  "não saia"),
     ]
-    _ESFORCO_CORES = ["#00e676", "#7ed321", "#fde047", "#fbbf24", "#f97316", "#ff6b6b"]
-    _ESFORCO_CURTOS = ["Suave", "Normal", "Leve+", "Grande", "Sangrou", "Máximo"]
-    _dots_html = ""
-    for _ei, (_ec, _el) in enumerate(zip(_ESFORCO_CORES, _ESFORCO_CURTOS)):
-        _dots_html += (
-            f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
-            f'<div style="width:26px;height:26px;border-radius:50%;background:{_ec};'
-            f'color:#080e1a;font-size:11px;font-weight:700;display:flex;align-items:center;'
-            f'justify-content:center;box-shadow:0 0 8px {_ec}66">{_ei}</div>'
-            f'<div style="font-family:{MONO};font-size:8px;color:{_ec};letter-spacing:0.5px;'
-            f'text-align:center;line-height:1.2">{_el}</div>'
-            f'</div>'
-        )
+    _esf_sel = st.session_state.get("evac_esforco_val", 0)
+
+    # ── Seletor de intensidade com gradiente ──────────────────────────────────
     st.markdown(
-        f'<div style="margin:4px 0 14px">'
         f'<div style="font-family:{MONO};font-size:9px;color:{MUTED};letter-spacing:1px;'
-        f'text-transform:uppercase;margin-bottom:8px">Escala de esforço</div>'
-        f'<div style="position:relative;padding:0 13px;margin-bottom:6px">'
-        f'<div style="height:6px;border-radius:3px;background:linear-gradient('
-        f'to right,#00e676,#7ed321,#fde047,#fbbf24,#f97316,#ff6b6b)"></div>'
-        f'</div>'
-        f'<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">'
-        f'{_dots_html}</div></div>',
+        f'text-transform:uppercase;margin-bottom:6px">Intensidade de esforço</div>',
         unsafe_allow_html=True,
     )
+    _esf_cols = st.columns(6)
+    for _col, (_num, _cor, _nome, _desc) in zip(_esf_cols, _ESF_DATA):
+        with _col:
+            _is_sel = (_esf_sel == _num)
+            _bg  = f"{_cor}28" if _is_sel else "transparent"
+            _brd = _cor if _is_sel else f"{_cor}44"
+            _shadow = f"0 0 10px {_cor}66" if _is_sel else "none"
+            st.markdown(
+                f'<div style="text-align:center;background:{_bg};border:2px solid {_brd};'
+                f'border-radius:8px;padding:6px 2px 4px;margin-bottom:2px;'
+                f'box-shadow:{_shadow};transition:all .15s">'
+                f'<div style="font-size:17px;font-weight:800;color:{_cor};line-height:1">{_num}</div>'
+                f'<div style="font-family:{MONO};font-size:8px;font-weight:700;color:{_cor};'
+                f'margin-top:3px;letter-spacing:0.3px">{_nome}</div>'
+                f'<div style="font-family:{MONO};font-size:7px;color:{_cor}99;margin-top:2px;'
+                f'line-height:1.2">{_desc}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                "▲ sel" if _is_sel else "selec.",
+                key=f"evac_esf_{_num}",
+                use_container_width=True,
+            ):
+                st.session_state["evac_esforco_val"] = _num
+                st.rerun()
+
     with st.form("form_evac_nova", clear_on_submit=True):
         _ec1, _ec2 = st.columns(2)
         with _ec1:
@@ -4859,22 +4869,20 @@ if st.session_state.get("evac_nova_open", False):
                 "Hora", value=datetime.now(_BR).time().replace(second=0, microsecond=0),
                 key="evac_hora_input"
             )
-        _evac_esforco_sel = st.selectbox(
-            "Intensidade de esforço", _ESFORCO_OPTS, index=0, key="evac_esforco_input"
-        )
         _evac_obs = st.text_input(
             "Observação (opcional)", placeholder="Ex: consistência normal, dor abdominal…",
             key="evac_obs_input"
         )
         if st.form_submit_button("💾 SALVAR", use_container_width=True):
             _evac_dt = f"{_evac_data} {_evac_hora}"
-            _evac_esforco_val = int(_evac_esforco_sel[0])
+            _evac_esforco_val = int(st.session_state.get("evac_esforco_val", 0))
             DB.execute(
                 "INSERT INTO evacuacoes (data_hora, esforco, observacao) VALUES (?, ?, ?)",
                 [_evac_dt, _evac_esforco_val, _evac_obs.strip() or None]
             )
             st.cache_data.clear()
             st.session_state["evac_nova_open"] = False
+            st.session_state.pop("evac_esforco_val", None)
             _notif("Evacuação registrada ✓")
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
