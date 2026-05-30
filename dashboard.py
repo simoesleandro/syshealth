@@ -1544,7 +1544,7 @@ def _tab_refeicao():
         with _cd:
             if st.button("🗑️ Limpar", key="btn_limpar_carrinho", use_container_width=True):
                 st.session_state["carrinho_refeicao"] = []
-                st.rerun()
+                st.rerun(scope="fragment")
 
     st.markdown(f'<div style="height:1px;background:{BORDER};margin:12px 0 8px"></div>', unsafe_allow_html=True)
 
