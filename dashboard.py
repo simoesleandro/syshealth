@@ -3253,7 +3253,13 @@ with col_s:
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown('<div id="sec-banco"></div>', unsafe_allow_html=True)
 
-with st.expander("🍽️  BANCO DE REFEIÇÕES  ·  Cadastro · Edição · Favoritos", expanded=False):
+_banco_open = st.session_state.get("banco_open", False)
+_banco_lbl  = "🍽️  BANCO DE REFEIÇÕES  ·  Cadastro · Edição · Favoritos  ▴" if _banco_open else "🍽️  BANCO DE REFEIÇÕES  ·  Cadastro · Edição · Favoritos  ▾"
+if st.button(_banco_lbl, key="btn_banco_toggle", use_container_width=True):
+    st.session_state["banco_open"] = not _banco_open
+    st.rerun()
+
+if _banco_open:
     _banco_cols = st.columns([1.1, 1.9])
 
     with _banco_cols[0]:
