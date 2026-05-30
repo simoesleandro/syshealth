@@ -1503,7 +1503,9 @@ def _tab_refeicao():
         with _cs:
             if st.button("✅ REGISTRAR REFEIÇÃO", key="btn_registrar_carrinho", use_container_width=True):
                 _agora = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S")
-                _total_kcal_salvo = 0.0
+                _total_kcal_salvo = _total_prot_salvo = _total_carb_salvo = _total_gord_salvo = 0.0
+                _componentes = []
+                _descricoes = []
                 for i, item in enumerate(st.session_state["carrinho_refeicao"]):
                     _qtd_s = st.session_state.get(f"cart_qtd_{i}", item["qtd_ref"])
                     _fat_s = _qtd_s / item["qtd_ref"] if item["qtd_ref"] > 0 else 0
@@ -1512,17 +1514,23 @@ def _tab_refeicao():
                     _carb_s = round(item["carb_ref"] * _fat_s, 1)
                     _gord_s = round(item["gord_ref"] * _fat_s, 1)
                     _total_kcal_salvo += _kcal_s
-                    DB.execute(
-                        "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json,data_hora) VALUES (?,?,?,?,?,?,?,?)",
-                        [_cat_hora(), item["descricao"],
-                         _kcal_s, _prot_s, _carb_s, _gord_s,
-                         json.dumps([{"nome": item["descricao"], "gramas": _qtd_s,
-                                      "unidade": item["unidade"],
-                                      "kcal": _kcal_s, "prot": _prot_s,
-                                      "carb": _carb_s, "gord": _gord_s}]),
-                         _agora],
-                    )
+                    _total_prot_salvo += _prot_s
+                    _total_carb_salvo += _carb_s
+                    _total_gord_salvo += _gord_s
+                    _componentes.append({"nome": item["descricao"], "gramas": _qtd_s,
+                                         "unidade": item["unidade"],
+                                         "kcal": _kcal_s, "prot": _prot_s,
+                                         "carb": _carb_s, "gord": _gord_s})
+                    _descricoes.append(item["descricao"])
                     DB.execute("UPDATE alimentos_favoritos SET vezes_usado=vezes_usado+1 WHERE id=?", [item["id"]])
+                _desc_refeicao = " + ".join(_descricoes)
+                DB.execute(
+                    "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json,data_hora) VALUES (?,?,?,?,?,?,?,?)",
+                    [_cat_hora(), _desc_refeicao,
+                     round(_total_kcal_salvo, 1), round(_total_prot_salvo, 1),
+                     round(_total_carb_salvo, 1), round(_total_gord_salvo, 1),
+                     json.dumps(_componentes), _agora],
+                )
                 st.session_state["carrinho_refeicao"] = []
                 st.cache_data.clear()
                 _notif(f"Refeição registrada · {_total_kcal_salvo:.0f} kcal total")
