@@ -4843,7 +4843,7 @@ if st.session_state.get("evac_nova_open", False):
         )
         if st.form_submit_button("💾 SALVAR", use_container_width=True):
             _evac_dt = f"{_evac_data} {_evac_hora}"
-            _evac_esforco_val = int(_evac_esforco_sel[0])
+            _evac_esforco_val = int(next(c for c in _evac_esforco_sel if c.isdigit()))
             DB.execute(
                 "INSERT INTO evacuacoes (data_hora, esforco, observacao) VALUES (?, ?, ?)",
                 [_evac_dt, _evac_esforco_val, _evac_obs.strip() or None]
