@@ -414,7 +414,7 @@ html.sh-xs section[data-testid="stSidebar"]{
 </style>
 """, unsafe_allow_html=True)
 
-# ── JS: detecta largura + IntersectionObserver para nav ativo ────────────────
+# ── JS: detecta largura ──────────────────────────────────────────────────────
 st.html("""
 <script>
 (function(){
@@ -430,29 +430,6 @@ st.html("""
   }
   bp();
   window.addEventListener('resize',bp);
-
-  /* ── IntersectionObserver: destaca link ativo no sidebar ── */
-  function initNavObserver(){
-    var sections=document.querySelectorAll('[id^="sec-"]');
-    if(!sections.length){setTimeout(initNavObserver,600);return;}
-    var links=document.querySelectorAll('a[href^="#sec-"]');
-    if(!links.length){setTimeout(initNavObserver,600);return;}
-    var obs=new IntersectionObserver(function(entries){
-      entries.forEach(function(e){
-        if(e.isIntersecting){
-          var id=e.target.id;
-          links.forEach(function(a){
-            var active=(a.getAttribute('href')==='#'+id);
-            a.style.color=active?'#00d4ff':'#e8edf5';
-            a.style.background=active?'rgba(0,212,255,0.08)':'transparent';
-            a.style.borderColor=active?'rgba(0,212,255,0.25)':'transparent';
-          });
-        }
-      });
-    },{threshold:0.25});
-    sections.forEach(function(s){obs.observe(s);});
-  }
-  setTimeout(initNavObserver,800);
 })();
 </script>
 """)
@@ -1898,11 +1875,15 @@ a.sh-nav-active {
 }
 a.sh-nav-active span { color: #00d4ff !important; }
 </style>
+""", unsafe_allow_html=True)
+    st.html("""
 <script>
 (function() {
   // Smooth scroll ao clicar em links #sec-*
   function initScrollLinks() {
     document.querySelectorAll('a[href^="#sec-"]').forEach(function(link) {
+      if (link.dataset.shScroll) return;
+      link.dataset.shScroll = '1';
       link.addEventListener('click', function(e) {
         var target = document.querySelector(link.getAttribute('href'));
         if (target) {
@@ -1940,7 +1921,7 @@ a.sh-nav-active span { color: #00d4ff !important; }
   }).observe(document.body, { childList: true, subtree: true });
 })();
 </script>
-""", unsafe_allow_html=True)
+""")
     # ── Cabeçalho ─────────────────────────────────────────────────────────────
     st.markdown(
         f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:2.5px;'
@@ -2028,8 +2009,7 @@ a.sh-nav-active span { color: #00d4ff !important; }
             f'<a href="#{_anchor}" style="{_nav_link_style}" '
             f'onmouseover="this.style.background=\'rgba(0,212,255,0.07)\';'
             f'this.style.borderColor=\'rgba(0,212,255,0.25)\';this.style.color=\'{CYAN}\'" '
-            f'onmouseout="this.style.background=\'transparent\';'
-            f'this.style.borderColor=\'transparent\';this.style.color=\'{TEXT}\'">'
+            f'onmouseout="if(!this.classList.contains(\'sh-nav-active\')){{this.style.background=\'transparent\';this.style.borderColor=\'transparent\';this.style.color=\'{TEXT}\';}}">'
             f'<span style="font-size:13px">{_icon}</span>'
             f'<span>{_label}</span>'
             f'</a>'
