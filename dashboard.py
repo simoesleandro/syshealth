@@ -1231,7 +1231,7 @@ def _painel_entrada():
     PAINEIS = [
         ("➕", "Refeição",    "refeicao"),
         ("💊", "Suplem.",     "suplemento"),
-        ("💧", "Água / Peso", "agua"),
+        ("💧", "Água",        "agua"),
         ("✏️", "Editar",      "editar"),
     ]
     atual = st.session_state.get("painel_aberto", None)
@@ -1717,7 +1717,7 @@ def _tab_agua():
             _notif(f"+{ml} ml  |  {nova:.1f} / {META_AGUA}L", "info")
         st.rerun()
 
-    cA, cB, cC = st.columns(3)
+    cA, cC = st.columns(2)
     with cA:
         st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💧 Água · {agua_l:.1f}L / {META_AGUA}L</div>', unsafe_allow_html=True)
         wa1, wa2 = st.columns(2)
@@ -1737,17 +1737,6 @@ def _tab_agua():
                     st.session_state["_agua_meta_atingida"] = True
                 _notif(f"+{int(ml_in)} ml  |  {nova:.1f} / {META_AGUA}L", "info")
                 st.rerun()
-    with cB:
-        st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">⚖️ Peso de hoje</div>', unsafe_allow_html=True)
-        with st.form("form_peso_hoje"):
-            peso_in = st.number_input("kg", min_value=40.0, max_value=200.0, value=round(peso,1), step=0.1, format="%.1f")
-            if st.form_submit_button("SALVAR", width="stretch"):
-                _ex = DB.query("SELECT id FROM medidas WHERE date(data)=?", [hoje_sql])
-                if not _ex.empty:
-                    DB.execute("UPDATE medidas SET peso=? WHERE date(data)=?", [float(peso_in), hoje_sql])
-                else:
-                    DB.execute("INSERT INTO medidas (data, peso) VALUES (?, ?)", [hoje_sql, float(peso_in)])
-                st.cache_data.clear(); _notif(f"Peso {peso_in:.1f} kg salvo"); st.rerun()
     with cC:
         st.markdown(f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💓 HRV / PAI</div>', unsafe_allow_html=True)
         with st.form("form_hrv_pai"):
@@ -1981,7 +1970,7 @@ with st.sidebar:
     )
     if st.button("➕  Refeição", key="sb_btn_ref", use_container_width=True):
         st.session_state["painel_aberto"] = "refeicao"; st.rerun()
-    if st.button("💧  Água / Peso", key="sb_btn_agua", use_container_width=True):
+    if st.button("💧  Água", key="sb_btn_agua", use_container_width=True):
         st.session_state["painel_aberto"] = "agua"; st.rerun()
     if st.button("💊  Suplemento", key="sb_btn_supp", use_container_width=True):
         st.session_state["painel_aberto"] = "suplemento"; st.rerun()
