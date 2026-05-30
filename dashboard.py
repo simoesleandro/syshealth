@@ -906,7 +906,10 @@ if "migrations_done" not in st.session_state:
         DB.execute("ALTER TABLE alimentos_favoritos ADD COLUMN unidade_referencia TEXT DEFAULT 'g'")
     except Exception:
         pass
-    # Tabela de evacuações (intestino)
+    st.session_state["migrations_done"] = True
+
+# Tabela evacuacoes — chave própria para garantir criação independente
+if "evac_table_ok" not in st.session_state:
     try:
         DB.execute("""CREATE TABLE IF NOT EXISTS evacuacoes (
             id SERIAL PRIMARY KEY,
@@ -915,7 +918,7 @@ if "migrations_done" not in st.session_state:
             criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
     except Exception:
         pass
-    st.session_state["migrations_done"] = True
+    st.session_state["evac_table_ok"] = True
 
 # ── Seed: histórico de doses Tirzepatida ─────────────────────────────────────
 if "med_seeded" not in st.session_state:
