@@ -906,6 +906,15 @@ if "migrations_done" not in st.session_state:
         DB.execute("ALTER TABLE alimentos_favoritos ADD COLUMN unidade_referencia TEXT DEFAULT 'g'")
     except Exception:
         pass
+    # Tabela de evacuações (intestino)
+    try:
+        DB.execute("""CREATE TABLE IF NOT EXISTS evacuacoes (
+            id SERIAL PRIMARY KEY,
+            data_hora TIMESTAMP NOT NULL,
+            observacao TEXT,
+            criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""")
+    except Exception:
+        pass
     st.session_state["migrations_done"] = True
 
 # ── Seed: histórico de doses Tirzepatida ─────────────────────────────────────
@@ -1940,6 +1949,7 @@ with st.sidebar:
         ("sec-banco",      "🍽️", "Banco de Refeições"),
         ("sec-historico",  "📊", "Histórico · Tendências"),
         ("sec-biometria",  "📏", "Biometria"),
+        ("sec-evacuacao",  "🚽", "Evacuação"),
     ]
     _nav_link_style = (
         f"display:flex;align-items:center;gap:8px;padding:7px 10px;"
@@ -4712,6 +4722,183 @@ if True:  # bloco de escopo para df_bio
                     st.rerun()
 
             st.markdown('</div>', unsafe_allow_html=True)
+
+# ════════════════════════════════════════════════════════════════════════════
+# SEÇÃO 6 — EVACUAÇÃO (controle intestinal)
+# ════════════════════════════════════════════════════════════════════════════
+st.markdown('<div id="sec-evacuacao"></div>', unsafe_allow_html=True)
+st.markdown(sec("Evacuação", "Registro intestinal — intervalo e histórico"), unsafe_allow_html=True)
+
+# ── Busca todos os registros de evacuação ────────────────────────────────────
+_ev_df = DB.query(
+    "SELECT id, data_hora, observacao FROM evacuacoes ORDER BY data_hora DESC"
+)
+
+# ── Card de resumo ────────────────────────────────────────────────────────────
+if not _ev_df.empty:
+    _ev_datas = pd.to_datetime(_ev_df["data_hora"])
+    _ev_ultima = _ev_datas.iloc[0]
+    _agora_brt = datetime.now(_BR)
+    _ev_dias_sem = (_agora_brt - _ev_ultima.replace(tzinfo=_BR)).days
+    _ev_horas_sem = int((_agora_brt - _ev_ultima.replace(tzinfo=_BR)).total_seconds() / 3600)
+
+    # Intervalo médio entre evacuações
+    if len(_ev_datas) >= 2:
+        _ev_diffs = _ev_datas.diff(-1).dropna().abs()
+        _ev_media_h = _ev_diffs.mean().total_seconds() / 3600
+        _ev_media_dias = _ev_media_h / 24
+        _ev_media_txt = f"{_ev_media_dias:.1f} dias"
+    else:
+        _ev_media_txt = "—"
+
+    _ev_cor_alerta = RED if _ev_dias_sem >= 3 else (AMBER if _ev_dias_sem >= 2 else GREEN)
+    _ev_status_txt = (
+        f"⚠️ {_ev_dias_sem} dias sem evacuar!" if _ev_dias_sem >= 3
+        else f"🟡 {_ev_dias_sem} dia(s) sem evacuar" if _ev_dias_sem >= 2
+        else f"✓ Último registro há {_ev_horas_sem}h"
+    )
+
+    st.markdown(
+        f'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">'
+        # card última evacuação
+        f'<div style="background:{BG2};border:1px solid {_ev_cor_alerta}55;border-top:2px solid {_ev_cor_alerta};'
+        f'border-radius:8px;padding:14px 16px;text-align:center">'
+        f'<div style="font-family:{MONO};font-size:9px;color:{MUTED};letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Última evacuação</div>'
+        f'<div style="font-size:22px;font-weight:700;color:{_ev_cor_alerta}">{_ev_dias_sem}d</div>'
+        f'<div style="font-family:{MONO};font-size:10px;color:{_ev_cor_alerta};margin-top:4px">{_ev_status_txt}</div>'
+        f'</div>'
+        # card intervalo médio
+        f'<div style="background:{BG2};border:1px solid {BORDER};border-top:2px solid {CYAN};'
+        f'border-radius:8px;padding:14px 16px;text-align:center">'
+        f'<div style="font-family:{MONO};font-size:9px;color:{MUTED};letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Intervalo médio</div>'
+        f'<div style="font-size:22px;font-weight:700;color:{CYAN}">{_ev_media_txt}</div>'
+        f'<div style="font-family:{MONO};font-size:10px;color:{MUTED};margin-top:4px">entre registros</div>'
+        f'</div>'
+        # card total de registros
+        f'<div style="background:{BG2};border:1px solid {BORDER};border-top:2px solid {PURPLE};'
+        f'border-radius:8px;padding:14px 16px;text-align:center">'
+        f'<div style="font-family:{MONO};font-size:9px;color:{MUTED};letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Total registrado</div>'
+        f'<div style="font-size:22px;font-weight:700;color:{PURPLE}">{len(_ev_df)}</div>'
+        f'<div style="font-family:{MONO};font-size:10px;color:{MUTED};margin-top:4px">evacuações</div>'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+else:
+    st.markdown(
+        panel(f'<p style="color:{GHOST};font-size:13px;padding:8px 0">'
+              f'Nenhum registro ainda. Use o formulário abaixo para começar a monitorar.</p>'),
+        unsafe_allow_html=True,
+    )
+
+# ── Botão + formulário de novo registro ──────────────────────────────────────
+_evac_open = st.session_state.get("evac_nova_open", False)
+_evac_lbl  = "🚽 REGISTRAR EVACUAÇÃO ▴" if _evac_open else "🚽 REGISTRAR EVACUAÇÃO ▾"
+if st.button(_evac_lbl, key="btn_evac_nova", use_container_width=True):
+    st.session_state["evac_nova_open"] = not _evac_open
+    st.rerun()
+
+if st.session_state.get("evac_nova_open", False):
+    st.markdown(
+        f'<div style="background:{BG3};border:1px solid {CYAN}33;border-top:2px solid {CYAN};'
+        f'border-radius:0 0 10px 10px;padding:16px 18px 18px;margin-bottom:16px">',
+        unsafe_allow_html=True,
+    )
+    with st.form("form_evac_nova", clear_on_submit=True):
+        _ec1, _ec2 = st.columns(2)
+        with _ec1:
+            _evac_data = st.date_input(
+                "Data", value=datetime.now(_BR).date(), key="evac_data_input"
+            )
+        with _ec2:
+            _evac_hora = st.time_input(
+                "Hora", value=datetime.now(_BR).time().replace(second=0, microsecond=0),
+                key="evac_hora_input"
+            )
+        _evac_obs = st.text_input(
+            "Observação (opcional)", placeholder="Ex: consistência normal, com esforço…",
+            key="evac_obs_input"
+        )
+        if st.form_submit_button("💾 SALVAR", use_container_width=True):
+            _evac_dt = f"{_evac_data} {_evac_hora}"
+            DB.execute(
+                "INSERT INTO evacuacoes (data_hora, observacao) VALUES (?, ?)",
+                [_evac_dt, _evac_obs.strip() or None]
+            )
+            st.cache_data.clear()
+            st.session_state["evac_nova_open"] = False
+            _notif("Evacuação registrada ✓")
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ── Tabela de histórico ───────────────────────────────────────────────────────
+_evac_hist_open = st.session_state.get("evac_hist_open", False)
+_evac_hist_lbl  = "📋 HISTÓRICO DE EVACUAÇÕES ▴" if _evac_hist_open else "📋 HISTÓRICO DE EVACUAÇÕES ▾"
+if st.button(_evac_hist_lbl, key="btn_evac_hist", use_container_width=True):
+    st.session_state["evac_hist_open"] = not _evac_hist_open
+    st.rerun()
+
+if st.session_state.get("evac_hist_open", False) and not _ev_df.empty:
+    _ev_show = _ev_df.copy()
+    _ev_show["data_hora_fmt"] = pd.to_datetime(_ev_show["data_hora"]).dt.strftime("%d/%m/%Y  %H:%M")
+    _ev_show["observacao"] = _ev_show["observacao"].fillna("—")
+
+    # Calcula intervalo desde o registro anterior
+    _ev_dts_ord = pd.to_datetime(_ev_show["data_hora"]).reset_index(drop=True)
+    _intervalos = []
+    for _i in range(len(_ev_dts_ord)):
+        if _i < len(_ev_dts_ord) - 1:
+            _diff = (_ev_dts_ord[_i] - _ev_dts_ord[_i + 1]).total_seconds() / 3600
+            _intervalos.append(f"{_diff / 24:.1f}d ({int(_diff)}h)")
+        else:
+            _intervalos.append("—")
+    _ev_show["intervalo"] = _intervalos
+
+    # Renderiza tabela estilizada
+    _ev_rows_html = ""
+    for _, _row in _ev_show.iterrows():
+        _ev_rows_html += (
+            f'<tr style="border-bottom:1px solid {BORDER}">'
+            f'<td style="padding:8px 12px;font-family:{MONO};font-size:12px;color:{TEXT}">{_row["data_hora_fmt"]}</td>'
+            f'<td style="padding:8px 12px;font-family:{MONO};font-size:12px;color:{CYAN};text-align:center">{_row["intervalo"]}</td>'
+            f'<td style="padding:8px 12px;font-size:12px;color:{MUTED}">{_row["observacao"]}</td>'
+            f'</tr>'
+        )
+    st.markdown(
+        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:8px;overflow:hidden;margin-top:8px">'
+        f'<table style="width:100%;border-collapse:collapse">'
+        f'<thead><tr style="background:{BG3};border-bottom:2px solid {BORDER}">'
+        f'<th style="padding:8px 12px;font-family:{MONO};font-size:10px;color:{MUTED};text-align:left;letter-spacing:1px">DATA / HORA</th>'
+        f'<th style="padding:8px 12px;font-family:{MONO};font-size:10px;color:{MUTED};text-align:center;letter-spacing:1px">INTERVALO</th>'
+        f'<th style="padding:8px 12px;font-family:{MONO};font-size:10px;color:{MUTED};text-align:left;letter-spacing:1px">OBSERVAÇÃO</th>'
+        f'</tr></thead>'
+        f'<tbody>{_ev_rows_html}</tbody>'
+        f'</table></div>',
+        unsafe_allow_html=True,
+    )
+
+    # Botão excluir último registro
+    st.markdown("<div style='margin-top:10px'>", unsafe_allow_html=True)
+    _evac_del_confirm = st.session_state.get("evac_del_confirm", False)
+    if _evac_del_confirm:
+        _edc1, _edc2 = st.columns(2)
+        with _edc1:
+            if st.button("✓ Confirmar exclusão do último", key="evac_del_ok", use_container_width=True):
+                _ev_ultimo_id = int(_ev_df["id"].iloc[0])
+                DB.execute("DELETE FROM evacuacoes WHERE id=?", [_ev_ultimo_id])
+                st.cache_data.clear()
+                st.session_state.pop("evac_del_confirm", None)
+                _notif("Registro removido ✓")
+                st.rerun()
+        with _edc2:
+            if st.button("✗ Cancelar", key="evac_del_cancel", use_container_width=True):
+                st.session_state.pop("evac_del_confirm", None)
+                st.rerun()
+    else:
+        if st.button("🗑️ EXCLUIR ÚLTIMO REGISTRO", key="evac_del_btn", use_container_width=True):
+            st.session_state["evac_del_confirm"] = True
+            st.rerun()
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
 # RODAPÉ
