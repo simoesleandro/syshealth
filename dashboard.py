@@ -1296,10 +1296,9 @@ def _render_fav_row(frow, key_prefix=""):
             st.rerun()
     with _fa:
         if st.button("➕ Usar", key=f"fav_use_{key_prefix}{fid}", use_container_width=True):
-            _hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S")
             DB.execute(
-                "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json,data_hora) VALUES (?,?,?,?,?,?,?,?)",
-                [_cat_hora(), fdesc, fkcal, fprot, fcarb, fgord, fcomp, _hoje]
+                "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) VALUES (?,?,?,?,?,?,?)",
+                [_cat_hora(), fdesc, fkcal, fprot, fcarb, fgord, fcomp]
             )
             DB.execute("UPDATE alimentos_favoritos SET vezes_usado=vezes_usado+1 WHERE id=?", [fid])
             st.cache_data.clear()
@@ -1502,7 +1501,6 @@ def _tab_refeicao():
         _cs, _cd = st.columns([3, 1])
         with _cs:
             if st.button("✅ REGISTRAR REFEIÇÃO", key="btn_registrar_carrinho", use_container_width=True):
-                _agora = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S")
                 _total_kcal_salvo = _total_prot_salvo = _total_carb_salvo = _total_gord_salvo = 0.0
                 _componentes = []
                 _descricoes = []
@@ -1525,11 +1523,11 @@ def _tab_refeicao():
                     DB.execute("UPDATE alimentos_favoritos SET vezes_usado=vezes_usado+1 WHERE id=?", [item["id"]])
                 _desc_refeicao = " + ".join(_descricoes)
                 DB.execute(
-                    "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json,data_hora) VALUES (?,?,?,?,?,?,?,?)",
+                    "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) VALUES (?,?,?,?,?,?,?)",
                     [_cat_hora(), _desc_refeicao,
                      round(_total_kcal_salvo, 1), round(_total_prot_salvo, 1),
                      round(_total_carb_salvo, 1), round(_total_gord_salvo, 1),
-                     json.dumps(_componentes), _agora],
+                     json.dumps(_componentes)],
                 )
                 st.session_state["carrinho_refeicao"] = []
                 st.cache_data.clear()
