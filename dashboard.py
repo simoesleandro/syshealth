@@ -1237,12 +1237,14 @@ def _painel_entrada():
     _nav_cols = st.columns(4)
     for i, (icon, label, key) in enumerate(PAINEIS):
         with _nav_cols[i]:
-            ativo = (atual == key) if key != "agua" else False
+            ativo = (atual == key) if key not in ("agua", "suplemento") else False
             lbl   = f"{icon}  {label}" + ("  ▲" if ativo else "")
             if st.button(lbl, key=f"nav_{key}", use_container_width=True,
                          type="primary" if ativo else "secondary"):
                 if key == "agua":
                     _tab_agua()
+                elif key == "suplemento":
+                    _tab_suplemento()
                 else:
                     st.session_state["painel_aberto"] = None if ativo else key
                     st.rerun()
@@ -1254,8 +1256,6 @@ def _painel_entrada():
     with st.container(border=True):
         if atual == "refeicao":
             _tab_refeicao()
-        elif atual == "suplemento":
-            _tab_suplemento()
         elif atual == "editar":
             _tab_editar()
 
@@ -1658,6 +1658,7 @@ def _tab_refeicao():
                 del st.session_state["ia_text_result"]
                 st.rerun()
 
+@st.dialog("💊 Suplementação")
 def _tab_suplemento():
     st.markdown(
         f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;'
@@ -2054,7 +2055,7 @@ a.sh-nav-active span { color: #00d4ff !important; }
     if st.button("💧  Água", key="sb_btn_agua", use_container_width=True):
         _tab_agua()
     if st.button("💊  Suplemento", key="sb_btn_supp", use_container_width=True):
-        st.session_state["painel_aberto"] = "suplemento"; st.rerun()
+        _tab_suplemento()
 
     # ── Mini Amazfit ───────────────────────────────────────────────────────────
     st.markdown(
