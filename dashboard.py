@@ -4823,6 +4823,31 @@ if st.session_state.get("evac_nova_open", False):
         "4 — Esforço forte · machucou e sangrou",
         "5 — Esforço máximo · não saia, ficou muito tempo no banheiro",
     ]
+    _ESFORCO_CORES = ["#00e676", "#7ed321", "#fde047", "#fbbf24", "#f97316", "#ff6b6b"]
+    _ESFORCO_CURTOS = ["Suave", "Normal", "Leve+", "Grande", "Sangrou", "Máximo"]
+    _dots_html = ""
+    for _ei, (_ec, _el) in enumerate(zip(_ESFORCO_CORES, _ESFORCO_CURTOS)):
+        _dots_html += (
+            f'<div style="display:flex;flex-direction:column;align-items:center;gap:4px">'
+            f'<div style="width:26px;height:26px;border-radius:50%;background:{_ec};'
+            f'color:#080e1a;font-size:11px;font-weight:700;display:flex;align-items:center;'
+            f'justify-content:center;box-shadow:0 0 8px {_ec}66">{_ei}</div>'
+            f'<div style="font-family:{MONO};font-size:8px;color:{_ec};letter-spacing:0.5px;'
+            f'text-align:center;line-height:1.2">{_el}</div>'
+            f'</div>'
+        )
+    st.markdown(
+        f'<div style="margin:4px 0 14px">'
+        f'<div style="font-family:{MONO};font-size:9px;color:{MUTED};letter-spacing:1px;'
+        f'text-transform:uppercase;margin-bottom:8px">Escala de esforço</div>'
+        f'<div style="position:relative;padding:0 13px;margin-bottom:6px">'
+        f'<div style="height:6px;border-radius:3px;background:linear-gradient('
+        f'to right,#00e676,#7ed321,#fde047,#fbbf24,#f97316,#ff6b6b)"></div>'
+        f'</div>'
+        f'<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px">'
+        f'{_dots_html}</div></div>',
+        unsafe_allow_html=True,
+    )
     with st.form("form_evac_nova", clear_on_submit=True):
         _ec1, _ec2 = st.columns(2)
         with _ec1:
@@ -4878,26 +4903,27 @@ if st.session_state.get("evac_hist_open", False) and not _ev_df.empty:
     _ev_show["intervalo"] = _intervalos
 
     # Mapa de esforço: cor e rótulo curto
-    _ESFORCO_COR  = {0: GREEN, 1: GREEN, 2: CYAN, 3: AMBER, 4: RED, 5: "#ff2d55"}
-    _ESFORCO_LABEL = {
-        0: "0 · suave", 1: "1 · normal", 2: "2 · leve+",
-        3: "3 · grande", 4: "4 · sangrou", 5: "5 · máximo",
-    }
+    _ESFORCO_COR_T  = ["#00e676", "#7ed321", "#fde047", "#fbbf24", "#f97316", "#ff6b6b"]
+    _ESFORCO_LABEL_T = ["0 · suave", "1 · normal", "2 · leve+", "3 · grande", "4 · sangrou", "5 · máximo"]
 
     # Renderiza tabela estilizada
     _ev_rows_html = ""
     for _, _row in _ev_show.iterrows():
         _esf = int(_row["esforco"]) if _row["esforco"] is not None and not pd.isna(_row["esforco"]) else 0
-        _esf_cor = _ESFORCO_COR.get(_esf, MUTED)
-        _esf_lbl = _ESFORCO_LABEL.get(_esf, str(_esf))
+        _esf_cor = _ESFORCO_COR_T[min(_esf, 5)]
+        _esf_lbl = _ESFORCO_LABEL_T[min(_esf, 5)]
+        _pct = _esf / 5 * 100
         _ev_rows_html += (
             f'<tr style="border-bottom:1px solid {BORDER}">'
             f'<td style="padding:8px 12px;font-family:{MONO};font-size:12px;color:{TEXT}">{_row["data_hora_fmt"]}</td>'
             f'<td style="padding:8px 12px;font-family:{MONO};font-size:12px;color:{CYAN};text-align:center">{_row["intervalo"]}</td>'
-            f'<td style="padding:6px 12px;text-align:center">'
-            f'<span style="font-family:{MONO};font-size:11px;font-weight:700;color:{_esf_cor};'
-            f'background:{_esf_cor}18;border:1px solid {_esf_cor}44;border-radius:4px;padding:2px 8px">'
-            f'{_esf_lbl}</span></td>'
+            f'<td style="padding:6px 12px;min-width:110px">'
+            f'<div style="font-family:{MONO};font-size:11px;font-weight:700;color:{_esf_cor};margin-bottom:4px">{_esf_lbl}</div>'
+            f'<div style="height:5px;border-radius:3px;background:{BORDER};overflow:hidden">'
+            f'<div style="height:100%;width:{_pct:.0f}%;border-radius:3px;'
+            f'background:linear-gradient(to right,#00e676,#7ed321,#fde047,#fbbf24,#f97316,#ff6b6b);'
+            f'background-size:{100 / (_pct/100) if _pct > 0 else 100:.0f}% 100%"></div>'
+            f'</div></td>'
             f'<td style="padding:8px 12px;font-size:12px;color:{MUTED}">{_row["observacao"]}</td>'
             f'</tr>'
         )
