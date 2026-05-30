@@ -1237,12 +1237,15 @@ def _painel_entrada():
     _nav_cols = st.columns(4)
     for i, (icon, label, key) in enumerate(PAINEIS):
         with _nav_cols[i]:
-            ativo = (atual == key)
+            ativo = (atual == key) if key != "agua" else False
             lbl   = f"{icon}  {label}" + ("  ▲" if ativo else "")
             if st.button(lbl, key=f"nav_{key}", use_container_width=True,
                          type="primary" if ativo else "secondary"):
-                st.session_state["painel_aberto"] = None if ativo else key
-                st.rerun()
+                if key == "agua":
+                    _tab_agua()
+                else:
+                    st.session_state["painel_aberto"] = None if ativo else key
+                    st.rerun()
 
     # ── Conteúdo do painel ativo ──────────────────────────────────────────────
     if atual is None:
@@ -1253,8 +1256,6 @@ def _painel_entrada():
             _tab_refeicao()
         elif atual == "suplemento":
             _tab_suplemento()
-        elif atual == "agua":
-            _tab_agua()
         elif atual == "editar":
             _tab_editar()
 
@@ -1699,6 +1700,7 @@ def _tab_suplemento():
         st.rerun()
 
 
+@st.dialog("💧 Água · HRV / PAI")
 def _tab_agua():
     if st.session_state.pop("_agua_meta_atingida", False):
         st.balloons()
@@ -2050,7 +2052,7 @@ a.sh-nav-active span { color: #00d4ff !important; }
     if st.button("➕  Refeição", key="sb_btn_ref", use_container_width=True):
         st.session_state["painel_aberto"] = "refeicao"; st.rerun()
     if st.button("💧  Água", key="sb_btn_agua", use_container_width=True):
-        st.session_state["painel_aberto"] = "agua"; st.rerun()
+        _tab_agua()
     if st.button("💊  Suplemento", key="sb_btn_supp", use_container_width=True):
         st.session_state["painel_aberto"] = "suplemento"; st.rerun()
 
