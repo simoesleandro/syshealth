@@ -4815,48 +4815,13 @@ if st.session_state.get("evac_nova_open", False):
         f'border-radius:0 0 10px 10px;padding:16px 18px 18px;margin-bottom:16px">',
         unsafe_allow_html=True,
     )
-    # CSS: background em gradiente + texto colorido em cada opção do dropdown de esforço
-    st.markdown("""
-<style>
-[data-baseweb="popover"] [role="listbox"] [role="option"]:nth-child(1)
-    { background-color: #00e67622 !important; border-left: 3px solid #00e676 !important; }
-[data-baseweb="popover"] [role="listbox"] [role="option"]:nth-child(1) span
-    { color: #00e676 !important; font-weight: 700; }
-
-[data-baseweb="popover"] [role="listbox"] [role="option"]:nth-child(2)
-    { background-color: #7ed32122 !important; border-left: 3px solid #7ed321 !important; }
-[data-baseweb="popover"] [role="listbox"] [role="option"]:nth-child(2) span
-    { color: #7ed321 !important; font-weight: 700; }
-
-[data-baseweb="popover"] [role="listbox"] [role="option"]:nth-child(3)
-    { background-color: #fde04722 !important; border-left: 3px solid #fde047 !important; }
-[data-baseweb="popover"] [role="listbox"] [role="option"]:nth-child(3) span
-    { color: #fde047 !important; font-weight: 700; }
-
-[data-baseweb="popover"] [role="listbox"] [role="option"]:nth-child(4)
-    { background-color: #fbbf2422 !important; border-left: 3px solid #fbbf24 !important; }
-[data-baseweb="popover"] [role="listbox"] [role="option"]:nth-child(4) span
-    { color: #fbbf24 !important; font-weight: 700; }
-
-[data-baseweb="popover"] [role="listbox"] [role="option"]:nth-child(5)
-    { background-color: #f9731622 !important; border-left: 3px solid #f97316 !important; }
-[data-baseweb="popover"] [role="listbox"] [role="option"]:nth-child(5) span
-    { color: #f97316 !important; font-weight: 700; }
-
-[data-baseweb="popover"] [role="listbox"] [role="option"]:nth-child(6)
-    { background-color: #ff6b6b22 !important; border-left: 3px solid #ff6b6b !important; }
-[data-baseweb="popover"] [role="listbox"] [role="option"]:nth-child(6) span
-    { color: #ff6b6b !important; font-weight: 700; }
-</style>
-""", unsafe_allow_html=True)
-
     _ESFORCO_OPTS = [
-        "0 — Sem esforço · saiu sozinho, muito suave",
-        "1 — Esforço normal · saiu sem machucar",
-        "2 — Esforço leve+ · acima do normal, não machucou",
-        "3 — Esforço grande · dificuldade para sair",
-        "4 — Esforço forte · machucou e sangrou",
-        "5 — Esforço máximo · não saia, ficou muito tempo no banheiro",
+        "🟢 ■□□□□□  0 — Sem esforço · saiu sozinho, muito suave",
+        "🟡 ■■□□□□  1 — Esforço normal · saiu sem machucar",
+        "🟡 ■■■□□□  2 — Esforço leve+ · acima do normal, não machucou",
+        "🟠 ■■■■□□  3 — Esforço grande · dificuldade para sair",
+        "🔴 ■■■■■□  4 — Esforço forte · machucou e sangrou",
+        "🔴 ■■■■■■  5 — Esforço máximo · não saia, ficou muito tempo no banheiro",
     ]
     with st.form("form_evac_nova", clear_on_submit=True):
         _ec1, _ec2 = st.columns(2)
