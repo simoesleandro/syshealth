@@ -4869,19 +4869,9 @@ else:
     )
 
 # ── Botão + formulário de novo registro ──────────────────────────────────────
-_evac_open = st.session_state.get("evac_nova_open", False)
-_evac_lbl  = "🚽 REGISTRAR EVACUAÇÃO ▴" if _evac_open else "🚽 REGISTRAR EVACUAÇÃO ▾"
-if st.button(_evac_lbl, key="btn_evac_nova", use_container_width=True):
-    st.session_state["evac_nova_open"] = not _evac_open
-    st.rerun()
-
-if st.session_state.get("evac_nova_open", False):
-    st.markdown(
-        f'<div style="background:{BG3};border:1px solid {CYAN}33;border-top:2px solid {CYAN};'
-        f'border-radius:0 0 10px 10px;padding:16px 18px 18px;margin-bottom:16px">',
-        unsafe_allow_html=True,
-    )
-    _ESFORCO_OPTS = [
+@st.dialog("🚽 Registrar Evacuação")
+def _dialog_evacuacao():
+    _ESF_OPTS = [
         "🟢 ■□□□□□  0 — Sem esforço · saiu sozinho, muito suave",
         "🟡 ■■□□□□  1 — Esforço normal · saiu sem machucar",
         "🟡 ■■■□□□  2 — Esforço leve+ · acima do normal, não machucou",
@@ -4889,23 +4879,23 @@ if st.session_state.get("evac_nova_open", False):
         "🔴 ■■■■■□  4 — Esforço forte · machucou e sangrou",
         "🔴 ■■■■■■  5 — Esforço máximo · não saia, ficou muito tempo no banheiro",
     ]
-    with st.form("form_evac_nova", clear_on_submit=True):
+    with st.form("form_evac_modal", clear_on_submit=True):
         _ec1, _ec2 = st.columns(2)
         with _ec1:
             _evac_data = st.date_input(
-                "Data", value=datetime.now(_BR).date(), key="evac_data_input"
+                "Data", value=datetime.now(_BR).date(), key="evac_data_modal_input"
             )
         with _ec2:
             _evac_hora = st.time_input(
                 "Hora", value=datetime.now(_BR).time().replace(second=0, microsecond=0),
-                key="evac_hora_input"
+                key="evac_hora_modal_input"
             )
         _evac_esforco_sel = st.selectbox(
-            "Intensidade de esforço", _ESFORCO_OPTS, index=0, key="evac_esforco_input"
+            "Intensidade de esforço", _ESF_OPTS, index=0, key="evac_esforco_modal_input"
         )
         _evac_obs = st.text_input(
             "Observação (opcional)", placeholder="Ex: consistência normal, dor abdominal…",
-            key="evac_obs_input"
+            key="evac_obs_modal_input"
         )
         if st.form_submit_button("💾 SALVAR", use_container_width=True):
             _evac_dt = f"{_evac_data} {_evac_hora}"
@@ -4915,10 +4905,11 @@ if st.session_state.get("evac_nova_open", False):
                 [_evac_dt, _evac_esforco_val, _evac_obs.strip() or None]
             )
             st.cache_data.clear()
-            st.session_state["evac_nova_open"] = False
             _notif("Evacuação registrada ✓")
             st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+
+if st.button("🚽 REGISTRAR EVACUAÇÃO", key="btn_evac_nova", use_container_width=True):
+    _dialog_evacuacao()
 
 # ── Tabela de histórico ───────────────────────────────────────────────────────
 _evac_hist_open = st.session_state.get("evac_hist_open", False)
