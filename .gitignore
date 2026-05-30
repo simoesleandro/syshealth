@@ -2,4 +2,4 @@
 __pycache__/
 *.pyc
 nutricao.db
-.streamlit/secrets.toml
+.streamlit/secrets.toml.superpowers/
