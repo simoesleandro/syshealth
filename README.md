@@ -2,7 +2,7 @@
 
 > Ecossistema pessoal de saúde e performance — dashboard em tempo real, bot Telegram com IA e sincronização automática de wearable.
 
-🔗 **[Demo ao vivo](https://syshealth-fit.streamlit.app/)**
+🔗 **[Demo ao vivo](https://syshealth.streamlit.app/)**
 
 ---
 
@@ -93,8 +93,8 @@ O sistema integra dados de nutrição, treino, sono, HRV e agenda em um único p
 
 ```bash
 # 1. Clone o repositório
-git clone https://github.com/simoesleandro/syshealth-fit.git
-cd syshealth-fit
+git clone https://github.com/simoesleandro/syshealth.git
+cd syshealth
 
 # 2. Crie e ative o ambiente virtual
 python -m venv venv
@@ -146,7 +146,7 @@ python main.py
 ## 📂 Estrutura do Projeto
 
 ```
-syshealth-fit/
+syshealth/
 ├── dashboard.py          # Streamlit app (~5000 linhas)
 ├── bot.py                # Telegram bot com Gemini NLP e Vision
 ├── main.py               # Entrypoint Fly.io (bot + scheduler Zepp)
