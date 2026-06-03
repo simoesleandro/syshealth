@@ -63,7 +63,30 @@ def _app_global_css() -> str:
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700;800&display=swap');
 
-html,body,.stApp{background:#080c14!important;color:#e8edf5!important;font-family:'DM Sans',sans-serif!important}
+:root{
+  --sh-bg:#080c14;
+  --sh-bg-elevated:#0d1424;
+  --sh-bg-subtle:#0a0f1a;
+  --sh-border:rgba(255,255,255,.07);
+  --sh-border-strong:rgba(0,212,255,.22);
+  --sh-text:#e8edf5;
+  --sh-text-muted:#8b9cb3;
+  --sh-text-dim:#5a6b82;
+  --sh-accent:#00d4ff;
+  --sh-accent-soft:rgba(0,212,255,.10);
+  --sh-radius-sm:6px;
+  --sh-radius-md:10px;
+  --sh-shadow-sm:0 1px 2px rgba(0,0,0,.35);
+  --sh-shadow-md:0 8px 24px rgba(0,0,0,.45);
+  --sh-space-2:8px;
+  --sh-space-3:12px;
+  --sh-space-4:16px;
+  --sh-space-5:24px;
+  --sh-font-display:'DM Sans',system-ui,sans-serif;
+  --sh-font-mono:'Space Mono',ui-monospace,monospace;
+}
+
+html,body,.stApp{background:var(--sh-bg)!important;color:var(--sh-text)!important;font-family:var(--sh-font-display)!important}
 .block-container{padding:1.5rem 2rem!important;max-width:1440px!important;margin-left:auto!important;margin-right:auto!important}
 #MainMenu,footer,header,[data-testid="stToolbar"]{visibility:hidden!important;height:0!important}
 .stDeployButton{display:none!important}
@@ -178,16 +201,80 @@ section[data-testid="stSidebar"] > div:first-child{padding:0.75rem 1rem 1rem!imp
 [data-testid="stBaseButton-secondary"]:active{
   background:rgba(0,212,255,0.05)!important}
 
-/* ── Botão nav ATIVO (primary) — destaque ciano ── */
+/* ── Botão nav ATIVO (primary) — glow só no hover ── */
 [data-testid="stBaseButton-primary"]{
   background:rgba(0,212,255,0.10)!important;border:1.5px solid #00d4ff!important;
   color:#00d4ff!important;font-family:'Space Mono',monospace!important;font-size:10px!important;
   font-weight:700!important;letter-spacing:1.5px!important;text-transform:uppercase!important;
   border-radius:8px!important;padding:10px 12px!important;min-height:44px!important;
-  box-shadow:0 0 18px rgba(0,212,255,0.18)!important;
+  box-shadow:none!important;
   transition:all 0.15s ease!important}
 [data-testid="stBaseButton-primary"]:hover{
-  background:rgba(0,212,255,0.17)!important;box-shadow:0 0 26px rgba(0,212,255,0.28)!important}
+  background:rgba(0,212,255,0.17)!important;box-shadow:0 0 20px rgba(0,212,255,0.22)!important}
+
+/* ── Design system: métricas, seções, zonas ── */
+.sh-metric{
+  background:linear-gradient(165deg,rgba(13,20,36,.95),rgba(8,12,20,.98));
+  border:1px solid var(--sh-border);
+  border-radius:var(--sh-radius-md);
+  padding:var(--sh-space-4) var(--sh-space-4) var(--sh-space-3);
+  box-shadow:var(--sh-shadow-sm);
+  min-height:132px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  transition:border-color .2s ease,box-shadow .2s ease,transform .15s ease;
+}
+.sh-metric:hover{
+  border-color:var(--sh-border-strong);
+  box-shadow:var(--sh-shadow-md);
+  transform:translateY(-1px);
+}
+.sh-metric__accent{
+  height:3px;border-radius:3px 3px 0 0;
+  margin:-16px -16px 12px;opacity:.9;
+}
+.sh-metric__label{
+  font-family:var(--sh-font-mono);font-size:10px;font-weight:700;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--sh-text-dim);
+}
+.sh-metric__value{
+  font-family:var(--sh-font-display);
+  font-size:clamp(1.35rem,2.2vw,1.85rem);font-weight:800;
+  letter-spacing:-.03em;color:var(--sh-text);line-height:1.05;
+  margin-top:6px;
+}
+.sh-metric__unit{
+  font-size:.72em;font-weight:500;color:var(--sh-text-muted);margin-left:.15em;
+}
+.sh-metric__meta{
+  font-size:12px;color:var(--sh-text-muted);line-height:1.45;margin-top:8px;
+}
+.sh-section{
+  display:flex;align-items:baseline;gap:var(--sh-space-3);
+  margin:var(--sh-space-5) 0 var(--sh-space-3);
+}
+.sh-section__tag{
+  font-family:var(--sh-font-mono);font-size:11px;font-weight:700;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--sh-accent);
+}
+.sh-section__title{font-size:14px;font-weight:500;color:var(--sh-text-muted)}
+.sh-section__rule{flex:1;height:1px;background:var(--sh-border);align-self:center}
+.sh-zone{
+  font-family:var(--sh-font-mono);font-size:10px;font-weight:700;
+  letter-spacing:.18em;text-transform:uppercase;color:var(--sh-text-dim);
+  margin:var(--sh-space-4) 0 var(--sh-space-2);
+  padding:var(--sh-space-2) var(--sh-space-3);
+  border-left:2px solid var(--sh-border-strong);
+  border-radius:0 var(--sh-radius-sm) var(--sh-radius-sm) 0;
+  background:rgba(0,212,255,.03);
+}
+[data-testid="stTabs"]{margin-bottom:var(--sh-space-4)!important}
+button[data-baseweb="tab"]{letter-spacing:.08em!important;color:var(--sh-text-dim)!important}
+button[data-baseweb="tab"][aria-selected="true"]{color:var(--sh-accent)!important}
+button:focus-visible,a:focus-visible,summary:focus-visible{
+  outline:2px solid var(--sh-accent)!important;outline-offset:2px!important;
+}
 
 /* ── Sidebar buttons (mantidos) ── */
 section[data-testid="stSidebar"] .stButton button{
@@ -499,6 +586,40 @@ def ptitl(txt):
         f'<div style="font-family:{MONO};font-size:13px;font-weight:700;letter-spacing:1px;'
         f'text-transform:uppercase;color:{TEXT};margin-bottom:12px">{txt}</div>'
     )
+
+
+def sh_section(tag: str, titulo: str = "") -> str:
+    title_html = f'<span class="sh-section__title">{titulo}</span>' if titulo else ""
+    return (
+        f'<div class="sh-section">'
+        f'<span class="sh-section__tag">{tag}</span>{title_html}'
+        f'<div class="sh-section__rule"></div></div>'
+    )
+
+
+def sh_zone(label: str) -> str:
+    return f'<div class="sh-zone">{label}</div>'
+
+
+def sh_metric(
+    accent: str,
+    label: str,
+    value: str,
+    unit: str = "",
+    meta: str = "",
+    extra_html: str = "",
+) -> str:
+    unit_html = f'<span class="sh-metric__unit">{unit}</span>' if unit else ""
+    meta_html = f'<div class="sh-metric__meta">{meta}</div>' if meta else ""
+    extra_block = f'<div class="sh-metric__meta">{extra_html}</div>' if extra_html else ""
+    return (
+        f'<div class="sh-metric">'
+        f'<div class="sh-metric__accent" style="background:{accent}"></div>'
+        f'<div class="sh-metric__label">{label}</div>'
+        f'<div class="sh-metric__value">{value}{unit_html}</div>'
+        f'{meta_html}{extra_block}</div>'
+    )
+
 
 # ── NOTIFICAÇÕES VISUAIS ─────────────────────────────────────────────────────
 def _notif(msg: str, tipo: str = "ok"):
@@ -1971,8 +2092,8 @@ with _tb_left:
         f'<div class="sh-topbar" style="padding-bottom:14px;border-bottom:1px solid {BORDER2};margin-bottom:6px">'
         f'<div style="font-family:{MONO};font-size:12px;letter-spacing:2px;color:{CYAN};text-transform:uppercase">sys.health_tracker</div>'
         f'<div style="font-size:28px;font-weight:800;color:{TEXT};line-height:1;letter-spacing:-0.5px;margin-top:2px">Leandro R.</div>'
-        f'<div style="font-size:12px;color:{GHOST};text-transform:uppercase;letter-spacing:1px;margin-top:4px">'
-        f'Rio de Janeiro &nbsp;·&nbsp; Dashboard v2.2 &nbsp;·&nbsp; {_APP_BUILD}</div>'
+        f'<div style="font-size:12px;color:{GHOST};letter-spacing:0.5px;margin-top:4px">'
+        f'Rio de Janeiro &nbsp;·&nbsp; Dashboard v2.2</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -2223,229 +2344,251 @@ a.sh-nav-active span { color: #00d4ff !important; }
     )
 
 # ════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 1 — NUTRIÇÃO
+# SEÇÃO 1 — HOJE (tabs: Nutrição · Wearable · Agenda)
 # ════════════════════════════════════════════════════════════════════════════
-st.markdown(
-    f'<div style="display:flex;justify-content:space-between;align-items:center;'
-    f'padding:6px 0 14px;border-bottom:1px solid {BORDER};margin-bottom:16px">'
-    f'<span style="font-family:{MONO};color:{CYAN};font-size:12px;letter-spacing:2px;'
-    f'text-transform:uppercase;font-weight:700">⚡ SYS.HEALTH</span>'
-    f'<span style="color:{MUTED};font-size:11px;font-family:{MONO};letter-spacing:0.5px">'
-    f'{hoje_pt} · {hora_now} · {dia_sem}</span>'
-    f'</div>',
-    unsafe_allow_html=True,
+st.markdown(sh_zone("▸ Hoje — visão do dia"), unsafe_allow_html=True)
+
+_gcal_ok = bool(
+    (os.getenv("GOOGLE_CLIENT_ID") or "").strip() or
+    (os.getenv("GOOGLE_REFRESH_TOKEN") or "").strip()
 )
-
-# ── BLOCO: HOJE ───────────────────────────────────────────────────────────────
-st.markdown(
-    f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:2.5px;'
-    f'text-transform:uppercase;color:{GHOST};margin:0 0 10px;'
-    f'padding:6px 10px;background:rgba(0,212,255,0.04);border-left:2px solid {CYAN}33;'
-    f'border-radius:0 4px 4px 0">▸ HOJE — MÉTRICAS E ATIVIDADE</div>',
-    unsafe_allow_html=True,
-)
-
-st.markdown('<div id="sec-nutricao"></div>', unsafe_allow_html=True)
-st.markdown(sec("Nutrição", "Metas do dia"), unsafe_allow_html=True)
-
-k1, k2, k3, k4 = st.columns(4)
-
-def kpi_card(acento, lbl, val, unit, extra=""):
-    return panel(
-        f'<div style="position:absolute;top:0;left:0;right:0;height:3px;'
-        f'border-radius:10px 10px 0 0;background:{acento}"></div>'
-        f'<div style="text-align:center;flex:1;display:flex;flex-direction:column;justify-content:center">'
-        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1.5px;'
-        f'text-transform:uppercase;color:{MUTED};margin-bottom:10px">{lbl}</div>'
-        f'<div><span style="font-size:36px;font-weight:800;color:{TEXT};line-height:1;'
-        f'letter-spacing:-1px">{val}</span>'
-        f'<span style="font-size:18px;color:{MUTED};margin-left:5px">{unit}</span></div>'
-        f'{extra}'
-        f'</div>',
-        extra="position:relative;overflow:hidden;min-height:210px;display:flex;flex-direction:column"
+try:
+    _gcal_ok = _gcal_ok or bool(
+        st.secrets.get("GOOGLE_CLIENT_ID") or st.secrets.get("GOOGLE_REFRESH_TOKEN")
     )
+except Exception:
+    pass
 
-with k1:
-    st.markdown(kpi_card(
-        CYAN, "Peso atual", f"{peso:.1f}", "kg",
-        f'<div style="font-size:14px;font-weight:700;color:{GREEN};margin-top:10px">▼ {115.3 - peso:.1f} kg desde 26/01/2026</div>'
-        f'<div style="font-size:13px;color:{MUTED};margin-top:5px">Meta: 83 kg · faltam {peso - 83:.1f} kg</div>',
-    ), unsafe_allow_html=True)
+tab_nutri, tab_wear, tab_agenda = st.tabs(["🥗 Nutrição", "⌚ Wearable", "📅 Agenda"])
 
-with k2:
-    pct_cal = cal_h / meta_cal_dinamica if meta_cal_dinamica > 0 else 0
-    st.markdown(kpi_card(
-        GREEN, "Calorias", f"{int(cal_h):,}", "kcal",
-        pbar(pct_cal, GREEN) +
-        f'<div style="font-family:{MONO};font-size:13px;color:{MUTED};margin-top:6px">'
-        f'{int(pct_cal * 100)}% · restam {restam} kcal</div>'
-        f'<div style="font-size:13px;color:{MUTED};margin-top:5px">Meta hoje: {int(meta_cal_dinamica):,} kcal</div>',
-    ), unsafe_allow_html=True)
+with tab_nutri:
+    st.markdown('<div id="sec-nutricao"></div>', unsafe_allow_html=True)
+    st.markdown(sh_section("Nutrição", "Metas do dia"), unsafe_allow_html=True)
+    k1, k2, k3, k4 = st.columns(4)
+    with k1:
+        st.markdown(sh_metric(
+            CYAN, "Peso atual", f"{peso:.1f}", "kg",
+            meta=f"▼ {115.3 - peso:.1f} kg desde 26/01/2026 · meta 83 kg · faltam {peso - 83:.1f} kg",
+        ), unsafe_allow_html=True)
+    with k2:
+        pct_cal = cal_h / meta_cal_dinamica if meta_cal_dinamica > 0 else 0
+        st.markdown(sh_metric(
+            GREEN, "Calorias", f"{int(cal_h):,}", "kcal",
+            meta=f"{int(pct_cal * 100)}% · restam {restam} kcal · meta {int(meta_cal_dinamica):,}",
+            extra_html=pbar(pct_cal, GREEN),
+        ), unsafe_allow_html=True)
+    with k3:
+        st.markdown(sh_metric(
+            RED, "Proteínas", f"{int(prot_h)}", "g",
+            meta=f"{int(prot_h / META_PROT * 100) if META_PROT else 0}% · meta {META_PROT} g",
+            extra_html=pbar(prot_h / META_PROT, RED) if META_PROT else "",
+        ), unsafe_allow_html=True)
+    with k4:
+        pct_agua = agua_l / META_AGUA
+        cor_agua = "#a78bfa" if pct_agua < 0.50 else ("#00d4ff" if pct_agua < 1.0 else "#00e676")
+        badge_agua = "⚠️ Desidratado" if pct_agua < 0.50 else ("⚡ Em progresso" if pct_agua < 1.0 else "✓ Hidratado")
+        st.markdown(sh_metric(
+            cor_agua, "Hidratação", f"{agua_l:.1f}", "L",
+            meta=f"{badge_agua} · {int(pct_agua * 100)}% · meta {META_AGUA}L · faltam {max(0.0, META_AGUA - agua_l):.1f}L",
+            extra_html=pbar(pct_agua, cor_agua),
+        ), unsafe_allow_html=True)
 
-with k3:
-    st.markdown(kpi_card(
-        RED, "Proteínas", f"{int(prot_h)}", "g",
-        pbar(prot_h / META_PROT, RED) +
-        f'<div style="font-family:{MONO};font-size:13px;color:{MUTED};margin-top:6px">'
-        f'{int(prot_h / META_PROT * 100)}% · meta {META_PROT} g</div>',
-    ), unsafe_allow_html=True)
+with tab_wear:
+    st.markdown('<div id="sec-wearable"></div>', unsafe_allow_html=True)
+    st.markdown(sh_section("Amazfit Bip 6", "Atividade · recovery"), unsafe_allow_html=True)
 
-with k4:
-    pct_agua = agua_l / META_AGUA
-    # Cor dinâmica: roxo sob déficit, ciano ao se aproximar e verde esmeralda ao bater
-    cor_agua = "#a78bfa" if pct_agua < 0.50 else ("#00d4ff" if pct_agua < 1.0 else "#00e676")
-    badge_agua = "⚠️ Desidratado" if pct_agua < 0.50 else ("⚡ Em Progresso" if pct_agua < 1.0 else "✓ Hidratado")
-    
-    st.markdown(kpi_card(
-        cor_agua, "Hidratação", f"{agua_l:.1f}", "L",
-        pbar(pct_agua, cor_agua) +
-        f'<div style="font-family:{MONO};font-size:13px;color:{cor_agua};margin-top:6px;font-weight:700">'
-        f'{badge_agua} · {int(pct_agua * 100)}%</div>'
-        f'<div style="font-size:12px;color:{MUTED};margin-top:3px">Meta: {META_AGUA}L · Faltam {max(0.0, META_AGUA - agua_l):.1f}L</div>',
-    ), unsafe_allow_html=True)
+    a_col1, a_col2, a_col3, a_col4 = st.columns(4)
+    with a_col1:
+        pct_p = passos / META_PASS if META_PASS else 0
+        st.markdown(sh_metric(
+            CYAN, "👟 Passos", f"{passos:,}", "",
+            meta=f"{int(pct_p * 100)}% da meta {META_PASS:,}",
+            extra_html=pbar(pct_p, CYAN),
+        ), unsafe_allow_html=True)
+    with a_col2:
+        st.markdown(sh_metric(
+            GREEN, "🔥 Gasto total", f"{gasto_total_dia:,}", "kcal",
+            meta=f"{def_txt} · atividade {cal_gasta:,} kcal",
+        ), unsafe_allow_html=True)
+    with a_col3:
+        st.markdown(sh_metric(
+            CYAN, "📍 Distância", f"{dist_km:.1f}", "km",
+            meta="distância registrada hoje",
+        ), unsafe_allow_html=True)
+    with a_col4:
+        pct_sp = sono_prof / META_SONO if META_SONO else 0
+        st.markdown(sh_metric(
+            PURPLE, "🌙 Sono", sono_h_fmt, "",
+            meta=f"profundo {sono_prof} min · meta {META_SONO} min",
+            extra_html=pbar(pct_sp, sono_cor),
+        ), unsafe_allow_html=True)
 
-# ════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 2 — AMAZFIT
-# ════════════════════════════════════════════════════════════════════════════
-st.markdown('<div id="sec-wearable"></div>', unsafe_allow_html=True)
-st.markdown(sec("Amazfit Bip 6", "Atividade · Recovery · Sono"), unsafe_allow_html=True)
+    if not _az.empty and "data_hora" in _az.columns:
+        try:
+            _az_ts_fmt = pd.to_datetime(str(_az["data_hora"].iloc[0])).strftime("%d/%m %H:%M")
+        except Exception:
+            _az_ts_fmt = str(_az["data_hora"].iloc[0])[:16]
+        st.markdown(
+            f'<p style="color:{MUTED};font-size:10px;text-align:right;font-family:{MONO};'
+            f'margin:4px 0 10px;letter-spacing:0.5px">⟳ sincronizado {_az_ts_fmt}</p>',
+            unsafe_allow_html=True,
+        )
 
-def az_card(icon, lbl, val, unit, extra=""):
-    return panel(
-        f'<div style="font-size:24px;margin-bottom:8px;text-align:center">{icon}</div>'
-        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1px;'
-        f'text-transform:uppercase;color:{MUTED};margin-bottom:6px;text-align:center">{lbl}</div>'
-        f'<div style="font-size:24px;font-weight:800;color:{TEXT};line-height:1;'
-        f'text-align:center;letter-spacing:-0.5px">{val}</div>'
-        f'<div style="font-size:14px;color:{MUTED};margin-top:5px;text-align:center">{unit}</div>'
-        f'{extra}',
-        extra="min-height:190px"
-    )
+    with st.expander("Recovery · PAI · corrida · musculação", expanded=False):
+        a_col5, a_col6, a_col7, a_col8 = st.columns(4)
+        with a_col5:
+            pct_hrv = min(1.0, max(0, (hrv - 20) / 60)) if hrv else 0
+            st.markdown(sh_metric(
+                GREEN, "💓 HRV", str(hrv), "ms",
+                meta=hrv_txt,
+                extra_html=pbar(pct_hrv, hrv_cor),
+            ), unsafe_allow_html=True)
+        with a_col6:
+            svg_pai = (
+                f'<div style="position:relative;width:56px;height:56px;margin:0 auto">'
+                f'<svg width="56" height="56" viewBox="0 0 60 60" style="transform:rotate(-90deg)">'
+                f'<circle cx="30" cy="30" r="24" fill="none" stroke="{BORDER}" stroke-width="6"/>'
+                f'<circle cx="30" cy="30" r="24" fill="none" stroke="{pai_cor}" stroke-width="6" '
+                f'stroke-dasharray="{pai_arc} 251" stroke-linecap="round"/></svg>'
+                f'<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);'
+                f'font-size:15px;font-weight:800;color:{pai_cor}">{pai}</div></div>'
+            )
+            st.markdown(sh_metric(
+                AMBER, "⚡ PAI", str(pai), "",
+                meta=f"meta ≥ {META_PAI}",
+                extra_html=svg_pai,
+            ), unsafe_allow_html=True)
+        with a_col7:
+            _corr_meta = (
+                f"{corrida_cal} kcal gastas" if corrida_cal > 0
+                else "sem corrida registrada"
+            )
+            st.markdown(sh_metric(
+                CYAN, "🏃 Corrida", f"{corrida_km:.2f}", "km",
+                meta=_corr_meta,
+            ), unsafe_allow_html=True)
+        with a_col8:
+            df_hevy_hoje = _q_hevy_hoje(hoje_sql)
+            hevy_unit = ""
+            if not df_hevy_hoje.empty:
+                h_title = df_hevy_hoje["titulo"].iloc[0]
+                h_dur = int(df_hevy_hoje["duracao_min"].iloc[0])
+                h_vol = float(df_hevy_hoje["volume_kg"].iloc[0])
+                hevy_val = str(h_dur)
+                hevy_unit = "min"
+                hevy_meta = f"{h_title} · vol {h_vol:,.0f} kg"
+            else:
+                df_hevy_last = _q_hevy_ultimo()
+                if not df_hevy_last.empty:
+                    l_title = df_hevy_last["titulo"].iloc[0]
+                    l_date = df_hevy_last["data_treino"].iloc[0]
+                    try:
+                        l_date_fmt = datetime.strptime(l_date, "%Y-%m-%d").strftime("%d/%m")
+                    except Exception:
+                        l_date_fmt = l_date
+                    hevy_val = "Descanso"
+                    hevy_meta = f"último treino {l_date_fmt} · {l_title}"
+                else:
+                    hevy_val = "—"
+                    hevy_meta = "nenhum treino sincronizado"
+            st.markdown(sh_metric(
+                GREEN, "💪 Hevy", hevy_val, hevy_unit,
+                meta=hevy_meta,
+            ), unsafe_allow_html=True)
 
-st.markdown(
-    f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:2px;'
-    f'text-transform:uppercase;color:{MUTED};margin:2px 0 8px;'
-    f'border-left:2px solid {CYAN};padding-left:8px">ATIVIDADE</div>',
-    unsafe_allow_html=True,
-)
-a_col1, a_col2, a_col3, a_col4 = st.columns(4)
+with tab_agenda:
+    st.markdown('<div id="sec-agenda"></div>', unsafe_allow_html=True)
+    st.markdown(sh_section("Agenda", f"Hoje · {hoje_pt}"), unsafe_allow_html=True)
 
-with a_col1:
-    pct_p = passos / META_PASS if META_PASS else 0
-    st.markdown(az_card(
-        "👟", "Passos", f"{passos:,}", f"meta {META_PASS:,}",
-        pbar(pct_p, CYAN) +
-        f'<div style="font-size:14px;font-weight:700;color:{CYAN};margin-top:7px;text-align:center">'
-        f'{int(pct_p * 100)}%</div>',
-    ), unsafe_allow_html=True)
-
-with a_col2:
-    st.markdown(az_card(
-        "🔥", "Gasto Total", f"{gasto_total_dia:,}", "kcal (TMB + Atividade)",
-        f'<div style="font-size:14px;font-weight:700;color:{def_cor};margin-top:7px;text-align:center">'
-        f'{def_txt} real</div>'
-        f'<div style="font-size:13px;color:{MUTED};margin-top:4px;text-align:center">'
-        f'Só atividade: {cal_gasta:,} kcal</div>',
-    ), unsafe_allow_html=True)
-
-with a_col3:
-    st.markdown(az_card("📍", "Distância Total", f"{dist_km:.1f}", "km hoje"),
-                unsafe_allow_html=True)
-
-with a_col4:
-    pct_sp = sono_prof / META_SONO if META_SONO else 0
-    st.markdown(az_card(
-        "🌙", "Sono total", sono_h_fmt, "Sono profundo",
-        pbar(pct_sp, sono_cor) +
-        f'<div style="font-size:14px;font-weight:700;color:{sono_cor};margin-top:6px;text-align:center">'
-        f'{sono_prof} min · meta {META_SONO}</div>',
-    ), unsafe_allow_html=True)
-
-st.markdown(
-    f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:2px;'
-    f'text-transform:uppercase;color:{MUTED};margin:12px 0 8px;'
-    f'border-left:2px solid {PURPLE};padding-left:8px">RECOVERY · MUSCULAÇÃO</div>',
-    unsafe_allow_html=True,
-)
-a_col5, a_col6, a_col7, a_col8 = st.columns(4)
-
-with a_col5:
-    pct_hrv = min(1.0, max(0, (hrv - 20) / 60)) if hrv else 0  # escala 20-80ms (range real masculino)
-    st.markdown(az_card(
-        "💓", "HRV", str(hrv), "ms",
-        pbar(pct_hrv, hrv_cor) +
-        f'<div style="display:flex;justify-content:space-between;margin-top:3px">'
-        f'<span style="font-family:{MONO};font-size:12px;color:{MUTED}">20</span>'
-        f'<span style="font-family:{MONO};font-size:12px;color:{MUTED}">{hrv}</span>'
-        f'<span style="font-family:{MONO};font-size:12px;color:{MUTED}">80</span></div>'
-        f'<div style="font-size:15px;font-weight:700;color:{hrv_cor};margin-top:5px;text-align:center">{hrv_txt}</div>',
-    ), unsafe_allow_html=True)
-
-with a_col6:
-    svg_pai = (
-        f'<div style="position:relative;width:60px;height:60px;margin:4px auto 2px">'
-        f'<svg width="60" height="60" viewBox="0 0 60 60" style="transform:rotate(-90deg)">'
-        f'<circle cx="30" cy="30" r="24" fill="none" stroke="{BORDER}" stroke-width="6"/>'
-        f'<circle cx="30" cy="30" r="24" fill="none" stroke="{pai_cor}" stroke-width="6" '
-        f'stroke-dasharray="{pai_arc} 251" stroke-linecap="round"/></svg>'
-        f'<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);'
-        f'font-size:16px;font-weight:800;color:{pai_cor}">{pai}</div></div>'
-        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};text-transform:uppercase;'
-        f'letter-spacing:1px;text-align:center">meta >= {META_PAI}</div>'
-    )
-    st.markdown(az_card("⚡", "PAI", "", "", svg_pai), unsafe_allow_html=True)
-
-with a_col7:
-    corrida_info = f'<div style="font-size:14px;font-weight:700;color:{CYAN};margin-top:7px;text-align:center">{corrida_cal} kcal gastas</div>' if corrida_cal > 0 else f'<div style="font-size:13px;color:{MUTED};margin-top:7px;text-align:center">Sem corrida registrada</div>'
-    st.markdown(az_card(
-        "🏃", "Corrida (Amazfit)", f"{corrida_km:.2f} km", "distância hoje",
-        corrida_info
-    ), unsafe_allow_html=True)
-
-with a_col8:
-    df_hevy_hoje = _q_hevy_hoje(hoje_sql)
-    if not df_hevy_hoje.empty:
-        h_title = df_hevy_hoje["titulo"].iloc[0]
-        h_dur = int(df_hevy_hoje["duracao_min"].iloc[0])
-        h_vol = float(df_hevy_hoje["volume_kg"].iloc[0])
-        hevy_val = f"🏋️ {h_dur} min"
-        hevy_extra = (
-            f'<div style="font-size:12px;font-weight:700;color:{GREEN};margin-top:6px;text-align:center;text-overflow:ellipsis;overflow:hidden;white-space:nowrap">{h_title}</div>'
-            f'<div style="font-size:11px;color:{MUTED};margin-top:2px;text-align:center">Vol: {h_vol:,.0f} kg</div>'
+    if not _gcal_ok:
+        st.markdown(
+            f'<div style="background:{BG2};border:1px dashed {BORDER};border-radius:10px;'
+            f'padding:20px 24px;display:flex;align-items:center;gap:16px">'
+            f'<span style="font-size:28px">📅</span>'
+            f'<div>'
+            f'<div style="font-family:{MONO};font-size:10px;font-weight:700;letter-spacing:1.5px;'
+            f'text-transform:uppercase;color:{MUTED};margin-bottom:4px">Google Calendar não configurado</div>'
+            f'<div style="font-size:12px;color:{GHOST}">Rode <code style="background:#0a1020;padding:1px 6px;'
+            f'border-radius:3px;color:{CYAN}">python get_gcal_token.py</code> localmente e adicione '
+            f'<code style="background:#0a1020;padding:1px 6px;border-radius:3px;color:{CYAN}">'
+            f'GOOGLE_CLIENT_ID</code>, <code style="background:#0a1020;padding:1px 6px;'
+            f'border-radius:3px;color:{CYAN}">GOOGLE_CLIENT_SECRET</code> e '
+            f'<code style="background:#0a1020;padding:1px 6px;border-radius:3px;color:{CYAN}">'
+            f'GOOGLE_REFRESH_TOKEN</code> nos Secrets do Streamlit.</div>'
+            f'</div></div>',
+            unsafe_allow_html=True,
         )
     else:
-        df_hevy_last = _q_hevy_ultimo()
-        if not df_hevy_last.empty:
-            l_title = df_hevy_last["titulo"].iloc[0]
-            l_date = df_hevy_last["data_treino"].iloc[0]
-            try:
-                l_date_fmt = datetime.strptime(l_date, "%Y-%m-%d").strftime("%d/%m")
-            except Exception:
-                l_date_fmt = l_date
-            hevy_val = "Descanso"
-            hevy_extra = (
-                f'<div style="font-size:11px;color:{MUTED};margin-top:6px;text-align:center">Último: {l_date_fmt}</div>'
-                f'<div style="font-size:11px;font-weight:700;color:{TEXT};margin-top:2px;text-align:center;text-overflow:ellipsis;overflow:hidden;white-space:nowrap">{l_title}</div>'
+        _eventos = _get_gcal_eventos(hoje_sql)
+        _ag_left, _ag_right = st.columns([1, 0.18])
+        with _ag_right:
+            if st.button("🔄 Agenda", key="btn_gcal_refresh", use_container_width=True,
+                         help="Atualizar eventos do Google Calendar"):
+                _invalidate_cache(_get_gcal_eventos)
+                st.rerun()
+
+        if not _eventos:
+            st.markdown(
+                f'<div style="text-align:center;padding:24px;border:1px dashed {BORDER};'
+                f'border-radius:8px">'
+                f'<div style="font-size:24px;margin-bottom:6px">✅</div>'
+                f'<div style="font-family:{MONO};font-size:10px;font-weight:700;letter-spacing:1.5px;'
+                f'text-transform:uppercase;color:{MUTED}">Sem eventos para hoje</div>'
+                f'<div style="font-size:11px;color:{GHOST};margin-top:4px">Dia livre na agenda</div>'
+                f'</div>',
+                unsafe_allow_html=True,
             )
         else:
-            hevy_val = "Sem treinos"
-            hevy_extra = f'<div style="font-size:11px;color:{MUTED};margin-top:6px;text-align:center">Nenhum treino sincronizado</div>'
-    st.markdown(az_card(
-        "💪", "Musculação (Hevy)", hevy_val, "volume / tempo",
-        hevy_extra
-    ), unsafe_allow_html=True)
-
-# ── Timestamp dos dados Amazfit ───────────────────────────────────────────────
-if not _az.empty and "data_hora" in _az.columns:
-    try:
-        _az_ts_fmt = pd.to_datetime(str(_az["data_hora"].iloc[0])).strftime("%d/%m %H:%M")
-    except Exception:
-        _az_ts_fmt = str(_az["data_hora"].iloc[0])[:16]
-    st.markdown(
-        f'<p style="color:{MUTED};font-size:10px;text-align:right;font-family:{MONO};'
-        f'margin:2px 0 8px;letter-spacing:0.5px">⟳ sincronizado {_az_ts_fmt}</p>',
-        unsafe_allow_html=True,
-    )
+            _TREINO_KW = ["treino", "série", "serie", "musculação", "musculacao",
+                          "cardio", "hiit", "zona 2", "zone 2", "corrida", "gym",
+                          "academia", "workout", "cross", "funcional"]
+            _cols_ag = st.columns(min(len(_eventos), 4))
+            for _i, _ev in enumerate(_eventos):
+                _titulo_low = _ev["titulo"].lower()
+                _is_treino  = any(kw in _titulo_low for kw in _TREINO_KW)
+                _ev_cor     = GREEN if _is_treino else _ev["cor"]
+                _ev_bg      = "rgba(0,230,118,0.05)" if _is_treino else f"{BG2}"
+                _ev_border  = f"rgba(0,230,118,0.3)" if _is_treino else f"{BORDER}"
+                _horario_html = ""
+                if _ev["dia_todo"]:
+                    _horario_html = (
+                        f'<span style="font-family:{MONO};font-size:11px;font-weight:700;'
+                        f'color:{MUTED};background:{BORDER};border-radius:3px;'
+                        f'padding:2px 8px">DIA TODO</span>'
+                    )
+                elif _ev["inicio"]:
+                    _horario_html = (
+                        f'<span style="font-family:{MONO};font-size:15px;font-weight:700;'
+                        f'color:{_ev_cor}">{_ev["inicio"]}</span>'
+                        + (f'<span style="font-size:13px;color:{GHOST}"> → {_ev["fim"]}</span>'
+                           if _ev["fim"] else "")
+                    )
+                _local_html = ""
+                if _ev["local"]:
+                    _local_html = (
+                        f'<div style="font-size:12px;color:{GHOST};margin-top:7px;'
+                        f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+                        f'📍 {_ev["local"]}</div>'
+                    )
+                _treino_badge = (
+                    f'<span style="font-family:{MONO};font-size:9px;font-weight:700;'
+                    f'background:rgba(0,230,118,0.12);color:{GREEN};'
+                    f'border:1px solid rgba(0,230,118,0.3);padding:1px 6px;'
+                    f'border-radius:3px;letter-spacing:1px;margin-left:6px">TREINO</span>'
+                    if _is_treino else ""
+                )
+                _card_ag = (
+                    f'<div style="background:{_ev_bg};border:1px solid {_ev_border};'
+                    f'border-top:3px solid {_ev_cor};border-radius:8px;'
+                    f'padding:18px 18px 16px;height:100%">'
+                    f'<div style="margin-bottom:10px">{_horario_html}</div>'
+                    f'<div style="font-size:15px;font-weight:700;color:{TEXT};'
+                    f'line-height:1.35;margin-bottom:6px">{_ev["titulo"]}</div>'
+                    f'<div style="margin-top:4px">{_treino_badge}</div>'
+                    f'{_local_html}</div>'
+                )
+                with _cols_ag[_i % 4]:
+                    st.markdown(_card_ag, unsafe_allow_html=True)
 
 # ════════════════════════════════════════════════════════════════════════════
 # PAINEL — DETALHES DOS TREINOS (Hevy)
@@ -2728,122 +2871,6 @@ if _toggle_key("corrida_tab_open"):
         )
 
     st.markdown('</div>', unsafe_allow_html=True)
-
-# ════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 3 — AGENDA DO DIA (Google Calendar)
-# ════════════════════════════════════════════════════════════════════════════
-_gcal_ok = bool(
-    (os.getenv("GOOGLE_CLIENT_ID") or "").strip() or
-    (os.getenv("GOOGLE_REFRESH_TOKEN") or "").strip()
-)
-try:
-    _gcal_ok = _gcal_ok or bool(
-        st.secrets.get("GOOGLE_CLIENT_ID") or st.secrets.get("GOOGLE_REFRESH_TOKEN")
-    )
-except Exception:
-    pass
-
-st.markdown(sec("Agenda", f"Hoje · {hoje_pt}"), unsafe_allow_html=True)
-
-if not _gcal_ok:
-    # Card de configuração — ainda sem credenciais
-    st.markdown(
-        f'<div style="background:{BG2};border:1px dashed {BORDER};border-radius:10px;'
-        f'padding:20px 24px;display:flex;align-items:center;gap:16px">'
-        f'<span style="font-size:28px">📅</span>'
-        f'<div>'
-        f'<div style="font-family:{MONO};font-size:10px;font-weight:700;letter-spacing:1.5px;'
-        f'text-transform:uppercase;color:{MUTED};margin-bottom:4px">Google Calendar não configurado</div>'
-        f'<div style="font-size:12px;color:{GHOST}">Rode <code style="background:#0a1020;padding:1px 6px;'
-        f'border-radius:3px;color:{CYAN}">python get_gcal_token.py</code> localmente e adicione '
-        f'<code style="background:#0a1020;padding:1px 6px;border-radius:3px;color:{CYAN}">'
-        f'GOOGLE_CLIENT_ID</code>, <code style="background:#0a1020;padding:1px 6px;'
-        f'border-radius:3px;color:{CYAN}">GOOGLE_CLIENT_SECRET</code> e '
-        f'<code style="background:#0a1020;padding:1px 6px;border-radius:3px;color:{CYAN}">'
-        f'GOOGLE_REFRESH_TOKEN</code> nos Secrets do Streamlit.</div>'
-        f'</div></div>',
-        unsafe_allow_html=True,
-    )
-else:
-    _eventos = _get_gcal_eventos(hoje_sql)
-    _ag_left, _ag_right = st.columns([1, 0.18])
-    with _ag_right:
-        if st.button("🔄 Agenda", key="btn_gcal_refresh", use_container_width=True,
-                     help="Atualizar eventos do Google Calendar"):
-            _invalidate_cache(_get_gcal_eventos)
-            st.rerun()
-
-    if not _eventos:
-        st.markdown(
-            f'<div style="text-align:center;padding:24px;border:1px dashed {BORDER};'
-            f'border-radius:8px">'
-            f'<div style="font-size:24px;margin-bottom:6px">✅</div>'
-            f'<div style="font-family:{MONO};font-size:10px;font-weight:700;letter-spacing:1.5px;'
-            f'text-transform:uppercase;color:{MUTED}">Sem eventos para hoje</div>'
-            f'<div style="font-size:11px;color:{GHOST};margin-top:4px">Dia livre na agenda</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-    else:
-        # Detecta se tem treino no título (para destaque automático)
-        _TREINO_KW = ["treino", "série", "serie", "musculação", "musculacao",
-                      "cardio", "hiit", "zona 2", "zone 2", "corrida", "gym",
-                      "academia", "workout", "cross", "funcional"]
-
-        _cols_ag = st.columns(min(len(_eventos), 4))
-        for _i, _ev in enumerate(_eventos):
-            _titulo_low = _ev["titulo"].lower()
-            _is_treino  = any(kw in _titulo_low for kw in _TREINO_KW)
-            _ev_cor     = GREEN if _is_treino else _ev["cor"]
-            _ev_bg      = "rgba(0,230,118,0.05)" if _is_treino else f"{BG2}"
-            _ev_border  = f"rgba(0,230,118,0.3)" if _is_treino else f"{BORDER}"
-
-            _horario_html = ""
-            if _ev["dia_todo"]:
-                _horario_html = (
-                    f'<span style="font-family:{MONO};font-size:11px;font-weight:700;'
-                    f'color:{MUTED};background:{BORDER};border-radius:3px;'
-                    f'padding:2px 8px">DIA TODO</span>'
-                )
-            elif _ev["inicio"]:
-                _horario_html = (
-                    f'<span style="font-family:{MONO};font-size:15px;font-weight:700;'
-                    f'color:{_ev_cor}">{_ev["inicio"]}</span>'
-                    + (f'<span style="font-size:13px;color:{GHOST}"> → {_ev["fim"]}</span>'
-                       if _ev["fim"] else "")
-                )
-
-            _local_html = ""
-            if _ev["local"]:
-                _local_html = (
-                    f'<div style="font-size:12px;color:{GHOST};margin-top:7px;'
-                    f'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
-                    f'📍 {_ev["local"]}</div>'
-                )
-
-            _treino_badge = (
-                f'<span style="font-family:{MONO};font-size:9px;font-weight:700;'
-                f'background:rgba(0,230,118,0.12);color:{GREEN};'
-                f'border:1px solid rgba(0,230,118,0.3);padding:1px 6px;'
-                f'border-radius:3px;letter-spacing:1px;margin-left:6px">TREINO</span>'
-                if _is_treino else ""
-            )
-
-            _card_ag = (
-                f'<div style="background:{_ev_bg};border:1px solid {_ev_border};'
-                f'border-top:3px solid {_ev_cor};border-radius:8px;'
-                f'padding:18px 18px 16px;height:100%">'
-                f'<div style="margin-bottom:10px">{_horario_html}</div>'
-                f'<div style="font-size:15px;font-weight:700;color:{TEXT};'
-                f'line-height:1.35;margin-bottom:6px">'
-                f'{_ev["titulo"]}</div>'
-                f'<div style="margin-top:4px">{_treino_badge}</div>'
-                f'{_local_html}'
-                f'</div>'
-            )
-
-            with _cols_ag[_i % 4]:
-                st.markdown(_card_ag, unsafe_allow_html=True)
 
 # ── BLOCO: REGISTROS ─────────────────────────────────────────────────────────
 st.markdown(
@@ -5160,6 +5187,6 @@ if _toggle_key("evac_hist_open") and not _ev_df.empty:
 st.markdown(
     f'<div style="text-align:center;padding:20px 0 6px;border-top:1px solid {BORDER2};margin-top:20px">'
     f'<span style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:2px;text-transform:uppercase">'
-    f'sys.health_tracker · leandro r. · rio de janeiro</span></div>',
+    f'sys.health_tracker · leandro r. · rio de janeiro · {_APP_BUILD}</span></div>',
     unsafe_allow_html=True,
 )
