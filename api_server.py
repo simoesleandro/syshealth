@@ -3,7 +3,9 @@ api_server.py — Flask API standalone para o SysHealth.
 Expõe dados do banco via HTTP para consumo externo (ex: Hermes Lite).
 Porta: 5060
 """
+import json
 import math
+from collections import defaultdict
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -155,6 +157,201 @@ def treinos():
         return jsonify(rows)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/treinos/analise")
+def treinos_analise():
+    try:
+        dias = int(request.args.get("dias", 30))
+    except (TypeError, ValueError):
+        dias = 30
+
+    result = {
+        "periodo_dias": dias,
+        "total_treinos": 0,
+        "volume_total_kg": None,
+        "duracao_media_min": None,
+        "treinos_por_semana": None,
+        "ultimo_treino": None,
+        "exercicios_frequentes": [],
+        "grupos_musculares": {},
+    }
+
+    try:
+        cutoff = (datetime.now(_TZ).date() - timedelta(days=dias)).isoformat()
+        df = query(
+            "SELECT data_hora, duracao_min, volume_kg, exercicios_json "
+            "FROM hevy_treinos "
+            "WHERE date(data_hora,'localtime') >= ? "
+            "ORDER BY data_hora DESC",
+            [cutoff],
+        )
+        if not df.empty:
+            result["total_treinos"] = len(df)
+
+            try:
+                vol = df["volume_kg"].dropna()
+                result["volume_total_kg"] = round(float(vol.sum()), 2) if not vol.empty else None
+            except Exception:
+                pass
+
+            try:
+                dur = df["duracao_min"].dropna()
+                result["duracao_media_min"] = round(float(dur.mean())) if not dur.empty else None
+            except Exception:
+                pass
+
+            try:
+                result["treinos_por_semana"] = round(len(df) / (dias / 7), 1)
+            except Exception:
+                pass
+
+            try:
+                result["ultimo_treino"] = str(df["data_hora"].iloc[0])[:10]
+            except Exception:
+                pass
+
+            try:
+                contagem = defaultdict(lambda: {"vezes": 0, "carga_max_kg": 0.0})
+                for raw in df["exercicios_json"].dropna():
+                    try:
+                        exs = json.loads(raw)
+                        if not isinstance(exs, list):
+                            continue
+                        for ex in exs:
+                            titulo = ex.get("titulo") or ex.get("title") or ex.get("name") or ""
+                            if not titulo:
+                                continue
+                            contagem[titulo]["vezes"] += 1
+                            sets = ex.get("sets") or ex.get("series") or []
+                            for s in sets:
+                                try:
+                                    peso = float(s.get("weight_kg") or s.get("peso_kg") or s.get("carga_kg") or 0)
+                                except (TypeError, ValueError):
+                                    peso = 0.0
+                                if peso > contagem[titulo]["carga_max_kg"]:
+                                    contagem[titulo]["carga_max_kg"] = peso
+                    except Exception:
+                        continue
+                top10 = sorted(contagem.items(), key=lambda x: x[1]["vezes"], reverse=True)[:10]
+                result["exercicios_frequentes"] = [
+                    {"titulo": t, "vezes": v["vezes"], "carga_max_kg": v["carga_max_kg"]}
+                    for t, v in top10
+                ]
+            except Exception:
+                pass
+
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    return jsonify(result)
+
+
+@app.route("/api/corpo")
+def corpo():
+    try:
+        dias = int(request.args.get("dias", 90))
+    except (TypeError, ValueError):
+        dias = 90
+
+    result = {
+        "peso_atual": None,
+        "peso_inicial": None,
+        "variacao_kg": None,
+        "historico": [],
+    }
+
+    try:
+        cutoff = (datetime.now(_TZ).date() - timedelta(days=dias)).isoformat()
+        df = query(
+            "SELECT data, peso, cintura FROM medidas "
+            "WHERE data >= ? "
+            "ORDER BY data DESC",
+            [cutoff],
+        )
+        if not df.empty:
+            try:
+                result["peso_atual"] = _v(df["peso"].iloc[0])
+            except Exception:
+                pass
+            try:
+                result["peso_inicial"] = _v(df["peso"].iloc[-1])
+            except Exception:
+                pass
+            try:
+                if result["peso_atual"] is not None and result["peso_inicial"] is not None:
+                    result["variacao_kg"] = round(result["peso_atual"] - result["peso_inicial"], 2)
+            except Exception:
+                pass
+            try:
+                result["historico"] = [
+                    {
+                        "data": str(row["data"])[:10],
+                        "peso": _v(row["peso"]),
+                        "cintura": _v(row["cintura"]),
+                    }
+                    for _, row in df.iterrows()
+                ]
+            except Exception:
+                pass
+
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    return jsonify(result)
+
+
+@app.route("/api/sono")
+def sono():
+    try:
+        dias = int(request.args.get("dias", 14))
+    except (TypeError, ValueError):
+        dias = 14
+
+    result = {
+        "media_sono_min": None,
+        "media_hrv": None,
+        "historico": [],
+    }
+
+    try:
+        cutoff = (datetime.now(_TZ).date() - timedelta(days=dias)).isoformat()
+        df = query(
+            "SELECT date(data_hora,'localtime') AS data, sono_total_min, hrv_ms, passos, pai "
+            "FROM amazfit_dados "
+            "WHERE date(data_hora,'localtime') >= ? "
+            "ORDER BY data DESC",
+            [cutoff],
+        )
+        if not df.empty:
+            try:
+                sono_vals = df["sono_total_min"].dropna()
+                result["media_sono_min"] = round(float(sono_vals.mean())) if not sono_vals.empty else None
+            except Exception:
+                pass
+            try:
+                hrv_vals = df["hrv_ms"].dropna()
+                result["media_hrv"] = round(float(hrv_vals.mean())) if not hrv_vals.empty else None
+            except Exception:
+                pass
+            try:
+                result["historico"] = [
+                    {
+                        "data": str(row["data"])[:10],
+                        "sono_min": _v(row["sono_total_min"]),
+                        "hrv": _v(row["hrv_ms"]),
+                        "passos": _v(row["passos"]),
+                        "pai": _v(row["pai"]),
+                    }
+                    for _, row in df.iterrows()
+                ]
+            except Exception:
+                pass
+
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    return jsonify(result)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
