@@ -41,13 +41,14 @@ def _get_existing(day):
 
 
 def zepp_sync(day=None):
-    token   = os.getenv("ZEPP_APP_TOKEN", "").strip()
-    user_id = os.getenv("ZEPP_USER_ID", "").strip()
-    if not token or not user_id:
-        log.error("ZEPP_APP_TOKEN ou ZEPP_USER_ID não configurados")
-        return None
+    """Busca resumo Amazfit/Zepp do dia. Retorna dict ou None — nunca propaga exceção."""
     day = day or date.today().strftime("%Y-%m-%d")
     try:
+        token   = os.getenv("ZEPP_APP_TOKEN", "").strip()
+        user_id = os.getenv("ZEPP_USER_ID", "").strip()
+        if not token or not user_id:
+            log.error("ZEPP_APP_TOKEN ou ZEPP_USER_ID não configurados")
+            return None
         r = requests.get(f"{BASE}/v1/data/band_data.json",
                          headers=make_headers(token),
                          params={"query_type": "summary", "device_type": "0",
@@ -69,7 +70,7 @@ def zepp_sync(day=None):
             return None
 
         if not items:
-            log.warning(f"Zepp sem dados para {day} (code={code}, msg={msg})")
+            log.info(f"Zepp sem dados para {day} (code={code}, msg={msg})")
             return None
 
         s    = decode_summary(items[0].get("summary", ""))
@@ -111,13 +112,18 @@ def init_db(path=None):
 def save(path_or_row, row=None):
     if row is None:
         row = path_or_row
-    DB.execute("DELETE FROM amazfit_dados WHERE data_hora=?", [row["data_hora"]])
-    DB.execute(
-        "INSERT INTO amazfit_dados (data_hora, passos, calorias_gastas, distancia_km, sono_total_min, sono_profundo_min, hrv_ms, pai, corrida_km, corrida_cal) VALUES (?,?,?,?,?,?,?,?,?,?)",
-        [row["data_hora"], row["passos"], row["calorias_gastas"], row["distancia_km"],
-         row["sono_total_min"], row["sono_profundo_min"], row["hrv_ms"], row["pai"],
-         row.get("corrida_km", 0.0), row.get("corrida_cal", 0)]
-    )
+    try:
+        DB.execute("DELETE FROM amazfit_dados WHERE data_hora=?", [row["data_hora"]])
+        DB.execute(
+            "INSERT INTO amazfit_dados (data_hora, passos, calorias_gastas, distancia_km, sono_total_min, sono_profundo_min, hrv_ms, pai, corrida_km, corrida_cal) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            [row["data_hora"], row["passos"], row["calorias_gastas"], row["distancia_km"],
+             row["sono_total_min"], row["sono_profundo_min"], row["hrv_ms"], row["pai"],
+             row.get("corrida_km", 0.0), row.get("corrida_cal", 0)]
+        )
+        return True
+    except Exception as e:
+        log.error(f"Erro ao salvar dados Zepp: {e}", exc_info=True)
+        return False
 
 
 if __name__ == "__main__":

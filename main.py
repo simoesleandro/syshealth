@@ -15,17 +15,15 @@ FUSO_BR = ZoneInfo("America/Sao_Paulo")
 
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    datefmt="%H:%M:%S",
-)
 log = logging.getLogger("main")
 
-# Sem criacao de pasta — banco e o Turso
-import db as DB
-DB.init_tables()
-log.info(f"Banco: {DB.backend()}")
+
+def _bootstrap_db():
+    """Inicializa o banco — só no processo worker (nunca como import do dashboard)."""
+    import db as DB
+    DB.init_tables()
+    log.info(f"Banco: {DB.backend()}")
+    return DB
 
 
 def run_bot():
@@ -61,7 +59,21 @@ def run_zepp_scheduler():
 
 
 if __name__ == "__main__":
+    import sys
+
+    if "streamlit" in sys.modules:
+        raise RuntimeError(
+            "main.py is the Fly.io bot worker entrypoint. "
+            "Run the dashboard with: streamlit run dashboard.py"
+        )
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s  %(levelname)-8s  %(message)s",
+        datefmt="%H:%M:%S",
+    )
     log.info("=== SYS.HEALTH iniciando ===")
+    _bootstrap_db()
 
     t_zepp = threading.Thread(target=run_zepp_scheduler, daemon=True)
     t_zepp.start()

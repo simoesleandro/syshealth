@@ -604,16 +604,26 @@ def _salvar_alimento_db(descricao, categoria, kcal, prot, carb, gord, componente
 def _zepp_sync_dashboard(day: str | None = None) -> str:
     """
     Chama zepp_sync + salva no banco. Retorna mensagem de status.
-    Precisa de ZEPP_APP_TOKEN e ZEPP_USER_ID nos secrets.
+    Nunca propaga exceção — falha de API não deve derrubar o dashboard.
     """
     try:
         import zepp_sync as _zs
         d = day or datetime.now(_BR).strftime("%Y-%m-%d")
-        row = _zs.zepp_sync(d)
-        if row:
-            _zs.save(row)
-            return f"Amazfit sincronizado — {row['passos']:,} passos · {row['sono_total_min']} min sono"
-        return "Zepp: sem dados novos"
+        try:
+            row = _zs.zepp_sync(d)
+        except Exception:
+            return "Zepp: API indisponível"
+        if not row:
+            return "Zepp: sem dados novos"
+        try:
+            if not _zs.save(row):
+                return "Zepp: falha ao salvar no banco"
+        except Exception:
+            return "Zepp: falha ao salvar no banco"
+        return (
+            f"Amazfit sincronizado — {row['passos']:,} passos · "
+            f"{row['sono_total_min']} min sono"
+        )
     except Exception as e:
         return f"Erro sync: {e}"
 
@@ -811,6 +821,16 @@ def _q_macros(dia: str):
 @st.cache_data(ttl=60)
 def _q_amazfit():
     return DB.query("SELECT * FROM amazfit_dados ORDER BY date(data_hora) DESC LIMIT 1")
+
+
+def _amazfit_hoje_df() -> pd.DataFrame:
+    """Último registro Amazfit; DataFrame vazio se a consulta ou o sync falhar."""
+    try:
+        df = _q_amazfit()
+        return df if df is not None and not df.empty else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
 
 @st.cache_data(ttl=60)
 def _q_refeicoes(dia: str):
@@ -1010,7 +1030,7 @@ prot_h = float(_dr["prot"].iloc[0] or 0)
 carb_h = float(_dr["carb"].iloc[0] or 0)
 gord_h = float(_dr["gord"].iloc[0] or 0)
 
-_az       = _q_amazfit()
+_az       = _amazfit_hoje_df()
 passos    = int(_az["passos"].iloc[0])            if not _az.empty else 0
 cal_gasta = int(_az["calorias_gastas"].iloc[0])   if not _az.empty else 0
 dist_km   = float(_az["distancia_km"].iloc[0])    if not _az.empty else 0.0
@@ -1878,16 +1898,35 @@ def _tab_editar():
                     _notif("Refeicao removida", "err"); st.rerun()
 
 
-# ── Auto-sync Zepp na primeira abertura da sessão ────────────────────────────
+# ── Auto-sync Zepp na primeira abertura da sessão (não bloqueia o startup) ───
 _zepp_status_txt = "sincronizado"
 _zepp_status_cor = GREEN
 if "zepp_auto_synced" not in st.session_state:
     st.session_state["zepp_auto_synced"] = True
-    _sync_result = _zepp_sync_dashboard(hoje_sql)
+    _zepp_status_txt = "sincronizando"
+    _zepp_status_cor = AMBER
+
+    def _zepp_auto_sync_bg():
+        try:
+            result = _zepp_sync_dashboard(hoje_sql)
+        except Exception:
+            result = "Zepp: indisponível"
+        st.session_state["_zepp_auto_sync_result"] = result
+        if "passos" in result or "sincronizado" in result.lower():
+            try:
+                _invalidate_cache(_q_amazfit)
+            except Exception:
+                pass
+
+    import threading
+    threading.Thread(target=_zepp_auto_sync_bg, daemon=True).start()
+
+elif st.session_state.get("_zepp_auto_sync_result"):
+    _sync_result = st.session_state.pop("_zepp_auto_sync_result")
     if "passos" in _sync_result or "sincronizado" in _sync_result.lower():
-        DB.init_tables()
-        _invalidate_cache(_q_amazfit)
-    elif "Erro" in _sync_result:
+        _zepp_status_txt = "sincronizado"
+        _zepp_status_cor = GREEN
+    elif "Erro" in _sync_result or "falha" in _sync_result.lower() or "indisponível" in _sync_result.lower():
         _zepp_status_txt = "erro de sync"
         _zepp_status_cor = RED
     else:

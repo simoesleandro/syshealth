@@ -158,6 +158,8 @@ def treinos():
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+# Não chame app.run() no import — Streamlit Cloud executa apenas dashboard.py.
+# Flask usa Werkzeug aqui (porta 5060); não há uvicorn neste projeto.
 
 if __name__ == "__main__":
-    app.run(port=5060, debug=False)
+    app.run(host="127.0.0.1", port=5060, debug=False)
