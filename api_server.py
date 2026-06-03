@@ -310,14 +310,16 @@ def sono():
 
     result = {
         "media_sono_min": None,
+        "media_sono_profundo_min": None,
         "media_hrv": None,
+        "media_pai": None,
         "historico": [],
     }
 
     try:
         cutoff = (datetime.now(_TZ).date() - timedelta(days=dias)).isoformat()
         df = query(
-            "SELECT data_hora, sono_total_min, hrv_ms, passos, pai "
+            "SELECT data_hora, sono_total_min, sono_profundo_min, hrv_ms, passos, pai "
             "FROM amazfit_dados "
             "WHERE data_hora >= ? "
             "ORDER BY data_hora DESC",
@@ -330,8 +332,18 @@ def sono():
             except Exception:
                 pass
             try:
+                profundo_vals = df["sono_profundo_min"].dropna()
+                result["media_sono_profundo_min"] = round(float(profundo_vals.mean())) if not profundo_vals.empty else None
+            except Exception:
+                pass
+            try:
                 hrv_vals = df["hrv_ms"].dropna()
                 result["media_hrv"] = round(float(hrv_vals.mean())) if not hrv_vals.empty else None
+            except Exception:
+                pass
+            try:
+                pai_vals = df["pai"].dropna()
+                result["media_pai"] = round(float(pai_vals.mean())) if not pai_vals.empty else None
             except Exception:
                 pass
             try:
@@ -339,6 +351,7 @@ def sono():
                     {
                         "data": str(row["data_hora"])[:10],
                         "sono_min": _v(row["sono_total_min"]),
+                        "sono_profundo_min": _v(row["sono_profundo_min"]),
                         "hrv": _v(row["hrv_ms"]),
                         "passos": _v(row["passos"]),
                         "pai": _v(row["pai"]),
