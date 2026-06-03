@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
-DB_PATH      = os.getenv("DB_PATH", "nutricao.db").strip()
+DB_PATH      = os.getenv("DB_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "nutricao.db")).strip()
 USE_PG       = bool(SUPABASE_URL)
 
 if USE_PG:
