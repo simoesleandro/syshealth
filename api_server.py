@@ -317,10 +317,10 @@ def sono():
     try:
         cutoff = (datetime.now(_TZ).date() - timedelta(days=dias)).isoformat()
         df = query(
-            "SELECT date(data_hora,'localtime') AS data, sono_total_min, hrv_ms, passos, pai "
+            "SELECT data_hora, sono_total_min, hrv_ms, passos, pai "
             "FROM amazfit_dados "
             "WHERE date(data_hora,'localtime') >= ? "
-            "ORDER BY data DESC",
+            "ORDER BY data_hora DESC",
             [cutoff],
         )
         if not df.empty:
@@ -337,7 +337,7 @@ def sono():
             try:
                 result["historico"] = [
                     {
-                        "data": str(row["data"])[:10],
+                        "data": str(row["data_hora"])[:10],
                         "sono_min": _v(row["sono_total_min"]),
                         "hrv": _v(row["hrv_ms"]),
                         "passos": _v(row["passos"]),
@@ -370,7 +370,7 @@ def corridas():
     try:
         cutoff = (datetime.now(_TZ).date() - timedelta(days=dias)).isoformat()
         df = query(
-            "SELECT date(data_hora,'localtime') AS data, corrida_km, corrida_cal "
+            "SELECT data_hora, corrida_km, corrida_cal "
             "FROM amazfit_dados "
             "WHERE corrida_km > 0 AND date(data_hora,'localtime') >= ? "
             "ORDER BY data_hora DESC",
@@ -386,7 +386,7 @@ def corridas():
             try:
                 result["historico"] = [
                     {
-                        "data": str(row["data"])[:10],
+                        "data": str(row["data_hora"])[:10],
                         "distancia_km": _v(row["corrida_km"]),
                         "calorias": _v(row["corrida_cal"]),
                     }
