@@ -1,10 +1,17 @@
 import streamlit as st
+import logging
 import os, pandas as pd, re, json, requests
 import plotly.graph_objects as go
 import google.generativeai as genai
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import nutri_engine as NE
+
+# Zepp: evita logs de "sem dados" no stderr do Streamlit Cloud (não são erros de app)
+logging.getLogger("zepp_sync").setLevel(logging.ERROR)
+
+# Identificador visível no deploy (Streamlit Cloud → Management → Logs)
+_APP_BUILD = "2026-06-03-cloud-v2"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -601,6 +608,20 @@ def _salvar_alimento_db(descricao, categoria, kcal, prot, carb, gord, componente
 
 
 # ── ZEPP SYNC ─────────────────────────────────────────────────────────────────
+def _runtime_allows_zepp_autosync() -> bool:
+    """Auto-sync só em dev local; Cloud/headless usa botão 🔄 Zepp (evita crash no boot)."""
+    if os.getenv("ZEPP_AUTO_SYNC", "").strip().lower() in ("0", "false", "no"):
+        return False
+    if os.getenv("STREAMLIT_RUNTIME_ENV") or os.getenv("STREAMLIT_SHARING_MODE"):
+        return False
+    try:
+        if st.get_option("server.headless"):
+            return False
+    except Exception:
+        pass
+    return True
+
+
 def _zepp_sync_dashboard(day: str | None = None) -> str:
     """
     Chama zepp_sync + salva no banco. Retorna mensagem de status.
@@ -1898,40 +1919,30 @@ def _tab_editar():
                     _notif("Refeicao removida", "err"); st.rerun()
 
 
-# ── Auto-sync Zepp na primeira abertura da sessão (não bloqueia o startup) ───
+# ── Auto-sync Zepp (desligado no Streamlit Cloud — sync via bot 07h ou botão 🔄) ─
 _zepp_status_txt = "sincronizado"
 _zepp_status_cor = GREEN
 if "zepp_auto_synced" not in st.session_state:
     st.session_state["zepp_auto_synced"] = True
-    _zepp_status_txt = "sincronizando"
-    _zepp_status_cor = AMBER
-
-    def _zepp_auto_sync_bg():
+    if _runtime_allows_zepp_autosync():
         try:
-            result = _zepp_sync_dashboard(hoje_sql)
-        except Exception:
-            result = "Zepp: indisponível"
-        st.session_state["_zepp_auto_sync_result"] = result
-        if "passos" in result or "sincronizado" in result.lower():
-            try:
+            _sync_result = _zepp_sync_dashboard(hoje_sql)
+            if "passos" in _sync_result or "sincronizado" in _sync_result.lower():
                 _invalidate_cache(_q_amazfit)
-            except Exception:
-                pass
-
-    import threading
-    threading.Thread(target=_zepp_auto_sync_bg, daemon=True).start()
-
-elif st.session_state.get("_zepp_auto_sync_result"):
-    _sync_result = st.session_state.pop("_zepp_auto_sync_result")
-    if "passos" in _sync_result or "sincronizado" in _sync_result.lower():
-        _zepp_status_txt = "sincronizado"
-        _zepp_status_cor = GREEN
-    elif "Erro" in _sync_result or "falha" in _sync_result.lower() or "indisponível" in _sync_result.lower():
-        _zepp_status_txt = "erro de sync"
-        _zepp_status_cor = RED
+                _zepp_status_txt = "sincronizado"
+                _zepp_status_cor = GREEN
+            elif "Erro" in _sync_result or "falha" in _sync_result.lower():
+                _zepp_status_txt = "erro de sync"
+                _zepp_status_cor = RED
+            else:
+                _zepp_status_txt = "sem dados novos"
+                _zepp_status_cor = AMBER
+        except Exception:
+            _zepp_status_txt = "sem dados novos"
+            _zepp_status_cor = AMBER
     else:
-        _zepp_status_txt = "sem dados novos"
-        _zepp_status_cor = AMBER
+        _zepp_status_txt = "sync manual"
+        _zepp_status_cor = MUTED
 
 # ── Auto-sync Hevy na primeira abertura da sessão ────────────────────────────
 _hevy_status_txt = "sincronizado"
@@ -1960,7 +1971,8 @@ with _tb_left:
         f'<div class="sh-topbar" style="padding-bottom:14px;border-bottom:1px solid {BORDER2};margin-bottom:6px">'
         f'<div style="font-family:{MONO};font-size:12px;letter-spacing:2px;color:{CYAN};text-transform:uppercase">sys.health_tracker</div>'
         f'<div style="font-size:28px;font-weight:800;color:{TEXT};line-height:1;letter-spacing:-0.5px;margin-top:2px">Leandro R.</div>'
-        f'<div style="font-size:12px;color:{GHOST};text-transform:uppercase;letter-spacing:1px;margin-top:4px">Rio de Janeiro &nbsp;·&nbsp; Dashboard v2.2</div>'
+        f'<div style="font-size:12px;color:{GHOST};text-transform:uppercase;letter-spacing:1px;margin-top:4px">'
+        f'Rio de Janeiro &nbsp;·&nbsp; Dashboard v2.2 &nbsp;·&nbsp; {_APP_BUILD}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )

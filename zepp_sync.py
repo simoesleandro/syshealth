@@ -70,7 +70,7 @@ def zepp_sync(day=None):
             return None
 
         if not items:
-            log.info(f"Zepp sem dados para {day} (code={code}, msg={msg})")
+            log.debug("Zepp sem dados para %s (code=%s, msg=%s)", day, code, msg)
             return None
 
         s    = decode_summary(items[0].get("summary", ""))
