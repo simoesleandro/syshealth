@@ -182,7 +182,7 @@ def treinos_analise():
         df = query(
             "SELECT data_hora, duracao_min, volume_kg, exercicios_json "
             "FROM hevy_treinos "
-            "WHERE date(data_hora,'localtime') >= ? "
+            "WHERE data_hora >= ? "
             "ORDER BY data_hora DESC",
             [cutoff],
         )
@@ -319,7 +319,7 @@ def sono():
         df = query(
             "SELECT data_hora, sono_total_min, hrv_ms, passos, pai "
             "FROM amazfit_dados "
-            "WHERE date(data_hora,'localtime') >= ? "
+            "WHERE data_hora >= ? "
             "ORDER BY data_hora DESC",
             [cutoff],
         )
@@ -372,7 +372,7 @@ def corridas():
         df = query(
             "SELECT data_hora, corrida_km, corrida_cal "
             "FROM amazfit_dados "
-            "WHERE corrida_km > 0 AND date(data_hora,'localtime') >= ? "
+            "WHERE corrida_km > 0 AND data_hora >= ? "
             "ORDER BY data_hora DESC",
             [cutoff],
         )
