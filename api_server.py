@@ -215,7 +215,7 @@ def treinos_analise():
                 contagem = defaultdict(lambda: {"vezes": 0, "carga_max_kg": 0.0})
                 for raw in df["exercicios_json"].dropna():
                     try:
-                        exs = json.loads(raw)
+                        exs = raw if isinstance(raw, list) else json.loads(raw)
                         if not isinstance(exs, list):
                             continue
                         for ex in exs:
@@ -265,7 +265,7 @@ def corpo():
         cutoff = (datetime.now(_TZ).date() - timedelta(days=dias)).isoformat()
         df = query(
             "SELECT data, peso, cintura FROM medidas "
-            "WHERE data >= ? "
+            "WHERE date(data) >= ? "
             "ORDER BY data DESC",
             [cutoff],
         )
@@ -342,6 +342,53 @@ def sono():
                         "hrv": _v(row["hrv_ms"]),
                         "passos": _v(row["passos"]),
                         "pai": _v(row["pai"]),
+                    }
+                    for _, row in df.iterrows()
+                ]
+            except Exception:
+                pass
+
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+    return jsonify(result)
+
+
+@app.route("/api/corridas")
+def corridas():
+    try:
+        dias = int(request.args.get("dias", 30))
+    except (TypeError, ValueError):
+        dias = 30
+
+    result = {
+        "total_corridas": 0,
+        "distancia_total_km": None,
+        "historico": [],
+    }
+
+    try:
+        cutoff = (datetime.now(_TZ).date() - timedelta(days=dias)).isoformat()
+        df = query(
+            "SELECT date(data_hora,'localtime') AS data, corrida_km, corrida_cal "
+            "FROM amazfit_dados "
+            "WHERE corrida_km > 0 AND date(data_hora,'localtime') >= ? "
+            "ORDER BY data_hora DESC",
+            [cutoff],
+        )
+        if not df.empty:
+            result["total_corridas"] = len(df)
+            try:
+                dist = df["corrida_km"].dropna()
+                result["distancia_total_km"] = round(float(dist.sum()), 2) if not dist.empty else None
+            except Exception:
+                pass
+            try:
+                result["historico"] = [
+                    {
+                        "data": str(row["data"])[:10],
+                        "distancia_km": _v(row["corrida_km"]),
+                        "calorias": _v(row["corrida_cal"]),
                     }
                     for _, row in df.iterrows()
                 ]
