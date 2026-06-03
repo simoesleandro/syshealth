@@ -1982,11 +1982,18 @@ with _tb_right:
         f'<div style="font-family:{MONO};font-size:11px;color:{GHOST}">{dia_sem} · {hoje_pt} · {hora_now}</div>'
         f'<div style="font-size:22px;font-weight:800;color:{def_cor};letter-spacing:-0.5px;margin-top:2px">'
         f'{"▲" if deficit>0 else "▼"} {abs(deficit):,} <span style="font-size:13px;font-weight:400;color:{MUTED}">kcal {def_txt.split()[0].lower()}</span></div>'
-        f'<div style="font-family:{MONO};font-size:10px;color:{_zepp_status_cor};margin-top:2px">'
+        f'<div style="font-family:{MONO};font-size:10px;margin-top:2px;line-height:1.5">'
+        f'<span style="color:{_zepp_status_cor}">'
         f'<span style="display:inline-block;width:5px;height:5px;border-radius:50%;'
         f'background:{_zepp_status_cor};margin-right:4px;vertical-align:middle"></span>'
-        f'Amazfit · '
-        f'<span style="color:{_hevy_status_cor}">Hevy</span></div>'
+        f'Amazfit <span style="color:{GHOST};font-weight:600">({_zepp_status_txt})</span>'
+        f'</span>'
+        f'<span style="color:{GHOST};margin:0 6px">·</span>'
+        f'<span style="color:{_hevy_status_cor}">'
+        f'<span style="display:inline-block;width:5px;height:5px;border-radius:50%;'
+        f'background:{_hevy_status_cor};margin-right:4px;vertical-align:middle"></span>'
+        f'Hevy <span style="color:{GHOST};font-weight:600">({_hevy_status_txt})</span>'
+        f'</span></div>'
         f'</div>',
         unsafe_allow_html=True,
     )
