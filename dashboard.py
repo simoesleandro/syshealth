@@ -50,7 +50,9 @@ st.set_page_config(
 )
 
 # ── RESET STREAMLIT CHROME + SIDEBAR WIDGET THEME ───────────────────────────
-st.markdown("""
+@st.cache_resource
+def _app_global_css() -> str:
+    return """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700;800&display=swap');
 
@@ -412,13 +414,16 @@ html.sh-xs section[data-testid="stSidebar"]{
   }
 }
 </style>
-""", unsafe_allow_html=True)
+"""
 
-# ── JS: detecta largura ──────────────────────────────────────────────────────
-st.html("""
+st.markdown(_app_global_css(), unsafe_allow_html=True)
+
+
+@st.cache_resource
+def _app_breakpoint_js() -> str:
+    return """
 <script>
 (function(){
-  /* ── Breakpoint classes ── */
   function bp(){
     var w=window.innerWidth;
     var h=document.documentElement;
@@ -432,7 +437,9 @@ st.html("""
   window.addEventListener('resize',bp);
 })();
 </script>
-""")
+"""
+
+st.html(_app_breakpoint_js())
 
 # ── CONSTANTES DE COR ────────────────────────────────────────────────────────
 BG      = "#080c14"
@@ -525,6 +532,49 @@ def _render_notif_pendente():
   animation:_sh_notif 2.8s cubic-bezier(.22,.68,0,1.2) forwards;
 ">{icone}&nbsp; {msg}</div>
 """)
+
+
+# ── Performance: invalidação cirúrgica + toggles em fragment ───────────────────
+def _invalidate_cache(*funcs):
+    """Limpa só as funções afetadas — evita st.cache_data.clear() global."""
+    for fn in funcs:
+        try:
+            fn.clear()
+        except Exception:
+            pass
+
+
+def _toggle_key(session_key: str, default: bool = False) -> bool:
+    return bool(st.session_state.get(session_key, default))
+
+
+def _flip_toggle(session_key: str) -> None:
+    st.session_state[session_key] = not _toggle_key(session_key)
+
+
+def _ui_toggle_button(label_open: str, label_closed: str, session_key: str, btn_key: str):
+    """
+    Botão ▾/▴ para seções colapsáveis.
+    Usa rerun completo: o painel expansível fica fora desta função.
+    (Fragment isolado só no botão não reexecuta o conteúdo — Sessão 2 unifica os dois.)
+    """
+    open_ = _toggle_key(session_key)
+    lbl = label_open if open_ else label_closed
+    if st.button(lbl, key=btn_key, use_container_width=True):
+        _flip_toggle(session_key)
+        st.rerun()
+
+
+_REF_BUSCA_APPLIED = "ref_busca_applied"
+
+
+def _sync_ref_busca_applied():
+    """Copia o texto digitado para o termo efetivo da busca (Enter, blur ou botão 🔍)."""
+    st.session_state[_REF_BUSCA_APPLIED] = (st.session_state.get("ref_busca_rapida") or "").strip()
+
+
+def _ref_busca_termo() -> str:
+    return st.session_state.get(_REF_BUSCA_APPLIED, "")
 
 
 def _salvar_alimento_db(descricao, categoria, kcal, prot, carb, gord, componentes_json="[]"):
@@ -739,7 +789,7 @@ hoje_pt  = datetime.now(_BR).strftime("%d/%m/%Y")
 hora_now = datetime.now(_BR).strftime("%H:%M")
 dia_sem  = ["SEG","TER","QUA","QUI","SEX","SAB","DOM"][datetime.now(_BR).weekday()]
 
-# ── DADOS — funções com cache (TTL 60s, invalidadas por st.cache_data.clear()) ──
+# ── DADOS — funções com cache (TTL 60s, invalidadas por _invalidate_cache) ──
 
 @st.cache_data(ttl=60)
 def _q_peso():
@@ -837,6 +887,28 @@ def _q_biometria():
         ORDER BY date(data) ASC
     """)
 
+@st.cache_data(ttl=60)
+def _q_hevy_hoje(dia: str):
+    return DB.query(
+        "SELECT titulo, duracao_min, volume_kg FROM hevy_treinos "
+        "WHERE date(data_hora, 'localtime') = ? ORDER BY data_hora DESC LIMIT 1",
+        [dia],
+    )
+
+@st.cache_data(ttl=120)
+def _q_hevy_ultimo():
+    return DB.query(
+        "SELECT titulo, date(data_hora, 'localtime') as data_treino, "
+        "duracao_min, volume_kg FROM hevy_treinos ORDER BY data_hora DESC LIMIT 1"
+    )
+
+@st.cache_data(ttl=60)
+def _q_evacuacoes():
+    return DB.query(
+        "SELECT id, data_hora, esforco, observacao FROM evacuacoes "
+        "ORDER BY data_hora DESC"
+    )
+
 # Garante que as tabelas existem — chave versionada força remigração em sessões antigas
 if "db_init_v3" not in st.session_state:
     DB.init_tables()
@@ -922,7 +994,7 @@ if "med_seeded" not in st.session_state:
                 "INSERT INTO medicacao (data_hora, dose_mg) VALUES (?,?)",
                 [f"{_ds} 12:00:00", _dose_s]
             )
-    st.cache_data.clear()
+    _invalidate_cache(_q_medicacao)
 
 # ── Leitura dos dados com cache ───────────────────────────────────────────────
 _dp = _q_peso()
@@ -1290,7 +1362,7 @@ def _render_fav_row(frow, key_prefix=""):
         _star_lbl = "⭐" if fstar else "☆"
         if st.button(_star_lbl, key=f"fav_star_{key_prefix}{fid}", use_container_width=True, help="Favoritar"):
             DB.execute("UPDATE alimentos_favoritos SET favorito=? WHERE id=?", [1 - fstar, fid])
-            st.cache_data.clear()
+            _invalidate_cache(_q_alimentos_favoritos)
             st.rerun()
     with _fa:
         if st.button("➕ Usar", key=f"fav_use_{key_prefix}{fid}", use_container_width=True):
@@ -1299,27 +1371,40 @@ def _render_fav_row(frow, key_prefix=""):
                 [_cat_hora(), fdesc, fkcal, fprot, fcarb, fgord, fcomp]
             )
             DB.execute("UPDATE alimentos_favoritos SET vezes_usado=vezes_usado+1 WHERE id=?", [fid])
-            st.cache_data.clear()
+            _invalidate_cache(_q_alimentos_favoritos, _q_refeicoes, _q_macros, _q_supp_check)
             st.session_state["fav_panel_open"] = False
             _notif(f"{fdesc} adicionado · {fkcal} kcal")
             st.rerun()
 
 
-@st.dialog("➕ Nova Refeição", width="large")
-def _tab_refeicao():
-    """Painel de registro — múltiplos itens com cálculo proporcional por porção."""
-    if "carrinho_refeicao" not in st.session_state:
-        st.session_state["carrinho_refeicao"] = []
+@st.fragment
+def _fragment_ref_busca_carrinho():
+    """Busca debounced + carrinho — isolado do modal (foto/IA ficam fora)."""
+    if _REF_BUSCA_APPLIED not in st.session_state:
+        st.session_state[_REF_BUSCA_APPLIED] = ""
 
     _df_banco = _q_alimentos_favoritos()
 
-    # ── Busca com dropdown inline ─────────────────────────────────────────────
-    _busca_ref = st.text_input(
-        "busca",
-        placeholder="🔍 Digite para buscar alimento...",
-        key="ref_busca_rapida",
-        label_visibility="collapsed",
-    )
+    # ── Busca (termo efetivo só após Enter, blur ou 🔍 — não a cada tecla) ───
+    _bq_in, _bq_btn = st.columns([1, 0.12])
+    with _bq_in:
+        st.text_input(
+            "busca",
+            placeholder="🔍 Buscar alimento (Enter ou 🔍)...",
+            key="ref_busca_rapida",
+            label_visibility="collapsed",
+            on_change=_sync_ref_busca_applied,
+        )
+    with _bq_btn:
+        st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
+        if st.button("🔍", key="ref_busca_apply", use_container_width=True, help="Buscar"):
+            _sync_ref_busca_applied()
+            st.rerun(scope="fragment")
+
+    _busca_ref = _ref_busca_termo()
+    _typed_now = (st.session_state.get("ref_busca_rapida") or "").strip()
+    if _typed_now != _busca_ref and _typed_now:
+        st.caption("Pressione Enter ou 🔍 para buscar")
 
     if _df_banco.empty:
         st.markdown(
@@ -1538,7 +1623,7 @@ def _tab_refeicao():
                      json.dumps(_componentes)],
                 )
                 st.session_state["carrinho_refeicao"] = []
-                st.cache_data.clear()
+                _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check, _q_alimentos_favoritos)
                 _notif(f"Refeição registrada · {_total_kcal_salvo:.0f} kcal total")
                 st.rerun()
         with _cd:
@@ -1547,6 +1632,15 @@ def _tab_refeicao():
                 st.rerun(scope="fragment")
 
     st.markdown(f'<div style="height:1px;background:{BORDER};margin:12px 0 8px"></div>', unsafe_allow_html=True)
+
+
+@st.dialog("➕ Nova Refeição", width="large")
+def _tab_refeicao():
+    """Painel de registro — múltiplos itens com cálculo proporcional por porção."""
+    if "carrinho_refeicao" not in st.session_state:
+        st.session_state["carrinho_refeicao"] = []
+
+    _fragment_ref_busca_carrinho()
 
     # ── Análise por foto ─────────────────────────────────────────────────────
     foto_up = st.file_uploader(
@@ -1599,7 +1693,7 @@ def _tab_refeicao():
                     )
                     _salvar_alimento_db(item.get("descricao_resumida",""), item.get("categoria","Lanche"), item.get("calorias",0), item.get("proteinas",0), item.get("carboidratos",0), item.get("gorduras",0), json.dumps([{"nome":item.get("descricao_resumida",""),"gramas":0,"kcal":item.get("calorias",0),"prot":item.get("proteinas",0),"carb":item.get("carboidratos",0),"gord":item.get("gorduras",0),"fonte":"IA"}]))
                 del st.session_state["foto_resultado"]
-                st.cache_data.clear()
+                _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check, _q_alimentos_favoritos)
                 _notif("Foto registrada com sucesso!")
                 st.rerun()
         with cd:
@@ -1651,7 +1745,7 @@ def _tab_refeicao():
                 )
                 _salvar_alimento_db(r.get("descricao_resumida",""), r.get("categoria","Lanche"), r.get("calorias",0), r.get("proteinas",0), r.get("carboidratos",0), r.get("gorduras",0), json.dumps(r.get("detalhes",[])))
                 del st.session_state["ia_text_result"]
-                st.cache_data.clear()
+                _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check, _q_alimentos_favoritos)
                 _notif(f"Refeicao salva · {r.get('calorias',0)} kcal")
                 st.rerun()
         with cd2:
@@ -1697,7 +1791,7 @@ def _tab_suplemento():
             if f"chk_supp_{label}" in st.session_state:
                 del st.session_state[f"chk_supp_{label}"]
         nomes = " + ".join(l for l, *_ in _sel_supps)
-        st.cache_data.clear()
+        _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check)
         _notif(f"{nomes} registrado(s)!")
         st.rerun()
 
@@ -1709,7 +1803,7 @@ def _tab_agua():
 
     def _reg_agua(ml: int):
         DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [ml])
-        st.cache_data.clear()
+        _invalidate_cache(_q_agua)
         nova = agua_l + ml / 1000
         if nova >= META_AGUA and agua_l < META_AGUA:
             st.session_state["_agua_meta_atingida"] = True
@@ -1733,7 +1827,7 @@ def _tab_agua():
             if st.form_submit_button("+ Registrar", width="stretch"):
                 DB.execute("INSERT INTO agua (quantidade_ml) VALUES (?)", [int(ml_in)])
                 nova = agua_l + int(ml_in) / 1000
-                st.cache_data.clear()
+                _invalidate_cache(_q_agua)
                 if nova >= META_AGUA and agua_l < META_AGUA:
                     st.session_state["_agua_meta_atingida"] = True
                 _notif(f"+{int(ml_in)} ml  |  {nova:.1f} / {META_AGUA}L", "info")
@@ -1747,7 +1841,7 @@ def _tab_agua():
                 DB.execute("INSERT INTO amazfit_dados (data_hora,passos,calorias_gastas,distancia_km,sono_total_min,sono_profundo_min,hrv_ms,pai) VALUES (?,0,0,0,0,0,0,0) ON CONFLICT(data_hora) DO NOTHING", [f"{hoje_sql} 00:00:00"])
                 DB.execute("UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?", [hrv_in, pai_in, f"{hoje_sql} 00:00:00"])
                 hrv_status = "BOM" if hrv_in >= 35 else ("MED" if hrv_in >= 25 else "BAIXO")
-                st.cache_data.clear()
+                _invalidate_cache(_q_amazfit)
                 _notif(f"HRV {hrv_in}ms [{hrv_status}]  PAI {pai_in}", "info")
                 st.rerun()
 
@@ -1776,10 +1870,12 @@ def _tab_editar():
                 with bd: deletar   = st.form_submit_button("🗑", width="stretch")
                 if atualizar:
                     DB.execute("UPDATE refeicoes SET categoria=? WHERE id=?", [nova_cat, rid])
-                    st.cache_data.clear(); _notif("Categoria atualizada"); st.rerun()
+                    _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check)
+                    _notif("Categoria atualizada"); st.rerun()
                 if deletar:
                     DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
-                    st.cache_data.clear(); _notif("Refeicao removida", "err"); st.rerun()
+                    _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check)
+                    _notif("Refeicao removida", "err"); st.rerun()
 
 
 # ── Auto-sync Zepp na primeira abertura da sessão ────────────────────────────
@@ -1790,7 +1886,7 @@ if "zepp_auto_synced" not in st.session_state:
     _sync_result = _zepp_sync_dashboard(hoje_sql)
     if "passos" in _sync_result or "sincronizado" in _sync_result.lower():
         DB.init_tables()
-        st.cache_data.clear()
+        _invalidate_cache(_q_amazfit)
     elif "Erro" in _sync_result:
         _zepp_status_txt = "erro de sync"
         _zepp_status_cor = RED
@@ -1805,7 +1901,7 @@ if "hevy_auto_synced" not in st.session_state:
     st.session_state["hevy_auto_synced"] = True
     _h_sync_result = _hevy_sync_dashboard()
     if "sincronizado" in _h_sync_result.lower() or "atualizados" in _h_sync_result.lower():
-        st.cache_data.clear()
+        _invalidate_cache(_q_hevy_hoje, _q_hevy_ultimo)
     elif "não configurada" in _h_sync_result.lower():
         _hevy_status_txt = "não configurado"
         _hevy_status_cor = MUTED
@@ -1849,14 +1945,14 @@ with _tb_right:
         if st.button("🔄 Zepp", key="btn_zepp_sync_top", use_container_width=True):
             with st.spinner("Sincronizando Zepp..."):
                 _sync_result = _zepp_sync_dashboard(hoje_sql)
-            st.cache_data.clear()
+            _invalidate_cache(_q_amazfit)
             _notif(_sync_result, "ok" if "passos" in _sync_result or "sincronizado" in _sync_result.lower() else "info")
             st.rerun()
     with col_sync2:
         if st.button("💪 Hevy", key="btn_hevy_sync_top", use_container_width=True):
             with st.spinner("Sincronizando Hevy..."):
                 _h_sync_result = _hevy_sync_dashboard()
-            st.cache_data.clear()
+            _invalidate_cache(_q_hevy_hoje, _q_hevy_ultimo)
             _notif(_h_sync_result, "ok" if "sincronizado" in _h_sync_result.lower() or "atualizados" in _h_sync_result.lower() else "info")
             st.rerun()
 
@@ -1883,46 +1979,34 @@ a.sh-nav-active span { color: #00d4ff !important; }
     st.html("""
 <script>
 (function() {
-  // Smooth scroll ao clicar em links #sec-*
-  function initScrollLinks() {
-    document.querySelectorAll('a[href^="#sec-"]').forEach(function(link) {
-      if (link.dataset.shScroll) return;
-      link.dataset.shScroll = '1';
-      link.addEventListener('click', function(e) {
-        var target = document.querySelector(link.getAttribute('href'));
-        if (target) {
-          e.preventDefault();
-          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      });
-    });
-  }
+  if (window.__shNavInit) return;
+  window.__shNavInit = true;
 
-  // Pill ativo via IntersectionObserver
-  function initActiveObserver() {
-    var links = document.querySelectorAll('a[href^="#sec-"]');
-    if (!links.length) return;
-    var observer = new IntersectionObserver(function(entries) {
-      entries.forEach(function(entry) {
-        if (entry.isIntersecting) {
-          var id = entry.target.id;
-          links.forEach(function(l) { l.classList.remove('sh-nav-active'); });
-          var active = document.querySelector('a[href="#' + id + '"]');
-          if (active) active.classList.add('sh-nav-active');
-        }
-      });
-    }, { threshold: 0.2 });
-    document.querySelectorAll('div[id^="sec-"]').forEach(function(sec) {
-      observer.observe(sec);
-    });
-  }
+  document.addEventListener('click', function(e) {
+    var link = e.target.closest('a[href^="#sec-"]');
+    if (!link) return;
+    var target = document.querySelector(link.getAttribute('href'));
+    if (target) {
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
 
-  // Aguarda DOM estabilizar após Streamlit renderizar
-  setTimeout(function() { initScrollLinks(); initActiveObserver(); }, 800);
-  // Re-inicializa quando Streamlit faz rerun (MutationObserver no body)
-  new MutationObserver(function() {
-    setTimeout(function() { initScrollLinks(); initActiveObserver(); }, 400);
-  }).observe(document.body, { childList: true, subtree: true });
+  var links = document.querySelectorAll('a[href^="#sec-"]');
+  var secs = document.querySelectorAll('div[id^="sec-"]');
+  if (!links.length || !secs.length) return;
+
+  var observer = new IntersectionObserver(function(entries) {
+    entries.forEach(function(entry) {
+      if (!entry.isIntersecting) return;
+      var id = entry.target.id;
+      links.forEach(function(l) { l.classList.remove('sh-nav-active'); });
+      var active = document.querySelector('a[href="#' + id + '"]');
+      if (active) active.classList.add('sh-nav-active');
+    });
+  }, { threshold: 0.2, rootMargin: '-8% 0px -55% 0px' });
+
+  secs.forEach(function(sec) { observer.observe(sec); });
 })();
 </script>
 """)
@@ -2021,12 +2105,13 @@ a.sh-nav-active span { color: #00d4ff !important; }
     st.markdown(_nav_html, unsafe_allow_html=True)
 
     # ── Toggle Avançado ────────────────────────────────────────────────────────
-    _av_open = st.session_state.get("sidebar_avancado_open", False)
-    _av_lbl  = "▴" if _av_open else "▾"
-    if st.button(f"⚙️  Avançado  {_av_lbl}", key="btn_avancado_toggle", use_container_width=True):
-        st.session_state["sidebar_avancado_open"] = not _av_open
-        st.rerun()
-    if st.session_state.get("sidebar_avancado_open", False):
+    _ui_toggle_button(
+        "⚙️  Avançado  ▴",
+        "⚙️  Avançado  ▾",
+        "sidebar_avancado_open",
+        "btn_avancado_toggle",
+    )
+    if _toggle_key("sidebar_avancado_open"):
         _sec_av = [
             ("sec-ia",        "🤖", "IA Coach"),
             ("sec-biometria", "📏", "Biometria"),
@@ -2260,12 +2345,7 @@ with a_col7:
     ), unsafe_allow_html=True)
 
 with a_col8:
-    df_hevy_hoje = db("""
-        SELECT titulo, duracao_min, volume_kg
-        FROM hevy_treinos
-        WHERE date(data_hora, 'localtime') = ?
-        ORDER BY data_hora DESC LIMIT 1
-    """, [hoje_sql])
+    df_hevy_hoje = _q_hevy_hoje(hoje_sql)
     if not df_hevy_hoje.empty:
         h_title = df_hevy_hoje["titulo"].iloc[0]
         h_dur = int(df_hevy_hoje["duracao_min"].iloc[0])
@@ -2276,11 +2356,7 @@ with a_col8:
             f'<div style="font-size:11px;color:{MUTED};margin-top:2px;text-align:center">Vol: {h_vol:,.0f} kg</div>'
         )
     else:
-        df_hevy_last = db("""
-            SELECT titulo, date(data_hora, 'localtime') as data_treino, duracao_min, volume_kg
-            FROM hevy_treinos
-            ORDER BY data_hora DESC LIMIT 1
-        """)
+        df_hevy_last = _q_hevy_ultimo()
         if not df_hevy_last.empty:
             l_title = df_hevy_last["titulo"].iloc[0]
             l_date = df_hevy_last["data_treino"].iloc[0]
@@ -2318,20 +2394,12 @@ if not _az.empty and "data_hora" in _az.columns:
 # ════════════════════════════════════════════════════════════════════════════
 _tbtn1, _tbtn2 = st.columns(2)
 with _tbtn1:
-    _tw_open = st.session_state.get("treino_tab_open", False)
-    _tw_lbl = "📋 TREINOS ▴" if _tw_open else "📋 TREINOS ▾"
-    if st.button(_tw_lbl, key="btn_treino_tab", use_container_width=True):
-        st.session_state["treino_tab_open"] = not _tw_open
-        st.rerun()
+    _ui_toggle_button("📋 TREINOS ▴", "📋 TREINOS ▾", "treino_tab_open", "btn_treino_tab")
 with _tbtn2:
-    _rc_open = st.session_state.get("corrida_tab_open", False)
-    _rc_lbl = "🏃 CORRIDAS ▴" if _rc_open else "🏃 CORRIDAS ▾"
-    if st.button(_rc_lbl, key="btn_corrida_tab", use_container_width=True):
-        st.session_state["corrida_tab_open"] = not _rc_open
-        st.rerun()
+    _ui_toggle_button("🏃 CORRIDAS ▴", "🏃 CORRIDAS ▾", "corrida_tab_open", "btn_corrida_tab")
 
 # ── Tabela de treinos (Hevy) ──────────────────────────────────────────────────
-if st.session_state.get("treino_tab_open", False):
+if _toggle_key("treino_tab_open"):
     st.markdown(
         f'<div style="background:{BG3};border:1px solid {GREEN}33;'
         f'border-top:2px solid {GREEN};border-radius:0 0 10px 10px;'
@@ -2504,7 +2572,7 @@ if st.session_state.get("treino_tab_open", False):
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ── Tabela de corridas (Amazfit) ──────────────────────────────────────────────
-if st.session_state.get("corrida_tab_open", False):
+if _toggle_key("corrida_tab_open"):
     st.markdown(
         f'<div style="background:{BG3};border:1px solid {CYAN}33;'
         f'border-top:2px solid {CYAN};border-radius:0 0 10px 10px;'
@@ -2644,7 +2712,7 @@ else:
     with _ag_right:
         if st.button("🔄 Agenda", key="btn_gcal_refresh", use_container_width=True,
                      help="Atualizar eventos do Google Calendar"):
-            st.cache_data.clear()
+            _invalidate_cache(_get_gcal_eventos)
             st.rerun()
 
     if not _eventos:
@@ -2826,8 +2894,6 @@ with c2:
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown(sec("Registros do dia", "Refeições · Suplementação"), unsafe_allow_html=True)
 
-col_m, col_s = st.columns([1.6, 1.4])
-
 BADGE_STYLE = {
     "Café da Manhã":   f"background:rgba(245,158,11,0.10);color:#f59e0b;border:1px solid rgba(245,158,11,0.28)",
     "Lanche da Manhã": f"background:rgba(129,140,248,0.08);color:#818cf8;border:1px solid rgba(129,140,248,0.22)",
@@ -2838,9 +2904,50 @@ BADGE_STYLE = {
     "Lanche":          f"background:rgba(74,85,104,0.15);color:{MUTED};border:1px solid {BORDER}",
 }
 
-with col_m:
-    # ── Seletor de data: label + input na mesma linha compacta ────────────────
+_CAT_COLOR_REF = {
+    "Café da Manhã":   "#f59e0b",
+    "Lanche da Manhã": "#818cf8",
+    "Almoço":          GREEN,
+    "Lanche da Tarde": "#818cf8",
+    "Jantar":          RED,
+    "Lanche da Noite": PURPLE,
+    "Lanche":          MUTED,
+}
+_CAT_ICON_REF = {
+    "Café da Manhã":   "☕",
+    "Lanche da Manhã": "🍎",
+    "Almoço":          "🍽️",
+    "Lanche da Tarde": "🥪",
+    "Jantar":          "🌙",
+    "Lanche da Noite": "🌜",
+    "Lanche":          "🥤",
+}
+
+
+# Definição dos suplementos — keywords cruzam com refeições do dia
+SUPLEMENTOS = [
+    {"label": "Whey Isolado",          "meta": 2,    "cor": GREEN,  "marca": "Dux Nutrition",  "keywords": ["whey"]},
+    {"label": "Creatina",              "meta": 1,    "cor": CYAN,   "marca": "Creapure Dux",   "keywords": ["creatina"]},
+    {"label": "Pré-Treino",            "meta": 1,    "cor": RED,    "marca": "More Treino Dux","keywords": ["pré-treino", "pre-treino", "more treino"]},
+    {"label": "Magnésio Quelato Trio", "meta": 1,    "cor": PURPLE, "marca": "Vitha",          "keywords": ["magnésio", "magnesio", "quelato", "vitha"]},
+    {"label": "Ômega 3",               "meta": 1,    "cor": AMBER,  "marca": "Omegafor Plus",  "keywords": ["ômega", "omega", "omegafor"]},
+    {"label": "Vit. D3 + K2",          "meta": 1,    "cor": AMBER,  "marca": "Bio D3+K2",      "keywords": ["d3", "k2", "vitamina d", "biovit"]},
+]
+
+
+def _checar_supp(supp_registrados: dict, keywords: list) -> int:
+    total = 0
+    for desc, qtd in supp_registrados.items():
+        if any(kw.lower() in desc for kw in keywords):
+            total += qtd
+    return total
+
+
+def _render_col_refeicoes():
+    """Coluna de refeições (executada dentro de _fragment_registros_dia)."""
     from datetime import date as _date
+
+    # ── Seletor de data: label + input na mesma linha compacta ────────────────
     st.markdown(
         f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:2px">'
         f'<span style="font-family:{MONO};font-size:9px;font-weight:700;'
@@ -2864,26 +2971,6 @@ with col_m:
     _titulo_ref = "Refeições de hoje" if _is_hoje else f"Refeições de {_hist_sel.strftime('%d/%m')}"
 
     df_ref_hoje = _q_refeicoes(_hist_sql)
-
-    # Mapeamentos de cor e ícone por categoria
-    _CAT_COLOR = {
-        "Café da Manhã":   "#f59e0b",
-        "Lanche da Manhã": "#818cf8",
-        "Almoço":          GREEN,
-        "Lanche da Tarde": "#818cf8",
-        "Jantar":          RED,
-        "Lanche da Noite": PURPLE,
-        "Lanche":          MUTED,
-    }
-    _CAT_ICON = {
-        "Café da Manhã":   "☕",
-        "Lanche da Manhã": "🍎",
-        "Almoço":          "🍽️",
-        "Lanche da Tarde": "🥪",
-        "Jantar":          "🌙",
-        "Lanche da Noite": "🌜",
-        "Lanche":          "🥤",
-    }
 
     # Título da seção
     st.markdown(
@@ -2915,8 +3002,8 @@ with col_m:
             prot_v = float(r["prot"]) if r["prot"] else 0.0
             carb_v = float(r["carb"]) if r["carb"] else 0.0
             gord_v = float(r["gord"]) if r["gord"] else 0.0
-            icon   = _CAT_ICON.get(cat, "🍴")
-            cor    = _CAT_COLOR.get(cat, MUTED)
+            icon   = _CAT_ICON_REF.get(cat, "🍴")
+            cor    = _CAT_COLOR_REF.get(cat, MUTED)
             bsty   = BADGE_STYLE.get(cat, BADGE_STYLE["Lanche"])
 
             edit_key = f"meal_edit_{rid}"
@@ -2997,7 +3084,7 @@ with col_m:
                 if st.button(_edit_lbl, key=f"tog_meal_{rid}", use_container_width=True,
                              help="Editar / Fechar"):
                     st.session_state[edit_key] = not is_editing
-                    st.rerun()
+                    st.rerun(scope="fragment")
 
             # ── Form de edição (só aparece quando aberto) ─────────────────────
             if is_editing:
@@ -3044,51 +3131,30 @@ with col_m:
                                 [nova_cat, nova_desc.strip(), nova_kcal,
                                  nova_prot, nova_carb, nova_gord, rid],
                             )
-                            st.cache_data.clear()
+                            _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check)
                             st.session_state[edit_key] = False
                             _notif(f"Refeição atualizada · {int(nova_kcal)} kcal")
-                            st.rerun()
+                            st.rerun(scope="fragment")
                         if _deletar:
                             DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
-                            st.cache_data.clear()
+                            _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check)
                             st.session_state.pop(edit_key, None)
                             _notif("Refeição removida", "err")
-                            st.rerun()
+                            st.rerun(scope="fragment")
                     st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
 
-# Busca refeições de hoje para checar suplementos registrados (cached)
-df_supp_check = _q_supp_check(hoje_sql)
-# Monta dicionário: keyword → quantidade registrada hoje
-supp_registrados = {}
-for _, r in df_supp_check.iterrows():
-    desc = r["descricao"].lower()
-    supp_registrados[desc] = int(r["qtd"])
 
-def checar_supp(keywords):
-    """Retorna quantas vezes qualquer keyword aparece nas descrições de hoje."""
-    total = 0
-    for desc, qtd in supp_registrados.items():
-        if any(kw.lower() in desc for kw in keywords):
-            total += qtd
-    return total
+def _render_col_suplementos():
+    """Coluna de suplementos — recarrega _q_supp_check a cada rerun do fragment."""
+    df_supp_check = _q_supp_check(hoje_sql)
+    supp_registrados = {}
+    for _, r in df_supp_check.iterrows():
+        supp_registrados[r["descricao"].lower()] = int(r["qtd"])
 
-# Definição dos suplementos com keywords para busca no banco
-# "feito": True = sempre marcado (sem rastreio automático)
-# "keywords": lista de termos que identificam o suplemento nas refeições
-SUPLEMENTOS = [
-    {"label": "Whey Isolado",          "meta": 2,    "cor": GREEN,  "marca": "Dux Nutrition",  "keywords": ["whey"]},
-    {"label": "Creatina",              "meta": 1,    "cor": CYAN,   "marca": "Creapure Dux",   "keywords": ["creatina"]},
-    {"label": "Pré-Treino",            "meta": 1,    "cor": RED,    "marca": "More Treino Dux","keywords": ["pré-treino", "pre-treino", "more treino"]},
-    {"label": "Magnésio Quelato Trio", "meta": 1,    "cor": PURPLE, "marca": "Vitha",          "keywords": ["magnésio", "magnesio", "quelato", "vitha"]},
-    {"label": "Ômega 3",               "meta": 1,    "cor": AMBER,  "marca": "Omegafor Plus",  "keywords": ["ômega", "omega", "omegafor"]},
-    {"label": "Vit. D3 + K2",          "meta": 1,    "cor": AMBER,  "marca": "Bio D3+K2",      "keywords": ["d3", "k2", "vitamina d", "biovit"]},
-]
-
-with col_s:
     cards = ""
     for s in SUPLEMENTOS:
         if s["keywords"]:
-            feito = checar_supp(s["keywords"])
+            feito = _checar_supp(supp_registrados, s["keywords"])
             meta  = s["meta"] or 1
             if feito >= meta:
                 # Completo — borda colorida + ✓
@@ -3240,7 +3306,7 @@ with col_s:
                 if st.form_submit_button("REGISTRAR DOSE", width="stretch"):
                     DB.execute("INSERT INTO medicacao (data_hora, dose_mg) VALUES (?,?)",
                                [f"{nova_data_n} 12:00:00", nova_dose_n])
-                    st.cache_data.clear()
+                    _invalidate_cache(_q_medicacao)
                     st.session_state["med_nova_open"] = False
                     _notif(f"Tirzepatida {nova_dose_n:.1f} mg registrada")
                     st.rerun()
@@ -3315,17 +3381,30 @@ with col_s:
                         if _med_salvar:
                             DB.execute("UPDATE medicacao SET data_hora=?, dose_mg=? WHERE id=?",
                                        [f"{nova_data_med} 12:00:00", nova_dose_med, mid])
-                            st.cache_data.clear()
+                            _invalidate_cache(_q_medicacao)
                             st.session_state[edit_key] = False
                             _notif(f"Dose atualizada: {nova_dose_med:.1f} mg")
                             st.rerun()
                         if _med_del:
                             DB.execute("DELETE FROM medicacao WHERE id=?", [mid])
-                            st.cache_data.clear()
+                            _invalidate_cache(_q_medicacao)
                             st.session_state.pop(edit_key, None)
                             _notif("Registro removido", "err")
                             st.rerun()
                     st.markdown('<div style="height:4px"></div>', unsafe_allow_html=True)
+
+
+@st.fragment
+def _fragment_registros_dia():
+    """Refeições + suplementos no mesmo fragment — cards de supp sincronizam ao salvar."""
+    col_m, col_s = st.columns([1.6, 1.4])
+    with col_m:
+        _render_col_refeicoes()
+    with col_s:
+        _render_col_suplementos()
+
+
+_fragment_registros_dia()
 
 # ── BLOCO: ANÁLISE ───────────────────────────────────────────────────────────
 # ════════════════════════════════════════════════════════════════════════════
@@ -3333,13 +3412,23 @@ with col_s:
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown('<div id="sec-banco"></div>', unsafe_allow_html=True)
 
-_banco_open = st.session_state.get("banco_open", False)
-_banco_lbl  = "🍽️  BANCO DE REFEIÇÕES  ·  Cadastro · Edição · Favoritos  ▴" if _banco_open else "🍽️  BANCO DE REFEIÇÕES  ·  Cadastro · Edição · Favoritos  ▾"
-if st.button(_banco_lbl, key="btn_banco_toggle", use_container_width=True):
-    st.session_state["banco_open"] = not _banco_open
-    st.rerun()
 
-if _banco_open:
+@st.fragment
+def _fragment_banco_refeicoes():
+    """Toggle + painel do banco — conteúdo e botão no mesmo fragment."""
+    _banco_open = _toggle_key("banco_open")
+    _banco_lbl = (
+        "🍽️  BANCO DE REFEIÇÕES  ·  Cadastro · Edição · Favoritos  ▴"
+        if _banco_open
+        else "🍽️  BANCO DE REFEIÇÕES  ·  Cadastro · Edição · Favoritos  ▾"
+    )
+    if st.button(_banco_lbl, key="btn_banco_toggle", use_container_width=True):
+        _flip_toggle("banco_open")
+        st.rerun(scope="fragment")
+
+    if not _banco_open:
+        return
+
     _banco_cols = st.columns([1.1, 1.9])
 
     with _banco_cols[0]:
@@ -3381,9 +3470,9 @@ if _banco_open:
                                           "prot": b_prot, "carb": b_carb, "gord": b_gord}]),
                              b_qtd, b_unit],
                         )
-                        st.cache_data.clear()
+                        _invalidate_cache(_q_alimentos_favoritos)
                         _notif(f"'{b_desc.strip()}' cadastrado no banco!")
-                        st.rerun()
+                        st.rerun(scope="fragment")
                     else:
                         st.warning("Já existe um alimento com este nome. Edite-o na lista ao lado.")
                 else:
@@ -3455,13 +3544,13 @@ if _banco_open:
                                         [_e_desc.strip(), _e_kcal, _e_prot, _e_carb, _e_gord, _bid],
                                     )
                                     st.session_state["banco_edit_id"] = None
-                                    st.cache_data.clear()
+                                    _invalidate_cache(_q_alimentos_favoritos)
                                     _notif(f"'{_e_desc.strip()}' atualizado!")
-                                    st.rerun()
+                                    st.rerun(scope="fragment")
                             with _ecb:
                                 if st.form_submit_button("✗ Cancelar", use_container_width=True):
                                     st.session_state["banco_edit_id"] = None
-                                    st.rerun()
+                                    st.rerun(scope="fragment")
                 else:
                     # ── Modo visualização ────────────────────────────────────
                     _bv, _bstar, _bedit, _bdel = st.columns([1, 0.07, 0.1, 0.1])
@@ -3482,16 +3571,16 @@ if _banco_open:
                         _star_lbl = "⭐" if _bfav else "☆"
                         if st.button(_star_lbl, key=f"banco_star_{_bid}", use_container_width=True, help="Favoritar"):
                             DB.execute("UPDATE alimentos_favoritos SET favorito=? WHERE id=?", [1 - _bfav, _bid])
-                            st.cache_data.clear()
-                            st.rerun()
+                            _invalidate_cache(_q_alimentos_favoritos)
+                            st.rerun(scope="fragment")
                     with _bedit:
                         if st.button("✏️", key=f"banco_edit_{_bid}", use_container_width=True, help="Editar"):
                             st.session_state["banco_edit_id"] = _bid
-                            st.rerun()
+                            st.rerun(scope="fragment")
                     with _bdel:
                         if st.button("🗑️", key=f"banco_del_{_bid}", use_container_width=True, help="Excluir"):
                             st.session_state["banco_del_confirm"] = _bid
-                            st.rerun()
+                            st.rerun(scope="fragment")
 
                     # Confirmação inline de exclusão
                     if st.session_state.get("banco_del_confirm") == _bid:
@@ -3501,13 +3590,16 @@ if _banco_open:
                             if st.button("✅ Confirmar", key=f"banco_del_ok_{_bid}", use_container_width=True):
                                 DB.execute("DELETE FROM alimentos_favoritos WHERE id=?", [_bid])
                                 st.session_state.pop("banco_del_confirm", None)
-                                st.cache_data.clear()
+                                _invalidate_cache(_q_alimentos_favoritos)
                                 _notif(f"'{_bdesc}' excluído do banco.")
-                                st.rerun()
+                                st.rerun(scope="fragment")
                         with _cc2:
                             if st.button("✗ Cancelar", key=f"banco_del_cancel_{_bid}", use_container_width=True):
                                 st.session_state.pop("banco_del_confirm", None)
-                                st.rerun()
+                                st.rerun(scope="fragment")
+
+
+_fragment_banco_refeicoes()
 
 st.markdown(
     f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:2.5px;'
@@ -3523,117 +3615,6 @@ st.markdown(
 st.markdown('<div id="sec-historico"></div>', unsafe_allow_html=True)
 st.markdown(sec("Histórico", "Últimos 30 dias · Tendências"), unsafe_allow_html=True)
 
-# Seletor de período — radio horizontal
-st.markdown(
-    f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-    f'text-transform:uppercase;color:{MUTED};margin-bottom:4px">PERÍODO DE ANÁLISE</div>',
-    unsafe_allow_html=True,
-)
-periodo = st.radio(
-    "Período",
-    ["7 dias", "14 dias", "30 dias", "90 dias"],
-    index=1,
-    horizontal=True,
-    label_visibility="collapsed",
-    key="periodo_hist",
-)
-_hload1, _hload2, _hload3 = st.columns([1, 2, 1])
-with _hload2:
-    if st.button("📊 Carregar dados do período", key="btn_hist_load", use_container_width=True):
-        st.session_state["hist_carregado"] = True
-        st.rerun()
-
-n_dias = int(periodo.split()[0])
-
-_hist_carregado = st.session_state.get("hist_carregado", False)
-
-# Lazy-load: placeholder enquanto não solicitado
-if not _hist_carregado:
-    st.markdown(
-        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;'
-        f'padding:32px 24px;text-align:center;margin-bottom:16px">'
-        f'<div style="font-size:32px;margin-bottom:12px">📊</div>'
-        f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1.5px;'
-        f'text-transform:uppercase;color:{MUTED};margin-bottom:8px">Histórico não carregado</div>'
-        f'<div style="font-size:12px;color:{GHOST}">Clique em <b style="color:{CYAN}">📊 Carregar</b> '
-        f'para buscar e exibir os gráficos do período selecionado</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-# ── Dados históricos — só roda após o usuário clicar em Carregar ──────────────
-# Defaults vazios: os guards "if not df_hist.empty" saltam os gráficos automaticamente
-df_hist = pd.DataFrame()
-df_macro_hist = pd.DataFrame()
-df_hevy_hist = pd.DataFrame()
-df_hevy_list = pd.DataFrame()
-total_treinos = 0; total_vol = 0.0; total_dur = 0; media_vol_treino = 0.0; media_dur_treino = 0.0
-media_deficit = 0.0
-
-if _hist_carregado:
-    df_hist = db(f"""
-        SELECT
-            date(data_hora) as dia,
-            passos, calorias_gastas, distancia_km,
-            sono_total_min, sono_profundo_min,
-            hrv_ms, pai,
-            corrida_km, corrida_cal
-        FROM amazfit_dados
-        WHERE date(data_hora) >= date('now', '-{n_dias} days')
-        ORDER BY dia ASC
-    """)
-
-    df_macro_hist = db(f"""
-        SELECT
-            date(data_hora, 'localtime') as dia,
-            SUM(calorias)    as cal,
-            SUM(proteinas)   as prot,
-            SUM(carboidratos) as carb,
-            SUM(gorduras)    as gord
-        FROM refeicoes
-        WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
-        GROUP BY dia
-        ORDER BY dia ASC
-    """)
-
-    # Hevy history query
-    df_hevy_hist = db(f"""
-        SELECT
-            COUNT(*) as count_treino,
-            SUM(duracao_min) as dur,
-            SUM(volume_kg) as vol
-        FROM hevy_treinos
-        WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
-    """)
-    total_treinos = int(df_hevy_hist["count_treino"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["count_treino"].iloc[0] is not None else 0
-    total_vol = float(df_hevy_hist["vol"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["vol"].iloc[0] is not None else 0.0
-    total_dur = int(df_hevy_hist["dur"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["dur"].iloc[0] is not None else 0
-    media_vol_treino = total_vol / total_treinos if total_treinos > 0 else 0.0
-    media_dur_treino = total_dur / total_treinos if total_treinos > 0 else 0.0
-
-    df_hevy_list = db(f"""
-        SELECT
-            date(data_hora, 'localtime') as dia,
-            titulo, duracao_min, volume_kg
-        FROM hevy_treinos
-        WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
-        ORDER BY data_hora ASC
-    """)
-
-    # ── Caption: intervalo real dos dados carregados ─────────────────────────
-    if not df_hist.empty:
-        try:
-            _min_d = pd.to_datetime(df_hist["dia"].min()).strftime("%d/%m/%Y")
-            _max_d = pd.to_datetime(df_hist["dia"].max()).strftime("%d/%m/%Y")
-            _n_nutri = len(df_macro_hist)
-            st.markdown(
-                f'<div style="font-size:10px;color:{GHOST};font-family:{MONO};'
-                f'letter-spacing:0.5px;margin:4px 0 8px;text-align:right">'
-                f'📅 {_min_d} → {_max_d} · {len(df_hist)} dias Amazfit · {_n_nutri} dias nutrição</div>',
-                unsafe_allow_html=True,
-            )
-        except Exception:
-            pass
 
 def chart_layout(height=200, show_legend=False):
     return dict(
@@ -3710,181 +3691,140 @@ def _trend_badge(df, col, higher_is_better=True):
         color = GREEN if going_down else (RED if going_up    else AMBER)
     return icon, color, f"{pct:+.1f}%"
 
-_tem_qualquer_dado = not df_hist.empty or not df_macro_hist.empty
 
-if _tem_qualquer_dado:
+@st.fragment
+def _fragment_historico():
+    """Período + queries + Plotly só após o usuário carregar o histórico."""
+    if not st.session_state.get("hist_carregado", False):
+        st.markdown(
+            f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;'
+            f'padding:32px 24px;text-align:center;margin-bottom:16px">'
+            f'<div style="font-size:32px;margin-bottom:12px">📊</div>'
+            f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1.5px;'
+            f'text-transform:uppercase;color:{MUTED};margin-bottom:8px">Histórico não carregado</div>'
+            f'<div style="font-size:12px;color:{GHOST}">Clique em <b style="color:{CYAN}">📊 Carregar</b> '
+            f'para buscar e exibir os gráficos do período selecionado</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        _hload1, _hload2, _hload3 = st.columns([1, 2, 1])
+        with _hload2:
+            if st.button("📊 Carregar dados do período", key="btn_hist_load", use_container_width=True):
+                st.session_state["hist_carregado"] = True
+                st.rerun(scope="fragment")
+        return
 
-    # ── Tabela resumo semanal ─────────────────────────────────────────────────
-    st.markdown(sec("Resumo", f"Médias dos últimos {n_dias} dias"), unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
+        f'text-transform:uppercase;color:{MUTED};margin-bottom:4px">PERÍODO DE ANÁLISE</div>',
+        unsafe_allow_html=True,
+    )
+    periodo = st.radio(
+        "Período",
+        ["7 dias", "14 dias", "30 dias", "90 dias"],
+        index=1,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="periodo_hist",
+    )
+    n_dias = int(periodo.split()[0])
 
-    if df_hist.empty and not df_macro_hist.empty:
-        st.info("💡 Dados do Amazfit não encontrados para este período. Exibindo dados de nutrição disponíveis.")
-
-    def media(df, col):
-        return df[col].replace(0, pd.NA).mean() if col in df.columns else 0
-
-    def fmt_val(val, sufixo="", decimais=0):
-        if pd.isna(val) or val == 0:
-            return "—"
-        return f"{val:.{decimais}f}{sufixo}"
-
-    # Calcular déficit calórico médio para o resumo
+    df_hist = pd.DataFrame()
+    df_macro_hist = pd.DataFrame()
+    df_hevy_hist = pd.DataFrame()
+    df_hevy_list = pd.DataFrame()
+    total_treinos = 0
+    total_vol = 0.0
+    total_dur = 0
+    media_vol_treino = 0.0
+    media_dur_treino = 0.0
     media_deficit = 0.0
-    if not df_hist.empty or not df_macro_hist.empty:
-        df_h = df_hist.copy() if not df_hist.empty else pd.DataFrame(columns=["dia", "calorias_gastas"])
-        df_m = df_macro_hist.copy() if not df_macro_hist.empty else pd.DataFrame(columns=["dia", "cal"])
-        if "calorias_gastas" not in df_h.columns:
-            df_h["calorias_gastas"] = 0.0
-        if "cal" not in df_m.columns:
-            df_m["cal"] = 0.0
-        df_merged = pd.merge(df_h, df_m, on="dia", how="outer").fillna(0)
-        df_merged["deficit"] = (TMB + df_merged["calorias_gastas"]) - df_merged["cal"]
-        media_deficit = df_merged["deficit"].mean()
 
-    medias = [
-        ("👟", "Passos/dia",       fmt_val(media(df_hist, "passos"), "", 0),
-         f"meta {META_PASS:,}"),
-        ("📍", "Distância/dia",    fmt_val(media(df_hist, "distancia_km"), " km", 1),
-         ""),
-        ("🌙", "Sono total/dia",   fmt_val(media(df_hist, "sono_total_min"), " min", 0),
-         "≥ 420 min"),
-        ("💤", "Sono profundo/dia",fmt_val(media(df_hist, "sono_profundo_min"), " min", 0),
-         f"meta {META_SONO} min"),
-        ("💓", "HRV médio",        fmt_val(media(df_hist, "hrv_ms"), " ms", 0),
-         ""),
-        ("⚡", "PAI médio",        fmt_val(media(df_hist, "pai"), "", 0),
-         "meta ≥ 100"),
-    ]
-    if not df_macro_hist.empty:
-        medias += [
-            ("🔥", "Calorias/dia",  fmt_val(media(df_macro_hist, "cal"), " kcal", 0),
-             f"meta {TMB}"),
-            ("🥩", "Proteínas/dia", fmt_val(media(df_macro_hist, "prot"), " g", 0),
-             f"meta {META_PROT}g"),
-            ("📉", "Déficit/dia",    fmt_val(media_deficit, " kcal", 0),
-             "meta 500 kcal"),
-        ]
+    df_hist = db(f"""
+        SELECT
+            date(data_hora) as dia,
+            passos, calorias_gastas, distancia_km,
+            sono_total_min, sono_profundo_min,
+            hrv_ms, pai,
+            corrida_km, corrida_cal
+        FROM amazfit_dados
+        WHERE date(data_hora) >= date('now', '-{n_dias} days')
+        ORDER BY dia ASC
+    """)
 
-    # Musculação averages from Hevy
-    medias += [
-        ("🏋️", "Vol. Musculação", fmt_val(media_vol_treino, " kg", 0), f"{total_treinos} treinos"),
-        ("⏱️", "Treino Médio",    fmt_val(media_dur_treino, " min", 0), "musculação"),
-    ]
+    df_macro_hist = db(f"""
+        SELECT
+            date(data_hora, 'localtime') as dia,
+            SUM(calorias)    as cal,
+            SUM(proteinas)   as prot,
+            SUM(carboidratos) as carb,
+            SUM(gorduras)    as gord
+        FROM refeicoes
+        WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
+        GROUP BY dia
+        ORDER BY dia ASC
+    """)
 
-    # Grid 4 colunas
-    cols_med = st.columns(4)
-    for i, (icon, lbl, val, ref) in enumerate(medias):
-        with cols_med[i % 4]:
-            ref_html = (f'<div style="font-size:10px;color:{GHOST};margin-top:4px">{ref}</div>'
-                        if ref else "")
+    # Hevy history query
+    df_hevy_hist = db(f"""
+        SELECT
+            COUNT(*) as count_treino,
+            SUM(duracao_min) as dur,
+            SUM(volume_kg) as vol
+        FROM hevy_treinos
+        WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
+    """)
+    total_treinos = int(df_hevy_hist["count_treino"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["count_treino"].iloc[0] is not None else 0
+    total_vol = float(df_hevy_hist["vol"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["vol"].iloc[0] is not None else 0.0
+    total_dur = int(df_hevy_hist["dur"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["dur"].iloc[0] is not None else 0
+    media_vol_treino = total_vol / total_treinos if total_treinos > 0 else 0.0
+    media_dur_treino = total_dur / total_treinos if total_treinos > 0 else 0.0
+
+    df_hevy_list = db(f"""
+        SELECT
+            date(data_hora, 'localtime') as dia,
+            titulo, duracao_min, volume_kg
+        FROM hevy_treinos
+        WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
+        ORDER BY data_hora ASC
+    """)
+
+    # ── Caption: intervalo real dos dados carregados ─────────────────────────
+    if not df_hist.empty:
+        try:
+            _min_d = pd.to_datetime(df_hist["dia"].min()).strftime("%d/%m/%Y")
+            _max_d = pd.to_datetime(df_hist["dia"].max()).strftime("%d/%m/%Y")
+            _n_nutri = len(df_macro_hist)
             st.markdown(
-                f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:9px;'
-                f'padding:14px 14px 12px;margin-bottom:10px;min-height:105px;'
-                f'display:flex;flex-direction:column;justify-content:space-between">'
-                f'<div>'
-                f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-                f'text-transform:uppercase;color:{GHOST};margin-bottom:6px">{icon} {lbl}</div>'
-                f'<div style="font-size:22px;font-weight:800;color:{TEXT};line-height:1">{val}</div>'
-                f'</div>'
-                f'{ref_html}</div>',
+                f'<div style="font-size:10px;color:{GHOST};font-family:{MONO};'
+                f'letter-spacing:0.5px;margin:4px 0 8px;text-align:right">'
+                f'📅 {_min_d} → {_max_d} · {len(df_hist)} dias Amazfit · {_n_nutri} dias nutrição</div>',
                 unsafe_allow_html=True,
             )
+        except Exception:
+            pass
 
-    # ── Linha 1: Passos + Distância ───────────────────────────────────────────
-    if not df_hist.empty:
-        h1a, h1b = st.columns(2)
+    _tem_qualquer_dado = not df_hist.empty or not df_macro_hist.empty
 
-        with h1a:
-            st.markdown(panel(
-                ptitl("👟 Passos diários") +
-                f'<div id="chart_passos"></div>'
-            ), unsafe_allow_html=True)
-            fig = go.Figure()
-            fig.add_trace(barra(df_hist, "passos", CYAN, "Passos"))
-            _tl = trend_line(df_hist, "passos", CYAN, "Tendência")
-            if _tl: fig.add_trace(_tl)
-            fig.add_hline(y=META_PASS, line_dash="dash", line_color=GREEN,
-                          line_width=1, opacity=0.5,
-                          annotation_text=f"Meta {META_PASS:,}",
-                          annotation_font_color=GREEN, annotation_font_size=9)
-            fig.update_layout(**chart_layout(180))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+    if _tem_qualquer_dado:
 
-        with h1b:
-            st.markdown(panel(ptitl("📍 Distância (km)")), unsafe_allow_html=True)
-            fig = go.Figure()
-            fig.add_trace(linha(df_hist, "distancia_km", CYAN, "km", fill=True))
-            _tl = trend_line(df_hist, "distancia_km", AMBER, "Tendência")
-            if _tl: fig.add_trace(_tl)
-            fig.update_layout(**chart_layout(180))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        # ── Tabela resumo semanal ─────────────────────────────────────────────────
+        st.markdown(sec("Resumo", f"Médias dos últimos {n_dias} dias"), unsafe_allow_html=True)
 
-        # ── Linha 2: Sono ─────────────────────────────────────────────────────────
-        h2a, h2b = st.columns(2)
+        if df_hist.empty and not df_macro_hist.empty:
+            st.info("💡 Dados do Amazfit não encontrados para este período. Exibindo dados de nutrição disponíveis.")
 
-        with h2a:
-            st.markdown(panel(ptitl("🌙 Sono total (min)")), unsafe_allow_html=True)
-            fig = go.Figure()
-            fig.add_trace(barra(df_hist, "sono_total_min", PURPLE, "Total"))
-            fig.add_trace(barra(df_hist, "sono_profundo_min", CYAN, "Profundo"))
-            _tl_sono = trend_line(df_hist, "sono_total_min", PURPLE, "Tend. Total")
-            if _tl_sono: fig.add_trace(_tl_sono)
-            fig.add_hline(y=META_SONO, line_dash="dash", line_color=RED,
-                          line_width=1, opacity=0.5,
-                          annotation_text=f"Meta prof. {META_SONO}min",
-                          annotation_font_color=RED, annotation_font_size=9)
-            fig.update_layout(**chart_layout(180, show_legend=True),
-                              barmode="overlay",
-                              legend=dict(font=dict(color=GHOST, size=9),
-                                          bgcolor="rgba(0,0,0,0)"))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        def media(df, col):
+            return df[col].replace(0, pd.NA).mean() if col in df.columns else 0
 
-        with h2b:
-            st.markdown(panel(ptitl("💓 HRV · PAI")), unsafe_allow_html=True)
-            fig = go.Figure()
-            fig.add_trace(linha(df_hist, "hrv_ms",  GREEN,  "HRV (ms)"))
-            fig.add_trace(linha(df_hist, "pai",      AMBER,  "PAI", dash="dot"))
-            _tl_hrv = trend_line(df_hist, "hrv_ms", GREEN, "Tend. HRV")
-            if _tl_hrv: fig.add_trace(_tl_hrv)
-            _tl_pai = trend_line(df_hist, "pai", AMBER, "Tend. PAI")
-            if _tl_pai: fig.add_trace(_tl_pai)
-            fig.update_layout(**chart_layout(180, show_legend=True),
-                              legend=dict(font=dict(color=GHOST, size=9),
-                                          bgcolor="rgba(0,0,0,0)"))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        def fmt_val(val, sufixo="", decimais=0):
+            if pd.isna(val) or val == 0:
+                return "—"
+            return f"{val:.{decimais}f}{sufixo}"
 
-    # ── Linha 3: Nutrição ─────────────────────────────────────────────────────
-    if not df_macro_hist.empty:
-        h3a, h3b, h3c = st.columns(3)
-
-        with h3a:
-            st.markdown(panel(ptitl("🔥 Calorias diárias")), unsafe_allow_html=True)
-            fig = go.Figure()
-            fig.add_trace(barra(df_macro_hist, "cal", GREEN, "Calorias"))
-            _tl = trend_line(df_macro_hist, "cal", GREEN, "Tendência")
-            if _tl: fig.add_trace(_tl)
-            fig.add_hline(y=TMB, line_dash="dash", line_color=CYAN,
-                          line_width=1, opacity=0.5,
-                          annotation_text=f"Meta {TMB}",
-                          annotation_font_color=CYAN, annotation_font_size=9)
-            fig.update_layout(**chart_layout(180))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-        with h3b:
-            st.markdown(panel(ptitl("🥩 Proteínas diárias (g)")), unsafe_allow_html=True)
-            fig = go.Figure()
-            fig.add_trace(barra(df_macro_hist, "prot", RED, "Proteínas"))
-            _tl = trend_line(df_macro_hist, "prot", RED, "Tendência")
-            if _tl: fig.add_trace(_tl)
-            fig.add_hline(y=META_PROT, line_dash="dash", line_color=CYAN,
-                          line_width=1, opacity=0.5,
-                          annotation_text=f"Meta {META_PROT}g",
-                          annotation_font_color=CYAN, annotation_font_size=9)
-            fig.update_layout(**chart_layout(180))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-        with h3c:
-            st.markdown(panel(ptitl("📉 Déficit Calórico")), unsafe_allow_html=True)
+        # Calcular déficit calórico médio para o resumo
+        media_deficit = 0.0
+        if not df_hist.empty or not df_macro_hist.empty:
             df_h = df_hist.copy() if not df_hist.empty else pd.DataFrame(columns=["dia", "calorias_gastas"])
             df_m = df_macro_hist.copy() if not df_macro_hist.empty else pd.DataFrame(columns=["dia", "cal"])
             if "calorias_gastas" not in df_h.columns:
@@ -3893,585 +3833,746 @@ if _tem_qualquer_dado:
                 df_m["cal"] = 0.0
             df_merged = pd.merge(df_h, df_m, on="dia", how="outer").fillna(0)
             df_merged["deficit"] = (TMB + df_merged["calorias_gastas"]) - df_merged["cal"]
-            
-            fig = go.Figure()
-            fig.add_trace(barra(df_merged, "deficit", PURPLE, "Déficit"))
-            _tl = trend_line(df_merged, "deficit", PURPLE, "Tendência")
-            if _tl: fig.add_trace(_tl)
-            fig.add_hline(y=500, line_dash="dash", line_color=CYAN,
-                          line_width=1, opacity=0.5,
-                          annotation_text="Meta 500",
-                          annotation_font_color=CYAN, annotation_font_size=9)
-            fig.update_layout(**chart_layout(180))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+            media_deficit = df_merged["deficit"].mean()
 
-    # ── Linha 4: Musculação (Hevy) ─────────────────────────────────────────────
-    if not df_hevy_list.empty:
-        h4a, h4b = st.columns(2)
-        
-        with h4a:
-            st.markdown(panel(ptitl("🏋️ Volume de Carga (kg/treino)")), unsafe_allow_html=True)
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=df_hevy_list["dia"], y=df_hevy_list["volume_kg"],
-                name="Volume", marker_color=GREEN, opacity=0.8,
-                text=df_hevy_list["titulo"],
-                hovertemplate="<b>%{x|%d/%m}</b><br>Treino: %{text}<br>Volume: %{y:,.0f} kg<extra></extra>"
-            ))
-            _tl_vol = trend_line(df_hevy_list, "volume_kg", GREEN, "Tendência")
-            if _tl_vol: fig.add_trace(_tl_vol)
-            fig.update_layout(**chart_layout(180))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+        medias = [
+            ("👟", "Passos/dia",       fmt_val(media(df_hist, "passos"), "", 0),
+             f"meta {META_PASS:,}"),
+            ("📍", "Distância/dia",    fmt_val(media(df_hist, "distancia_km"), " km", 1),
+             ""),
+            ("🌙", "Sono total/dia",   fmt_val(media(df_hist, "sono_total_min"), " min", 0),
+             "≥ 420 min"),
+            ("💤", "Sono profundo/dia",fmt_val(media(df_hist, "sono_profundo_min"), " min", 0),
+             f"meta {META_SONO} min"),
+            ("💓", "HRV médio",        fmt_val(media(df_hist, "hrv_ms"), " ms", 0),
+             ""),
+            ("⚡", "PAI médio",        fmt_val(media(df_hist, "pai"), "", 0),
+             "meta ≥ 100"),
+        ]
+        if not df_macro_hist.empty:
+            medias += [
+                ("🔥", "Calorias/dia",  fmt_val(media(df_macro_hist, "cal"), " kcal", 0),
+                 f"meta {TMB}"),
+                ("🥩", "Proteínas/dia", fmt_val(media(df_macro_hist, "prot"), " g", 0),
+                 f"meta {META_PROT}g"),
+                ("📉", "Déficit/dia",    fmt_val(media_deficit, " kcal", 0),
+                 "meta 500 kcal"),
+            ]
 
-        with h4b:
-            st.markdown(panel(ptitl("⏱️ Duração do Treino (min)")), unsafe_allow_html=True)
-            fig = go.Figure()
-            fig.add_trace(go.Bar(
-                x=df_hevy_list["dia"], y=df_hevy_list["duracao_min"],
-                name="Duração", marker_color=AMBER, opacity=0.8,
-                text=df_hevy_list["titulo"],
-                hovertemplate="<b>%{x|%d/%m}</b><br>Treino: %{text}<br>Duração: %{y} min<extra></extra>"
-            ))
-            _tl_dur = trend_line(df_hevy_list, "duracao_min", AMBER, "Tendência")
-            if _tl_dur: fig.add_trace(_tl_dur)
-            fig.update_layout(**chart_layout(180))
-            st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-    # ── Tendências ────────────────────────────────────────────────────────────
-    st.markdown(sec("Tendências", f"Direção dos indicadores nos últimos {n_dias} dias"), unsafe_allow_html=True)
-
-    # Montar lista de indicadores com badges
-    _tend_items = []
-
-    if not df_hist.empty:
-        _i_pass, _c_pass, _p_pass = _trend_badge(df_hist, "passos",           higher_is_better=True)
-        _i_dist, _c_dist, _p_dist = _trend_badge(df_hist, "distancia_km",     higher_is_better=True)
-        _i_sono, _c_sono, _p_sono = _trend_badge(df_hist, "sono_total_min",    higher_is_better=True)
-        _i_prof, _c_prof, _p_prof = _trend_badge(df_hist, "sono_profundo_min", higher_is_better=True)
-        _i_hrv,  _c_hrv,  _p_hrv  = _trend_badge(df_hist, "hrv_ms",           higher_is_better=True)
-        _i_pai,  _c_pai,  _p_pai  = _trend_badge(df_hist, "pai",               higher_is_better=True)
-        _tend_items += [
-            ("👟", "Passos/dia",       _i_pass, _c_pass, _p_pass, f"média {fmt_val(media(df_hist,'passos'),'',0)}"),
-            ("📍", "Distância/dia",    _i_dist, _c_dist, _p_dist, f"média {fmt_val(media(df_hist,'distancia_km'),' km',1)}"),
-            ("🌙", "Sono total",       _i_sono, _c_sono, _p_sono, f"média {fmt_val(media(df_hist,'sono_total_min'),' min',0)}"),
-            ("💤", "Sono profundo",    _i_prof, _c_prof, _p_prof, f"média {fmt_val(media(df_hist,'sono_profundo_min'),' min',0)}"),
-            ("💓", "HRV",             _i_hrv,  _c_hrv,  _p_hrv,  f"média {fmt_val(media(df_hist,'hrv_ms'),' ms',0)}"),
-            ("⚡", "PAI",             _i_pai,  _c_pai,  _p_pai,  f"média {fmt_val(media(df_hist,'pai'),'',0)}"),
+        # Musculação averages from Hevy
+        medias += [
+            ("🏋️", "Vol. Musculação", fmt_val(media_vol_treino, " kg", 0), f"{total_treinos} treinos"),
+            ("⏱️", "Treino Médio",    fmt_val(media_dur_treino, " min", 0), "musculação"),
         ]
 
-    if not df_macro_hist.empty:
-        _i_cal,  _c_cal,  _p_cal  = _trend_badge(df_macro_hist, "cal",  higher_is_better=False)
-        _i_prot, _c_prot, _p_prot = _trend_badge(df_macro_hist, "prot", higher_is_better=True)
-        _i_carb, _c_carb, _p_carb = _trend_badge(df_macro_hist, "carb", higher_is_better=False)
-        _i_gord, _c_gord, _p_gord = _trend_badge(df_macro_hist, "gord", higher_is_better=False)
-        _tend_items += [
-            ("🔥", "Calorias/dia",    _i_cal,  _c_cal,  _p_cal,  f"média {fmt_val(media(df_macro_hist,'cal'),' kcal',0)}"),
-            ("🥩", "Proteínas/dia",   _i_prot, _c_prot, _p_prot, f"média {fmt_val(media(df_macro_hist,'prot'),' g',0)}"),
-            ("🍞", "Carboidratos",    _i_carb, _c_carb, _p_carb, f"média {fmt_val(media(df_macro_hist,'carb'),' g',0)}"),
-            ("🧈", "Gorduras",        _i_gord, _c_gord, _p_gord, f"média {fmt_val(media(df_macro_hist,'gord'),' g',0)}"),
-        ]
-
-    if not df_hevy_list.empty:
-        _i_vol,  _c_vol,  _p_vol  = _trend_badge(df_hevy_list, "volume_kg",  higher_is_better=True)
-        _i_dur,  _c_dur,  _p_dur  = _trend_badge(df_hevy_list, "duracao_min", higher_is_better=True)
-        _tend_items += [
-            ("🏋️", "Volume/treino",   _i_vol,  _c_vol,  _p_vol,  f"média {fmt_val(media_vol_treino,' kg',0)}"),
-            ("⏱️", "Duração/treino",  _i_dur,  _c_dur,  _p_dur,  f"média {fmt_val(media_dur_treino,' min',0)}"),
-        ]
-
-    # Renderizar grade de badges de tendência
-    if _tend_items:
-        _cols_t = st.columns(4)
-        for _ti, (icon_t, lbl_t, icon_dir, cor_dir, pct_str, ref_t) in enumerate(_tend_items):
-            with _cols_t[_ti % 4]:
+        # Grid 4 colunas
+        cols_med = st.columns(4)
+        for i, (icon, lbl, val, ref) in enumerate(medias):
+            with cols_med[i % 4]:
+                ref_html = (f'<div style="font-size:10px;color:{GHOST};margin-top:4px">{ref}</div>'
+                            if ref else "")
                 st.markdown(
                     f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:9px;'
-                    f'padding:12px 14px;margin-bottom:10px;min-height:88px;'
+                    f'padding:14px 14px 12px;margin-bottom:10px;min-height:105px;'
                     f'display:flex;flex-direction:column;justify-content:space-between">'
+                    f'<div>'
                     f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-                    f'text-transform:uppercase;color:{GHOST};margin-bottom:6px">{icon_t} {lbl_t}</div>'
-                    f'<div style="display:flex;align-items:center;gap:8px">'
-                    f'  <span style="font-size:26px;font-weight:900;color:{cor_dir};line-height:1">{icon_dir}</span>'
-                    f'  <span style="font-family:{MONO};font-size:14px;font-weight:700;color:{cor_dir}">{pct_str}</span>'
+                    f'text-transform:uppercase;color:{GHOST};margin-bottom:6px">{icon} {lbl}</div>'
+                    f'<div style="font-size:22px;font-weight:800;color:{TEXT};line-height:1">{val}</div>'
                     f'</div>'
-                    f'<div style="font-size:10px;color:{GHOST};margin-top:4px">{ref_t}</div>'
-                    f'</div>',
+                    f'{ref_html}</div>',
                     unsafe_allow_html=True,
                 )
+
+        # ── Linha 1: Passos + Distância ───────────────────────────────────────────
+        if not df_hist.empty:
+            h1a, h1b = st.columns(2)
+
+            with h1a:
+                st.markdown(panel(
+                    ptitl("👟 Passos diários") +
+                    f'<div id="chart_passos"></div>'
+                ), unsafe_allow_html=True)
+                fig = go.Figure()
+                fig.add_trace(barra(df_hist, "passos", CYAN, "Passos"))
+                _tl = trend_line(df_hist, "passos", CYAN, "Tendência")
+                if _tl: fig.add_trace(_tl)
+                fig.add_hline(y=META_PASS, line_dash="dash", line_color=GREEN,
+                              line_width=1, opacity=0.5,
+                              annotation_text=f"Meta {META_PASS:,}",
+                              annotation_font_color=GREEN, annotation_font_size=9)
+                fig.update_layout(**chart_layout(180))
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+            with h1b:
+                st.markdown(panel(ptitl("📍 Distância (km)")), unsafe_allow_html=True)
+                fig = go.Figure()
+                fig.add_trace(linha(df_hist, "distancia_km", CYAN, "km", fill=True))
+                _tl = trend_line(df_hist, "distancia_km", AMBER, "Tendência")
+                if _tl: fig.add_trace(_tl)
+                fig.update_layout(**chart_layout(180))
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+            # ── Linha 2: Sono ─────────────────────────────────────────────────────────
+            h2a, h2b = st.columns(2)
+
+            with h2a:
+                st.markdown(panel(ptitl("🌙 Sono total (min)")), unsafe_allow_html=True)
+                fig = go.Figure()
+                fig.add_trace(barra(df_hist, "sono_total_min", PURPLE, "Total"))
+                fig.add_trace(barra(df_hist, "sono_profundo_min", CYAN, "Profundo"))
+                _tl_sono = trend_line(df_hist, "sono_total_min", PURPLE, "Tend. Total")
+                if _tl_sono: fig.add_trace(_tl_sono)
+                fig.add_hline(y=META_SONO, line_dash="dash", line_color=RED,
+                              line_width=1, opacity=0.5,
+                              annotation_text=f"Meta prof. {META_SONO}min",
+                              annotation_font_color=RED, annotation_font_size=9)
+                fig.update_layout(**chart_layout(180, show_legend=True),
+                                  barmode="overlay",
+                                  legend=dict(font=dict(color=GHOST, size=9),
+                                              bgcolor="rgba(0,0,0,0)"))
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+            with h2b:
+                st.markdown(panel(ptitl("💓 HRV · PAI")), unsafe_allow_html=True)
+                fig = go.Figure()
+                fig.add_trace(linha(df_hist, "hrv_ms",  GREEN,  "HRV (ms)"))
+                fig.add_trace(linha(df_hist, "pai",      AMBER,  "PAI", dash="dot"))
+                _tl_hrv = trend_line(df_hist, "hrv_ms", GREEN, "Tend. HRV")
+                if _tl_hrv: fig.add_trace(_tl_hrv)
+                _tl_pai = trend_line(df_hist, "pai", AMBER, "Tend. PAI")
+                if _tl_pai: fig.add_trace(_tl_pai)
+                fig.update_layout(**chart_layout(180, show_legend=True),
+                                  legend=dict(font=dict(color=GHOST, size=9),
+                                              bgcolor="rgba(0,0,0,0)"))
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+        # ── Linha 3: Nutrição ─────────────────────────────────────────────────────
+        if not df_macro_hist.empty:
+            h3a, h3b, h3c = st.columns(3)
+
+            with h3a:
+                st.markdown(panel(ptitl("🔥 Calorias diárias")), unsafe_allow_html=True)
+                fig = go.Figure()
+                fig.add_trace(barra(df_macro_hist, "cal", GREEN, "Calorias"))
+                _tl = trend_line(df_macro_hist, "cal", GREEN, "Tendência")
+                if _tl: fig.add_trace(_tl)
+                fig.add_hline(y=TMB, line_dash="dash", line_color=CYAN,
+                              line_width=1, opacity=0.5,
+                              annotation_text=f"Meta {TMB}",
+                              annotation_font_color=CYAN, annotation_font_size=9)
+                fig.update_layout(**chart_layout(180))
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+            with h3b:
+                st.markdown(panel(ptitl("🥩 Proteínas diárias (g)")), unsafe_allow_html=True)
+                fig = go.Figure()
+                fig.add_trace(barra(df_macro_hist, "prot", RED, "Proteínas"))
+                _tl = trend_line(df_macro_hist, "prot", RED, "Tendência")
+                if _tl: fig.add_trace(_tl)
+                fig.add_hline(y=META_PROT, line_dash="dash", line_color=CYAN,
+                              line_width=1, opacity=0.5,
+                              annotation_text=f"Meta {META_PROT}g",
+                              annotation_font_color=CYAN, annotation_font_size=9)
+                fig.update_layout(**chart_layout(180))
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+            with h3c:
+                st.markdown(panel(ptitl("📉 Déficit Calórico")), unsafe_allow_html=True)
+                df_h = df_hist.copy() if not df_hist.empty else pd.DataFrame(columns=["dia", "calorias_gastas"])
+                df_m = df_macro_hist.copy() if not df_macro_hist.empty else pd.DataFrame(columns=["dia", "cal"])
+                if "calorias_gastas" not in df_h.columns:
+                    df_h["calorias_gastas"] = 0.0
+                if "cal" not in df_m.columns:
+                    df_m["cal"] = 0.0
+                df_merged = pd.merge(df_h, df_m, on="dia", how="outer").fillna(0)
+                df_merged["deficit"] = (TMB + df_merged["calorias_gastas"]) - df_merged["cal"]
+            
+                fig = go.Figure()
+                fig.add_trace(barra(df_merged, "deficit", PURPLE, "Déficit"))
+                _tl = trend_line(df_merged, "deficit", PURPLE, "Tendência")
+                if _tl: fig.add_trace(_tl)
+                fig.add_hline(y=500, line_dash="dash", line_color=CYAN,
+                              line_width=1, opacity=0.5,
+                              annotation_text="Meta 500",
+                              annotation_font_color=CYAN, annotation_font_size=9)
+                fig.update_layout(**chart_layout(180))
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+        # ── Linha 4: Musculação (Hevy) ─────────────────────────────────────────────
+        if not df_hevy_list.empty:
+            h4a, h4b = st.columns(2)
+        
+            with h4a:
+                st.markdown(panel(ptitl("🏋️ Volume de Carga (kg/treino)")), unsafe_allow_html=True)
+                fig = go.Figure()
+                fig.add_trace(go.Bar(
+                    x=df_hevy_list["dia"], y=df_hevy_list["volume_kg"],
+                    name="Volume", marker_color=GREEN, opacity=0.8,
+                    text=df_hevy_list["titulo"],
+                    hovertemplate="<b>%{x|%d/%m}</b><br>Treino: %{text}<br>Volume: %{y:,.0f} kg<extra></extra>"
+                ))
+                _tl_vol = trend_line(df_hevy_list, "volume_kg", GREEN, "Tendência")
+                if _tl_vol: fig.add_trace(_tl_vol)
+                fig.update_layout(**chart_layout(180))
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+            with h4b:
+                st.markdown(panel(ptitl("⏱️ Duração do Treino (min)")), unsafe_allow_html=True)
+                fig = go.Figure()
+                fig.add_trace(go.Bar(
+                    x=df_hevy_list["dia"], y=df_hevy_list["duracao_min"],
+                    name="Duração", marker_color=AMBER, opacity=0.8,
+                    text=df_hevy_list["titulo"],
+                    hovertemplate="<b>%{x|%d/%m}</b><br>Treino: %{text}<br>Duração: %{y} min<extra></extra>"
+                ))
+                _tl_dur = trend_line(df_hevy_list, "duracao_min", AMBER, "Tendência")
+                if _tl_dur: fig.add_trace(_tl_dur)
+                fig.update_layout(**chart_layout(180))
+                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+
+        # ── Tendências ────────────────────────────────────────────────────────────
+        st.markdown(sec("Tendências", f"Direção dos indicadores nos últimos {n_dias} dias"), unsafe_allow_html=True)
+
+        # Montar lista de indicadores com badges
+        _tend_items = []
+
+        if not df_hist.empty:
+            _i_pass, _c_pass, _p_pass = _trend_badge(df_hist, "passos",           higher_is_better=True)
+            _i_dist, _c_dist, _p_dist = _trend_badge(df_hist, "distancia_km",     higher_is_better=True)
+            _i_sono, _c_sono, _p_sono = _trend_badge(df_hist, "sono_total_min",    higher_is_better=True)
+            _i_prof, _c_prof, _p_prof = _trend_badge(df_hist, "sono_profundo_min", higher_is_better=True)
+            _i_hrv,  _c_hrv,  _p_hrv  = _trend_badge(df_hist, "hrv_ms",           higher_is_better=True)
+            _i_pai,  _c_pai,  _p_pai  = _trend_badge(df_hist, "pai",               higher_is_better=True)
+            _tend_items += [
+                ("👟", "Passos/dia",       _i_pass, _c_pass, _p_pass, f"média {fmt_val(media(df_hist,'passos'),'',0)}"),
+                ("📍", "Distância/dia",    _i_dist, _c_dist, _p_dist, f"média {fmt_val(media(df_hist,'distancia_km'),' km',1)}"),
+                ("🌙", "Sono total",       _i_sono, _c_sono, _p_sono, f"média {fmt_val(media(df_hist,'sono_total_min'),' min',0)}"),
+                ("💤", "Sono profundo",    _i_prof, _c_prof, _p_prof, f"média {fmt_val(media(df_hist,'sono_profundo_min'),' min',0)}"),
+                ("💓", "HRV",             _i_hrv,  _c_hrv,  _p_hrv,  f"média {fmt_val(media(df_hist,'hrv_ms'),' ms',0)}"),
+                ("⚡", "PAI",             _i_pai,  _c_pai,  _p_pai,  f"média {fmt_val(media(df_hist,'pai'),'',0)}"),
+            ]
+
+        if not df_macro_hist.empty:
+            _i_cal,  _c_cal,  _p_cal  = _trend_badge(df_macro_hist, "cal",  higher_is_better=False)
+            _i_prot, _c_prot, _p_prot = _trend_badge(df_macro_hist, "prot", higher_is_better=True)
+            _i_carb, _c_carb, _p_carb = _trend_badge(df_macro_hist, "carb", higher_is_better=False)
+            _i_gord, _c_gord, _p_gord = _trend_badge(df_macro_hist, "gord", higher_is_better=False)
+            _tend_items += [
+                ("🔥", "Calorias/dia",    _i_cal,  _c_cal,  _p_cal,  f"média {fmt_val(media(df_macro_hist,'cal'),' kcal',0)}"),
+                ("🥩", "Proteínas/dia",   _i_prot, _c_prot, _p_prot, f"média {fmt_val(media(df_macro_hist,'prot'),' g',0)}"),
+                ("🍞", "Carboidratos",    _i_carb, _c_carb, _p_carb, f"média {fmt_val(media(df_macro_hist,'carb'),' g',0)}"),
+                ("🧈", "Gorduras",        _i_gord, _c_gord, _p_gord, f"média {fmt_val(media(df_macro_hist,'gord'),' g',0)}"),
+            ]
+
+        if not df_hevy_list.empty:
+            _i_vol,  _c_vol,  _p_vol  = _trend_badge(df_hevy_list, "volume_kg",  higher_is_better=True)
+            _i_dur,  _c_dur,  _p_dur  = _trend_badge(df_hevy_list, "duracao_min", higher_is_better=True)
+            _tend_items += [
+                ("🏋️", "Volume/treino",   _i_vol,  _c_vol,  _p_vol,  f"média {fmt_val(media_vol_treino,' kg',0)}"),
+                ("⏱️", "Duração/treino",  _i_dur,  _c_dur,  _p_dur,  f"média {fmt_val(media_dur_treino,' min',0)}"),
+            ]
+
+        # Renderizar grade de badges de tendência
+        if _tend_items:
+            _cols_t = st.columns(4)
+            for _ti, (icon_t, lbl_t, icon_dir, cor_dir, pct_str, ref_t) in enumerate(_tend_items):
+                with _cols_t[_ti % 4]:
+                    st.markdown(
+                        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:9px;'
+                        f'padding:12px 14px;margin-bottom:10px;min-height:88px;'
+                        f'display:flex;flex-direction:column;justify-content:space-between">'
+                        f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
+                        f'text-transform:uppercase;color:{GHOST};margin-bottom:6px">{icon_t} {lbl_t}</div>'
+                        f'<div style="display:flex;align-items:center;gap:8px">'
+                        f'  <span style="font-size:26px;font-weight:900;color:{cor_dir};line-height:1">{icon_dir}</span>'
+                        f'  <span style="font-family:{MONO};font-size:14px;font-weight:700;color:{cor_dir}">{pct_str}</span>'
+                        f'</div>'
+                        f'<div style="font-size:10px;color:{GHOST};margin-top:4px">{ref_t}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+        else:
+            st.markdown(
+                f'<div style="font-family:{MONO};font-size:11px;color:{MUTED};padding:16px;'
+                f'text-align:center">Dados insuficientes para calcular tendências neste período</div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── IA Coach ─────────────────────────────────────────────────────────────
+        if st.session_state.get("sidebar_avancado_open", False):
+            st.markdown('<div id="sec-ia"></div>', unsafe_allow_html=True)
+            st.markdown(sec("IA Coach", "Análise de Emagrecimento & Performance"), unsafe_allow_html=True)
+
+            # Valores padrão do protocolo
+            _proto_defaults = {
+                "rotina": "Musculação + Cardio (6x/sem)",
+                "hiit": "Ter & Sex — Alta Intensidade / EPOC",
+                "zona2": "Seg, Qua, Qui, Sáb — Corrida BPM 120-140",
+                "peso_inicial": "115.3 kg (Jan/2026)",
+            }
+            if "coach_proto" not in st.session_state:
+                st.session_state["coach_proto"] = _proto_defaults.copy()
+            _proto = st.session_state["coach_proto"]
+
+            _proto_hdr, _proto_edit_btn = st.columns([1, 0.2])
+            with _proto_hdr:
+                st.markdown(
+                    f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
+                    f'text-transform:uppercase;color:{CYAN};margin-bottom:6px">📋 PROTOCOLO & METAS METABÓLICAS</div>',
+                    unsafe_allow_html=True,
+                )
+            with _proto_edit_btn:
+                if st.button("✏ editar" if not st.session_state.get("coach_proto_editing") else "✕ fechar",
+                             key="btn_proto_edit", use_container_width=True):
+                    st.session_state["coach_proto_editing"] = not st.session_state.get("coach_proto_editing", False)
+                    st.rerun()
+
+            if st.session_state.get("coach_proto_editing", False):
+                with st.form("form_proto_coach"):
+                    _p1, _p2 = st.columns(2)
+                    with _p1:
+                        _rotina_in = st.text_input("Rotina de Exercícios", value=_proto["rotina"])
+                        _hiit_in   = st.text_input("Treinos HIIT", value=_proto["hiit"])
+                    with _p2:
+                        _zona2_in  = st.text_input("Treinos Zona 2", value=_proto["zona2"])
+                        _pinit_in  = st.text_input("Peso inicial (referência)", value=_proto["peso_inicial"])
+                    if st.form_submit_button("✓ SALVAR PROTOCOLO", use_container_width=True):
+                        st.session_state["coach_proto"] = {
+                            "rotina": _rotina_in, "hiit": _hiit_in,
+                            "zona2": _zona2_in, "peso_inicial": _pinit_in,
+                        }
+                        st.session_state["coach_proto_editing"] = False
+                        _notif("Protocolo atualizado")
+                        st.rerun()
+
+            coach_html = f"""
+            <div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;padding:14px 18px;margin-bottom:15px">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
+                    <div style="font-size:11px;color:{MUTED}">Evolução de Peso
+                      <div style="font-size:13px;font-weight:700;color:{TEXT};margin-top:2px">{_proto["peso_inicial"]} ➔ {peso:.1f} kg atual</div></div>
+                    <div style="font-size:11px;color:{MUTED}">Rotina
+                      <div style="font-size:13px;font-weight:700;color:{TEXT};margin-top:2px">{_proto["rotina"]}</div></div>
+                    <div style="font-size:11px;color:{MUTED}">HIIT
+                      <div style="font-size:13px;font-weight:700;color:{TEXT};margin-top:2px">{_proto["hiit"]}</div></div>
+                    <div style="font-size:11px;color:{MUTED}">Zona 2
+                      <div style="font-size:13px;font-weight:700;color:{TEXT};margin-top:2px">{_proto["zona2"]}</div></div>
+                </div>
+                <div style="margin-top:8px;padding-top:8px;border-top:1px solid {BORDER};display:flex;gap:8px;align-items:center">
+                    <span style="background:rgba(167,139,250,0.1);border:1px solid {PURPLE}55;border-radius:4px;padding:2px 8px;font-family:{MONO};font-size:9px;color:{PURPLE};font-weight:700;letter-spacing:0.5px">TIRZEPATIDA</span>
+                    <span style="font-family:{MONO};font-size:10px;color:{GHOST}">Protocolo farmacológico ativo · injetável semanal</span>
+                </div>
+            </div>
+            """
+            st.markdown(coach_html, unsafe_allow_html=True)
+
+            btn_col, sel_col = st.columns([1, 1])
+            with btn_col:
+                executar_analise = st.button("🧠 NOVA ANÁLISE DE EMAGRECIMENTO", key="btn_ia_coach", use_container_width=True)
+
+            # Busca análises anteriores para o seletor histórico
+            df_past = db("""
+                SELECT id, data_hora, n_dias
+                FROM ia_analises_clinicas
+                ORDER BY data_hora DESC
+            """)
+
+            past_options = ["📂  Histórico de análises ▾"]
+            id_map = {}
+            if not df_past.empty:
+                for idx, r_row in df_past.iterrows():
+                    dt_val = r_row["data_hora"]
+                    try:
+                        if isinstance(dt_val, str):
+                            dt_obj = datetime.strptime(dt_val.split(".")[0], "%Y-%m-%d %H:%M:%S")
+                        else:
+                            dt_obj = dt_val
+                        dt_str = dt_obj.strftime("%d/%m  %H:%M")
+                    except Exception:
+                        dt_str = str(dt_val)
+                    lbl = f"↩  {dt_str}  ({r_row['n_dias']}d)"
+                    past_options.append(lbl)
+                    id_map[lbl] = int(r_row["id"])
+
+            with sel_col:
+                _hist_open = st.session_state.get("ia_hist_open", False)
+                _hist_lbl = "✕ FECHAR" if _hist_open else "📂 HISTÓRICO ▾"
+                if st.button(_hist_lbl, key="btn_ia_hist_toggle", use_container_width=True):
+                    st.session_state["ia_hist_open"] = not _hist_open
+                    st.rerun()
+
+            # ── Menu dropdown do histórico ─────────────────────────────────────────────
+            if st.session_state.get("ia_hist_open", False):
+                if id_map:
+                    st.markdown(
+                        f'<div style="background:{BG3};border:1px solid {BORDER};'
+                        f'border-top:2px solid {CYAN};border-radius:0 0 8px 8px;'
+                        f'padding:6px 4px;margin-top:-2px">',
+                        unsafe_allow_html=True,
+                    )
+                    for _hlbl, _hid in id_map.items():
+                        _col_item, = st.columns([1])
+                        if st.button(
+                            f"↩  {_hlbl}",
+                            key=f"ia_hist_item_{_hid}",
+                            use_container_width=True,
+                        ):
+                            _df_sel = db("SELECT analise_txt FROM ia_analises_clinicas WHERE id = ?", [_hid])
+                            if not _df_sel.empty:
+                                st.session_state["ia_coach_result"] = _df_sel["analise_txt"].iloc[0]
+                            st.session_state["ia_hist_open"] = False
+                            st.rerun()
+                    st.markdown("</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(
+                        f'<div style="background:{BG3};border:1px solid {BORDER};'
+                        f'border-top:2px solid {BORDER};border-radius:0 0 8px 8px;'
+                        f'padding:10px 14px;margin-top:-2px;'
+                        f'font-family:{MONO};font-size:10px;color:{GHOST}">Sem análises salvas</div>',
+                        unsafe_allow_html=True,
+                    )
+
+            if executar_analise:
+              try:
+                with st.status("🧠 IA Coach — coletando dados e gerando análise...", expanded=True) as _ia_status:
+                    _ia_status.write("📊 Calculando médias do período selecionado...")
+                    try:
+                        # ── 1. MÉDIAS DO PERÍODO SELECIONADO ─────────────────────────
+                        media_passos      = media(df_hist, "passos")
+                        media_cal_gastas  = media(df_hist, "calorias_gastas")
+                        media_sono        = media(df_hist, "sono_total_min")
+                        media_sono_prof   = media(df_hist, "sono_profundo_min")
+                        media_hrv         = media(df_hist, "hrv_ms")
+                        media_pai         = media(df_hist, "pai")
+                        media_cal_ingestao= media(df_macro_hist, "cal")
+                        media_prot        = media(df_macro_hist, "prot")
+                        media_carb        = media(df_macro_hist, "carb")
+                        media_gord        = media(df_macro_hist, "gord")
+                        media_corrida_km  = media(df_hist, "corrida_km")
+                        media_corrida_cal = media(df_hist, "corrida_cal")
+
+                        # ── 2. DADOS BRUTOS COMPLETOS (queries extras) ────────────────
+                        _ia_status.write("⚖️ Buscando histórico de peso...")
+
+                        # Histórico de peso (medidas)
+                        _ia_peso_df = DB.query(
+                            "SELECT data, peso FROM medidas WHERE peso IS NOT NULL ORDER BY data ASC"
+                        )
+
+                        _ia_status.write("💪 Buscando treinos de musculação...")
+
+                        # Treinos detalhados — últimas 100 sessões
+                        _ia_hevy_df = DB.query(
+                            "SELECT date(data_hora,'localtime') as dt, titulo, "
+                            "duracao_min, volume_kg, exercicios_json "
+                            "FROM hevy_treinos ORDER BY data_hora DESC LIMIT 100"
+                        )
+
+                        _ia_status.write("🏃 Buscando histórico de corridas...")
+
+                        # Corridas completas
+                        _ia_corridas_df = DB.query(
+                            "SELECT data_hora, corrida_km, corrida_cal, passos "
+                            "FROM amazfit_dados WHERE corrida_km > 0 ORDER BY data_hora DESC"
+                        )
+
+                        _ia_status.write("🌙 Buscando dados diários (sono, HRV, PAI)...")
+
+                        # Dados diários Amazfit (sono, HRV, PAI, passos) — últimos 90 dias
+                        _ia_daily_df = DB.query(
+                            "SELECT date(data_hora) as dt, passos, calorias_gastas, "
+                            "sono_total_min, sono_profundo_min, hrv_ms, pai, corrida_km "
+                            "FROM amazfit_dados "
+                            "WHERE date(data_hora) >= date('now','-90 days') "
+                            "ORDER BY data_hora ASC"
+                        )
+
+                        _ia_status.write("🥗 Buscando nutrição e medicação...")
+
+                        # Nutrição diária — últimos 90 dias
+                        _ia_nutri_df = DB.query(
+                            "SELECT date(data_hora,'localtime') as dt, "
+                            "SUM(calorias) as cal, SUM(proteinas) as prot, "
+                            "SUM(carboidratos) as carb, SUM(gorduras) as gord "
+                            "FROM refeicoes "
+                            "WHERE date(data_hora,'localtime') >= date('now','-90 days') "
+                            "GROUP BY dt ORDER BY dt ASC"
+                        )
+
+                        # Medicação (Tirzepatida)
+                        _ia_med_df = DB.query(
+                            "SELECT date(data_hora,'localtime') as dt, dose_mg "
+                            "FROM medicacao ORDER BY data_hora ASC"
+                        )
+
+                        _ia_status.write("📝 Montando contexto clínico completo...")
+
+                        # ── 3. FORMATAR BLOCOS DE TEXTO ───────────────────────────────
+
+                        def _fmt_df_linhas(header, df, cols_fmt):
+                            """Formata DataFrame como bloco de texto para o prompt."""
+                            if df is None or df.empty:
+                                return f"{header}\n  [Sem dados]\n\n"
+                            txt = header + "\n"
+                            for _, r in df.iterrows():
+                                linha = "  " + " | ".join(
+                                    str(cols_fmt[c](r[c])) if c in r else "—"
+                                    for c in cols_fmt
+                                )
+                                txt += linha + "\n"
+                            return txt + "\n"
+
+                        # Peso
+                        _txt_peso = "📊 HISTÓRICO DE PESO (todas as medidas registradas):\n"
+                        if not _ia_peso_df.empty:
+                            for _, r in _ia_peso_df.iterrows():
+                                try:
+                                    _d = pd.to_datetime(str(r["data"])).strftime("%d/%m/%Y")
+                                except Exception:
+                                    _d = str(r["data"])
+                                _txt_peso += f"  {_d}: {float(r['peso']):.1f} kg\n"
+                        else:
+                            _txt_peso += "  [Sem registros de peso]\n"
+                        _txt_peso += "\n"
+
+                        # Medicação Tirzepatida
+                        _txt_med = "💊 HISTÓRICO TIRZEPATIDA (todas as aplicações):\n"
+                        if not _ia_med_df.empty:
+                            for _, r in _ia_med_df.iterrows():
+                                try:
+                                    _d = pd.to_datetime(str(r["dt"])).strftime("%d/%m/%Y")
+                                except Exception:
+                                    _d = str(r["dt"])
+                                _txt_med += f"  {_d}: {float(r['dose_mg']):.1f} mg\n"
+                        else:
+                            _txt_med += "  [Sem registros]\n"
+                        _txt_med += "\n"
+
+                        # Dados diários (Amazfit + Nutrição mesclados)
+                        _txt_diario = f"📅 DADOS DIÁRIOS — ÚLTIMOS 90 DIAS (Amazfit + Nutrição):\n"
+                        _txt_diario += "  Data | Passos | Cal.Gasto | Sono(min) | S.Prof(min) | HRV(ms) | PAI | Corrida(km) | Cal.Ingest | Prot(g) | Carb(g) | Gord(g)\n"
+                        if not _ia_daily_df.empty:
+                            # merge com nutrição por dt
+                            _nutri_idx = {}
+                            if not _ia_nutri_df.empty:
+                                for _, nr in _ia_nutri_df.iterrows():
+                                    _nutri_idx[str(nr["dt"])] = nr
+                            for _, dr in _ia_daily_df.iterrows():
+                                _dt_str = str(dr["dt"])
+                                try:
+                                    _dt_fmt = pd.to_datetime(_dt_str).strftime("%d/%m")
+                                except Exception:
+                                    _dt_fmt = _dt_str
+                                _nr = _nutri_idx.get(_dt_str)
+                                _cal_i = f"{int(_nr['cal'])}" if _nr is not None and not pd.isna(_nr.get('cal', float('nan'))) else "—"
+                                _prot_i = f"{int(_nr['prot'])}" if _nr is not None and not pd.isna(_nr.get('prot', float('nan'))) else "—"
+                                _carb_i = f"{int(_nr['carb'])}" if _nr is not None and not pd.isna(_nr.get('carb', float('nan'))) else "—"
+                                _gord_i = f"{int(_nr['gord'])}" if _nr is not None and not pd.isna(_nr.get('gord', float('nan'))) else "—"
+                                _txt_diario += (
+                                    f"  {_dt_fmt} | {int(dr.get('passos',0) or 0):,} | "
+                                    f"{int(dr.get('calorias_gastas',0) or 0)} | "
+                                    f"{int(dr.get('sono_total_min',0) or 0)} | "
+                                    f"{int(dr.get('sono_profundo_min',0) or 0)} | "
+                                    f"{int(dr.get('hrv_ms',0) or 0)} | "
+                                    f"{int(dr.get('pai',0) or 0)} | "
+                                    f"{float(dr.get('corrida_km',0) or 0):.1f} | "
+                                    f"{_cal_i} | {_prot_i} | {_carb_i} | {_gord_i}\n"
+                                )
+                        elif not _ia_nutri_df.empty:
+                            _txt_diario += "  [Dados Amazfit indisponíveis — somente nutrição]\n"
+                            for _, nr in _ia_nutri_df.iterrows():
+                                try:
+                                    _dt_fmt = pd.to_datetime(str(nr["dt"])).strftime("%d/%m")
+                                except Exception:
+                                    _dt_fmt = str(nr["dt"])
+                                _txt_diario += (
+                                    f"  {_dt_fmt} | — | — | — | — | — | — | — | "
+                                    f"{int(nr.get('cal',0) or 0)} | {int(nr.get('prot',0) or 0)} | "
+                                    f"{int(nr.get('carb',0) or 0)} | {int(nr.get('gord',0) or 0)}\n"
+                                )
+                        else:
+                            _txt_diario += "  [Sem dados diários disponíveis]\n"
+                        _txt_diario += "\n"
+
+                        # Corridas
+                        _txt_corridas = "🏃 HISTÓRICO DE CORRIDAS (Amazfit):\n"
+                        _txt_corridas += "  Data | KM | Cal corrida | Passos dia\n"
+                        if not _ia_corridas_df.empty:
+                            for _, cr in _ia_corridas_df.iterrows():
+                                try:
+                                    _cd = pd.to_datetime(str(cr["data_hora"])).strftime("%d/%m/%Y")
+                                except Exception:
+                                    _cd = str(cr["data_hora"])
+                                _txt_corridas += (
+                                    f"  {_cd} | {float(cr.get('corrida_km',0) or 0):.2f} km | "
+                                    f"{int(cr.get('corrida_cal',0) or 0)} kcal | "
+                                    f"{int(cr.get('passos',0) or 0):,} passos\n"
+                                )
+                        else:
+                            _txt_corridas += "  [Sem corridas registradas]\n"
+                        _txt_corridas += "\n"
+
+                        # Treinos detalhados (exercício por série)
+                        _txt_treinos = "💪 TREINOS DE MUSCULAÇÃO (Hevy) — DETALHADO POR SÉRIE:\n"
+                        _txt_treinos += "  Data | Treino | Exercício | Série | Tipo | Carga(kg) | Reps | Vol(kg) | RPE\n"
+                        if not _ia_hevy_df.empty:
+                            for _, hw in _ia_hevy_df.iterrows():
+                                try:
+                                    _hd = pd.to_datetime(str(hw["dt"])).strftime("%d/%m/%Y")
+                                except Exception:
+                                    _hd = str(hw["dt"])
+                                _htit = str(hw["titulo"])
+                                _hdur = int(hw.get("duracao_min") or 0)
+                                try:
+                                    _hexs = json.loads(hw["exercicios_json"] or "[]")
+                                except Exception:
+                                    _hexs = []
+                                if not _hexs:
+                                    _txt_treinos += f"  {_hd} | {_htit} | [sem exercícios] | — | — | — | — | — | —\n"
+                                    continue
+                                for _hex in _hexs:
+                                    _hex_nome = (_hex.get("title") or _hex.get("name") or
+                                                 _hex.get("exercise_title") or "Exercício")
+                                    _hsets = _hex.get("sets", [])
+                                    for _hsi, _hs in enumerate(_hsets, 1):
+                                        _hkg   = float(_hs.get("weight_kg") or 0)
+                                        _hreps = int(_hs.get("reps") or 0)
+                                        _hrpe  = _hs.get("rpe")
+                                        _htipo = (_hs.get("set_type") or "normal").capitalize()
+                                        _hvol  = round(_hkg * _hreps, 1)
+                                        _txt_treinos += (
+                                            f"  {_hd} | {_htit} | {_hex_nome} | {_hsi} | {_htipo} | "
+                                            f"{_hkg:.1f} | {_hreps} | {_hvol:.1f} | "
+                                            f"{float(_hrpe):.1f}\n" if _hrpe else
+                                            f"  {_hd} | {_htit} | {_hex_nome} | {_hsi} | {_htipo} | "
+                                            f"{_hkg:.1f} | {_hreps} | {_hvol:.1f} | —\n"
+                                        )
+                        else:
+                            _txt_treinos += "  [Sem treinos registrados]\n"
+                        _txt_treinos += "\n"
+
+                        # ── 4. PROMPT COMPLETO ────────────────────────────────────────
+                        _proto = st.session_state.get("coach_proto", {
+                            "rotina": "Musculação + Cardio (6x/sem)",
+                            "hiit": "Ter & Sex — Alta Intensidade / EPOC",
+                            "zona2": "Seg, Qua, Qui, Sáb — Corrida BPM 120-140",
+                            "peso_inicial": "115.3 kg (Jan/2026)",
+                        })
+
+                        prompt = (
+                            "Você é o IA Coach de Elite do Leandro — Arquiteto de Performance Humana, "
+                            "Nutricionista Esportivo de Elite e Endocrinologista de Alta Performance.\n"
+                            "Sua missão é gerar uma análise clínica e metabólica COMPLETA, extremamente crítica e sem rodeios, "
+                            "baseada nos dados reais abaixo. USE OS DADOS BRUTOS para identificar padrões, tendências, "
+                            "inconsistências e oportunidades concretas — não genéricos.\n\n"
+
+                            "═══════════════════════════════════════════════════\n"
+                            "CONTEXTO DO ATLETA\n"
+                            "═══════════════════════════════════════════════════\n"
+                            f"- Peso Inicial: {_proto['peso_inicial']}\n"
+                            f"- Peso Atual: {peso:.1f} kg  (Perda total: -{115.3 - peso:.1f} kg)\n"
+                            f"- Protocolo Farmacológico: Tirzepatida (injetável semanal)\n"
+                            f"- Rotina: {_proto['rotina']}\n"
+                            f"- HIIT: {_proto['hiit']}\n"
+                            f"- Zona 2: {_proto['zona2']}\n\n"
+
+                            f"═══════════════════════════════════════════════════\n"
+                            f"MÉDIAS DO PERÍODO ANALISADO ({n_dias} dias)\n"
+                            "═══════════════════════════════════════════════════\n"
+                            f"- Calorias ingeridas: {fmt_val(media_cal_ingestao,' kcal',0)} · "
+                            f"Proteínas: {fmt_val(media_prot,' g',0)} · "
+                            f"Carb: {fmt_val(media_carb,' g',0)} · "
+                            f"Gordura: {fmt_val(media_gord,' g',0)}\n"
+                            f"- Gasto calórico ativ: {fmt_val(media_cal_gastas,' kcal',0)} · "
+                            f"Déficit médio: {fmt_val(media_deficit,' kcal',0)}\n"
+                            f"- Corrida: {fmt_val(media_corrida_km,' km/dia',2)} · "
+                            f"{fmt_val(media_corrida_cal,' kcal/dia',0)}\n"
+                            f"- Musculação: {total_treinos} treinos · "
+                            f"Vol médio: {fmt_val(media_vol_treino,' kg',0)} · "
+                            f"Duração média: {fmt_val(media_dur_treino,' min',0)}\n"
+                            f"- Passos: {fmt_val(media_passos,'',0)}/dia · "
+                            f"Sono total: {fmt_val(media_sono,' min',0)} · "
+                            f"Sono profundo: {fmt_val(media_sono_prof,' min',0)}\n"
+                            f"- HRV: {fmt_val(media_hrv,' ms',0)} · PAI: {fmt_val(media_pai,'',0)}\n\n"
+
+                            "═══════════════════════════════════════════════════\n"
+                            "DADOS BRUTOS COMPLETOS\n"
+                            "═══════════════════════════════════════════════════\n"
+                            + _txt_peso
+                            + _txt_med
+                            + _txt_corridas
+                            + _txt_diario
+                            + _txt_treinos +
+
+                            "═══════════════════════════════════════════════════\n"
+                            "ANÁLISE SOLICITADA\n"
+                            "═══════════════════════════════════════════════════\n"
+                            "Com base em TODOS os dados acima — padrão diário de sono, HRV, PAI, carga dos treinos, "
+                            "exercícios específicos executados, progressão de cargas, frequência de corridas, "
+                            "histórico de peso e protocolo de Tirzepatida — forneça um parecer clínico estruturado "
+                            "EXATAMENTE nos 5 tópicos abaixo:\n\n"
+                            "1. 🔬 METABOLISMO & TIRZEPATIDA: Avalie o impacto real da medicação no ritmo de "
+                            "perda de peso (analise a curva do histórico), risco de catabolismo muscular dado "
+                            "o déficit e ingestão proteica, e adequação da dose atual.\n\n"
+                            "2. 💪 MUSCULAÇÃO — PROGRESSÃO DE CARGAS: Analise os treinos reais (exercícios, "
+                            "cargas, RPE, volume por sessão). Identifique pontos de estagnação, exercícios com "
+                            "RPE muito alto/baixo, desequilíbrios musculares e recomende ajustes específicos.\n\n"
+                            "3. 🏃 CARDIO (ZONA 2 & HIIT): Avalie a consistência das corridas, volume semanal "
+                            "real registrado, correlação com HRV/PAI (recuperação), e se o estímulo está correto "
+                            "para lipólise máxima sem comprometer recuperação muscular.\n\n"
+                            "4. 😴 RECUPERAÇÃO & BIOMARCADORES: Analise a qualidade do sono (total vs profundo), "
+                            "tendência do HRV (melhora ou piora de recuperação), PAI (carga cardiovascular "
+                            "acumulada). Identifique dias/semanas de sobrecarga ou subrecuperação.\n\n"
+                            "5. ⚡ PLANO DE AÇÃO — PRÓXIMAS 2 SEMANAS: Ações concretas e específicas "
+                            "(exercícios, cargas, volume, macros, sono) para maximizar perda de gordura, "
+                            "preservar/ganhar massa muscular e melhorar biomarcadores. Seja cirúrgico.\n\n"
+                            "Tom: técnico, sênior, clínico, sem introduções genéricas. Cite números reais dos dados."
+                        )
+
+                        _ia_status.write("🤖 Consultando Gemini 2.5 Flash...")
+                        vision = _gemini_model()
+                        res = vision.generate_content(prompt)
+                        st.session_state["ia_coach_result"] = res.text
+                        _ia_status.update(label="✅ Análise concluída!", state="complete", expanded=False)
+
+                        # Salvar no histórico
+                        try:
+                            DB.execute(
+                                "INSERT INTO ia_analises_clinicas (analise_txt, n_dias) VALUES (?, ?)",
+                                [res.text, n_dias]
+                            )
+                        except Exception as save_err:
+                            st.warning(f"⚠️ Erro ao salvar análise no histórico: {save_err}")
+                        st.rerun()
+                    except Exception as e:
+                        _ia_status.update(label=f"❌ Erro: {e}", state="error", expanded=True)
+                        st.error(f"❌ Erro ao chamar a IA: {e}")
+              except Exception as _outer_e:
+                  st.error(f"❌ Erro ao iniciar análise: {_outer_e}")
+
+            if "ia_coach_result" in st.session_state:
+                st.markdown(f"""
+                <div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;padding:20px;margin-top:10px;margin-bottom:15px;line-height:1.6">
+                    <div style="font-family:{MONO};font-size:11px;font-weight:700;color:{GREEN};letter-spacing:1.5px;margin-bottom:15px;text-transform:uppercase">🩺 DIAGNÓSTICO CLÍNICO DA IA</div>
+            
+                {st.session_state["ia_coach_result"]}
+        
+                </div>
+                """, unsafe_allow_html=True)
+
     else:
         st.markdown(
-            f'<div style="font-family:{MONO};font-size:11px;color:{MUTED};padding:16px;'
-            f'text-align:center">Dados insuficientes para calcular tendências neste período</div>',
+            panel(f'<p style="color:{GHOST};font-size:13px;padding:8px 0">'
+                  f'Ainda sem dados históricos do Amazfit. Rode /sync no bot para começar.</p>'),
             unsafe_allow_html=True,
         )
 
-    # ── IA Coach ─────────────────────────────────────────────────────────────
-    if st.session_state.get("sidebar_avancado_open", False):
-        st.markdown('<div id="sec-ia"></div>', unsafe_allow_html=True)
-        st.markdown(sec("IA Coach", "Análise de Emagrecimento & Performance"), unsafe_allow_html=True)
 
-        # Valores padrão do protocolo
-        _proto_defaults = {
-            "rotina": "Musculação + Cardio (6x/sem)",
-            "hiit": "Ter & Sex — Alta Intensidade / EPOC",
-            "zona2": "Seg, Qua, Qui, Sáb — Corrida BPM 120-140",
-            "peso_inicial": "115.3 kg (Jan/2026)",
-        }
-        if "coach_proto" not in st.session_state:
-            st.session_state["coach_proto"] = _proto_defaults.copy()
-        _proto = st.session_state["coach_proto"]
 
-        _proto_hdr, _proto_edit_btn = st.columns([1, 0.2])
-        with _proto_hdr:
-            st.markdown(
-                f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-                f'text-transform:uppercase;color:{CYAN};margin-bottom:6px">📋 PROTOCOLO & METAS METABÓLICAS</div>',
-                unsafe_allow_html=True,
-            )
-        with _proto_edit_btn:
-            if st.button("✏ editar" if not st.session_state.get("coach_proto_editing") else "✕ fechar",
-                         key="btn_proto_edit", use_container_width=True):
-                st.session_state["coach_proto_editing"] = not st.session_state.get("coach_proto_editing", False)
-                st.rerun()
 
-        if st.session_state.get("coach_proto_editing", False):
-            with st.form("form_proto_coach"):
-                _p1, _p2 = st.columns(2)
-                with _p1:
-                    _rotina_in = st.text_input("Rotina de Exercícios", value=_proto["rotina"])
-                    _hiit_in   = st.text_input("Treinos HIIT", value=_proto["hiit"])
-                with _p2:
-                    _zona2_in  = st.text_input("Treinos Zona 2", value=_proto["zona2"])
-                    _pinit_in  = st.text_input("Peso inicial (referência)", value=_proto["peso_inicial"])
-                if st.form_submit_button("✓ SALVAR PROTOCOLO", use_container_width=True):
-                    st.session_state["coach_proto"] = {
-                        "rotina": _rotina_in, "hiit": _hiit_in,
-                        "zona2": _zona2_in, "peso_inicial": _pinit_in,
-                    }
-                    st.session_state["coach_proto_editing"] = False
-                    _notif("Protocolo atualizado")
-                    st.rerun()
 
-        coach_html = f"""
-        <div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;padding:14px 18px;margin-bottom:15px">
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px">
-                <div style="font-size:11px;color:{MUTED}">Evolução de Peso
-                  <div style="font-size:13px;font-weight:700;color:{TEXT};margin-top:2px">{_proto["peso_inicial"]} ➔ {peso:.1f} kg atual</div></div>
-                <div style="font-size:11px;color:{MUTED}">Rotina
-                  <div style="font-size:13px;font-weight:700;color:{TEXT};margin-top:2px">{_proto["rotina"]}</div></div>
-                <div style="font-size:11px;color:{MUTED}">HIIT
-                  <div style="font-size:13px;font-weight:700;color:{TEXT};margin-top:2px">{_proto["hiit"]}</div></div>
-                <div style="font-size:11px;color:{MUTED}">Zona 2
-                  <div style="font-size:13px;font-weight:700;color:{TEXT};margin-top:2px">{_proto["zona2"]}</div></div>
-            </div>
-            <div style="margin-top:8px;padding-top:8px;border-top:1px solid {BORDER};display:flex;gap:8px;align-items:center">
-                <span style="background:rgba(167,139,250,0.1);border:1px solid {PURPLE}55;border-radius:4px;padding:2px 8px;font-family:{MONO};font-size:9px;color:{PURPLE};font-weight:700;letter-spacing:0.5px">TIRZEPATIDA</span>
-                <span style="font-family:{MONO};font-size:10px;color:{GHOST}">Protocolo farmacológico ativo · injetável semanal</span>
-            </div>
-        </div>
-        """
-        st.markdown(coach_html, unsafe_allow_html=True)
 
-        btn_col, sel_col = st.columns([1, 1])
-        with btn_col:
-            executar_analise = st.button("🧠 NOVA ANÁLISE DE EMAGRECIMENTO", key="btn_ia_coach", use_container_width=True)
-
-        # Busca análises anteriores para o seletor histórico
-        df_past = db("""
-            SELECT id, data_hora, n_dias
-            FROM ia_analises_clinicas
-            ORDER BY data_hora DESC
-        """)
-
-        past_options = ["📂  Histórico de análises ▾"]
-        id_map = {}
-        if not df_past.empty:
-            for idx, r_row in df_past.iterrows():
-                dt_val = r_row["data_hora"]
-                try:
-                    if isinstance(dt_val, str):
-                        dt_obj = datetime.strptime(dt_val.split(".")[0], "%Y-%m-%d %H:%M:%S")
-                    else:
-                        dt_obj = dt_val
-                    dt_str = dt_obj.strftime("%d/%m  %H:%M")
-                except Exception:
-                    dt_str = str(dt_val)
-                lbl = f"↩  {dt_str}  ({r_row['n_dias']}d)"
-                past_options.append(lbl)
-                id_map[lbl] = int(r_row["id"])
-
-        with sel_col:
-            _hist_open = st.session_state.get("ia_hist_open", False)
-            _hist_lbl = "✕ FECHAR" if _hist_open else "📂 HISTÓRICO ▾"
-            if st.button(_hist_lbl, key="btn_ia_hist_toggle", use_container_width=True):
-                st.session_state["ia_hist_open"] = not _hist_open
-                st.rerun()
-
-        # ── Menu dropdown do histórico ─────────────────────────────────────────────
-        if st.session_state.get("ia_hist_open", False):
-            if id_map:
-                st.markdown(
-                    f'<div style="background:{BG3};border:1px solid {BORDER};'
-                    f'border-top:2px solid {CYAN};border-radius:0 0 8px 8px;'
-                    f'padding:6px 4px;margin-top:-2px">',
-                    unsafe_allow_html=True,
-                )
-                for _hlbl, _hid in id_map.items():
-                    _col_item, = st.columns([1])
-                    if st.button(
-                        f"↩  {_hlbl}",
-                        key=f"ia_hist_item_{_hid}",
-                        use_container_width=True,
-                    ):
-                        _df_sel = db("SELECT analise_txt FROM ia_analises_clinicas WHERE id = ?", [_hid])
-                        if not _df_sel.empty:
-                            st.session_state["ia_coach_result"] = _df_sel["analise_txt"].iloc[0]
-                        st.session_state["ia_hist_open"] = False
-                        st.rerun()
-                st.markdown("</div>", unsafe_allow_html=True)
-            else:
-                st.markdown(
-                    f'<div style="background:{BG3};border:1px solid {BORDER};'
-                    f'border-top:2px solid {BORDER};border-radius:0 0 8px 8px;'
-                    f'padding:10px 14px;margin-top:-2px;'
-                    f'font-family:{MONO};font-size:10px;color:{GHOST}">Sem análises salvas</div>',
-                    unsafe_allow_html=True,
-                )
-
-        if executar_analise:
-          try:
-            with st.status("🧠 IA Coach — coletando dados e gerando análise...", expanded=True) as _ia_status:
-                _ia_status.write("📊 Calculando médias do período selecionado...")
-                try:
-                    # ── 1. MÉDIAS DO PERÍODO SELECIONADO ─────────────────────────
-                    media_passos      = media(df_hist, "passos")
-                    media_cal_gastas  = media(df_hist, "calorias_gastas")
-                    media_sono        = media(df_hist, "sono_total_min")
-                    media_sono_prof   = media(df_hist, "sono_profundo_min")
-                    media_hrv         = media(df_hist, "hrv_ms")
-                    media_pai         = media(df_hist, "pai")
-                    media_cal_ingestao= media(df_macro_hist, "cal")
-                    media_prot        = media(df_macro_hist, "prot")
-                    media_carb        = media(df_macro_hist, "carb")
-                    media_gord        = media(df_macro_hist, "gord")
-                    media_corrida_km  = media(df_hist, "corrida_km")
-                    media_corrida_cal = media(df_hist, "corrida_cal")
-
-                    # ── 2. DADOS BRUTOS COMPLETOS (queries extras) ────────────────
-                    _ia_status.write("⚖️ Buscando histórico de peso...")
-
-                    # Histórico de peso (medidas)
-                    _ia_peso_df = DB.query(
-                        "SELECT data, peso FROM medidas WHERE peso IS NOT NULL ORDER BY data ASC"
-                    )
-
-                    _ia_status.write("💪 Buscando treinos de musculação...")
-
-                    # Treinos detalhados — últimas 100 sessões
-                    _ia_hevy_df = DB.query(
-                        "SELECT date(data_hora,'localtime') as dt, titulo, "
-                        "duracao_min, volume_kg, exercicios_json "
-                        "FROM hevy_treinos ORDER BY data_hora DESC LIMIT 100"
-                    )
-
-                    _ia_status.write("🏃 Buscando histórico de corridas...")
-
-                    # Corridas completas
-                    _ia_corridas_df = DB.query(
-                        "SELECT data_hora, corrida_km, corrida_cal, passos "
-                        "FROM amazfit_dados WHERE corrida_km > 0 ORDER BY data_hora DESC"
-                    )
-
-                    _ia_status.write("🌙 Buscando dados diários (sono, HRV, PAI)...")
-
-                    # Dados diários Amazfit (sono, HRV, PAI, passos) — últimos 90 dias
-                    _ia_daily_df = DB.query(
-                        "SELECT date(data_hora) as dt, passos, calorias_gastas, "
-                        "sono_total_min, sono_profundo_min, hrv_ms, pai, corrida_km "
-                        "FROM amazfit_dados "
-                        "WHERE date(data_hora) >= date('now','-90 days') "
-                        "ORDER BY data_hora ASC"
-                    )
-
-                    _ia_status.write("🥗 Buscando nutrição e medicação...")
-
-                    # Nutrição diária — últimos 90 dias
-                    _ia_nutri_df = DB.query(
-                        "SELECT date(data_hora,'localtime') as dt, "
-                        "SUM(calorias) as cal, SUM(proteinas) as prot, "
-                        "SUM(carboidratos) as carb, SUM(gorduras) as gord "
-                        "FROM refeicoes "
-                        "WHERE date(data_hora,'localtime') >= date('now','-90 days') "
-                        "GROUP BY dt ORDER BY dt ASC"
-                    )
-
-                    # Medicação (Tirzepatida)
-                    _ia_med_df = DB.query(
-                        "SELECT date(data_hora,'localtime') as dt, dose_mg "
-                        "FROM medicacao ORDER BY data_hora ASC"
-                    )
-
-                    _ia_status.write("📝 Montando contexto clínico completo...")
-
-                    # ── 3. FORMATAR BLOCOS DE TEXTO ───────────────────────────────
-
-                    def _fmt_df_linhas(header, df, cols_fmt):
-                        """Formata DataFrame como bloco de texto para o prompt."""
-                        if df is None or df.empty:
-                            return f"{header}\n  [Sem dados]\n\n"
-                        txt = header + "\n"
-                        for _, r in df.iterrows():
-                            linha = "  " + " | ".join(
-                                str(cols_fmt[c](r[c])) if c in r else "—"
-                                for c in cols_fmt
-                            )
-                            txt += linha + "\n"
-                        return txt + "\n"
-
-                    # Peso
-                    _txt_peso = "📊 HISTÓRICO DE PESO (todas as medidas registradas):\n"
-                    if not _ia_peso_df.empty:
-                        for _, r in _ia_peso_df.iterrows():
-                            try:
-                                _d = pd.to_datetime(str(r["data"])).strftime("%d/%m/%Y")
-                            except Exception:
-                                _d = str(r["data"])
-                            _txt_peso += f"  {_d}: {float(r['peso']):.1f} kg\n"
-                    else:
-                        _txt_peso += "  [Sem registros de peso]\n"
-                    _txt_peso += "\n"
-
-                    # Medicação Tirzepatida
-                    _txt_med = "💊 HISTÓRICO TIRZEPATIDA (todas as aplicações):\n"
-                    if not _ia_med_df.empty:
-                        for _, r in _ia_med_df.iterrows():
-                            try:
-                                _d = pd.to_datetime(str(r["dt"])).strftime("%d/%m/%Y")
-                            except Exception:
-                                _d = str(r["dt"])
-                            _txt_med += f"  {_d}: {float(r['dose_mg']):.1f} mg\n"
-                    else:
-                        _txt_med += "  [Sem registros]\n"
-                    _txt_med += "\n"
-
-                    # Dados diários (Amazfit + Nutrição mesclados)
-                    _txt_diario = f"📅 DADOS DIÁRIOS — ÚLTIMOS 90 DIAS (Amazfit + Nutrição):\n"
-                    _txt_diario += "  Data | Passos | Cal.Gasto | Sono(min) | S.Prof(min) | HRV(ms) | PAI | Corrida(km) | Cal.Ingest | Prot(g) | Carb(g) | Gord(g)\n"
-                    if not _ia_daily_df.empty:
-                        # merge com nutrição por dt
-                        _nutri_idx = {}
-                        if not _ia_nutri_df.empty:
-                            for _, nr in _ia_nutri_df.iterrows():
-                                _nutri_idx[str(nr["dt"])] = nr
-                        for _, dr in _ia_daily_df.iterrows():
-                            _dt_str = str(dr["dt"])
-                            try:
-                                _dt_fmt = pd.to_datetime(_dt_str).strftime("%d/%m")
-                            except Exception:
-                                _dt_fmt = _dt_str
-                            _nr = _nutri_idx.get(_dt_str)
-                            _cal_i = f"{int(_nr['cal'])}" if _nr is not None and not pd.isna(_nr.get('cal', float('nan'))) else "—"
-                            _prot_i = f"{int(_nr['prot'])}" if _nr is not None and not pd.isna(_nr.get('prot', float('nan'))) else "—"
-                            _carb_i = f"{int(_nr['carb'])}" if _nr is not None and not pd.isna(_nr.get('carb', float('nan'))) else "—"
-                            _gord_i = f"{int(_nr['gord'])}" if _nr is not None and not pd.isna(_nr.get('gord', float('nan'))) else "—"
-                            _txt_diario += (
-                                f"  {_dt_fmt} | {int(dr.get('passos',0) or 0):,} | "
-                                f"{int(dr.get('calorias_gastas',0) or 0)} | "
-                                f"{int(dr.get('sono_total_min',0) or 0)} | "
-                                f"{int(dr.get('sono_profundo_min',0) or 0)} | "
-                                f"{int(dr.get('hrv_ms',0) or 0)} | "
-                                f"{int(dr.get('pai',0) or 0)} | "
-                                f"{float(dr.get('corrida_km',0) or 0):.1f} | "
-                                f"{_cal_i} | {_prot_i} | {_carb_i} | {_gord_i}\n"
-                            )
-                    elif not _ia_nutri_df.empty:
-                        _txt_diario += "  [Dados Amazfit indisponíveis — somente nutrição]\n"
-                        for _, nr in _ia_nutri_df.iterrows():
-                            try:
-                                _dt_fmt = pd.to_datetime(str(nr["dt"])).strftime("%d/%m")
-                            except Exception:
-                                _dt_fmt = str(nr["dt"])
-                            _txt_diario += (
-                                f"  {_dt_fmt} | — | — | — | — | — | — | — | "
-                                f"{int(nr.get('cal',0) or 0)} | {int(nr.get('prot',0) or 0)} | "
-                                f"{int(nr.get('carb',0) or 0)} | {int(nr.get('gord',0) or 0)}\n"
-                            )
-                    else:
-                        _txt_diario += "  [Sem dados diários disponíveis]\n"
-                    _txt_diario += "\n"
-
-                    # Corridas
-                    _txt_corridas = "🏃 HISTÓRICO DE CORRIDAS (Amazfit):\n"
-                    _txt_corridas += "  Data | KM | Cal corrida | Passos dia\n"
-                    if not _ia_corridas_df.empty:
-                        for _, cr in _ia_corridas_df.iterrows():
-                            try:
-                                _cd = pd.to_datetime(str(cr["data_hora"])).strftime("%d/%m/%Y")
-                            except Exception:
-                                _cd = str(cr["data_hora"])
-                            _txt_corridas += (
-                                f"  {_cd} | {float(cr.get('corrida_km',0) or 0):.2f} km | "
-                                f"{int(cr.get('corrida_cal',0) or 0)} kcal | "
-                                f"{int(cr.get('passos',0) or 0):,} passos\n"
-                            )
-                    else:
-                        _txt_corridas += "  [Sem corridas registradas]\n"
-                    _txt_corridas += "\n"
-
-                    # Treinos detalhados (exercício por série)
-                    _txt_treinos = "💪 TREINOS DE MUSCULAÇÃO (Hevy) — DETALHADO POR SÉRIE:\n"
-                    _txt_treinos += "  Data | Treino | Exercício | Série | Tipo | Carga(kg) | Reps | Vol(kg) | RPE\n"
-                    if not _ia_hevy_df.empty:
-                        for _, hw in _ia_hevy_df.iterrows():
-                            try:
-                                _hd = pd.to_datetime(str(hw["dt"])).strftime("%d/%m/%Y")
-                            except Exception:
-                                _hd = str(hw["dt"])
-                            _htit = str(hw["titulo"])
-                            _hdur = int(hw.get("duracao_min") or 0)
-                            try:
-                                _hexs = json.loads(hw["exercicios_json"] or "[]")
-                            except Exception:
-                                _hexs = []
-                            if not _hexs:
-                                _txt_treinos += f"  {_hd} | {_htit} | [sem exercícios] | — | — | — | — | — | —\n"
-                                continue
-                            for _hex in _hexs:
-                                _hex_nome = (_hex.get("title") or _hex.get("name") or
-                                             _hex.get("exercise_title") or "Exercício")
-                                _hsets = _hex.get("sets", [])
-                                for _hsi, _hs in enumerate(_hsets, 1):
-                                    _hkg   = float(_hs.get("weight_kg") or 0)
-                                    _hreps = int(_hs.get("reps") or 0)
-                                    _hrpe  = _hs.get("rpe")
-                                    _htipo = (_hs.get("set_type") or "normal").capitalize()
-                                    _hvol  = round(_hkg * _hreps, 1)
-                                    _txt_treinos += (
-                                        f"  {_hd} | {_htit} | {_hex_nome} | {_hsi} | {_htipo} | "
-                                        f"{_hkg:.1f} | {_hreps} | {_hvol:.1f} | "
-                                        f"{float(_hrpe):.1f}\n" if _hrpe else
-                                        f"  {_hd} | {_htit} | {_hex_nome} | {_hsi} | {_htipo} | "
-                                        f"{_hkg:.1f} | {_hreps} | {_hvol:.1f} | —\n"
-                                    )
-                    else:
-                        _txt_treinos += "  [Sem treinos registrados]\n"
-                    _txt_treinos += "\n"
-
-                    # ── 4. PROMPT COMPLETO ────────────────────────────────────────
-                    _proto = st.session_state.get("coach_proto", {
-                        "rotina": "Musculação + Cardio (6x/sem)",
-                        "hiit": "Ter & Sex — Alta Intensidade / EPOC",
-                        "zona2": "Seg, Qua, Qui, Sáb — Corrida BPM 120-140",
-                        "peso_inicial": "115.3 kg (Jan/2026)",
-                    })
-
-                    prompt = (
-                        "Você é o IA Coach de Elite do Leandro — Arquiteto de Performance Humana, "
-                        "Nutricionista Esportivo de Elite e Endocrinologista de Alta Performance.\n"
-                        "Sua missão é gerar uma análise clínica e metabólica COMPLETA, extremamente crítica e sem rodeios, "
-                        "baseada nos dados reais abaixo. USE OS DADOS BRUTOS para identificar padrões, tendências, "
-                        "inconsistências e oportunidades concretas — não genéricos.\n\n"
-
-                        "═══════════════════════════════════════════════════\n"
-                        "CONTEXTO DO ATLETA\n"
-                        "═══════════════════════════════════════════════════\n"
-                        f"- Peso Inicial: {_proto['peso_inicial']}\n"
-                        f"- Peso Atual: {peso:.1f} kg  (Perda total: -{115.3 - peso:.1f} kg)\n"
-                        f"- Protocolo Farmacológico: Tirzepatida (injetável semanal)\n"
-                        f"- Rotina: {_proto['rotina']}\n"
-                        f"- HIIT: {_proto['hiit']}\n"
-                        f"- Zona 2: {_proto['zona2']}\n\n"
-
-                        f"═══════════════════════════════════════════════════\n"
-                        f"MÉDIAS DO PERÍODO ANALISADO ({n_dias} dias)\n"
-                        "═══════════════════════════════════════════════════\n"
-                        f"- Calorias ingeridas: {fmt_val(media_cal_ingestao,' kcal',0)} · "
-                        f"Proteínas: {fmt_val(media_prot,' g',0)} · "
-                        f"Carb: {fmt_val(media_carb,' g',0)} · "
-                        f"Gordura: {fmt_val(media_gord,' g',0)}\n"
-                        f"- Gasto calórico ativ: {fmt_val(media_cal_gastas,' kcal',0)} · "
-                        f"Déficit médio: {fmt_val(media_deficit,' kcal',0)}\n"
-                        f"- Corrida: {fmt_val(media_corrida_km,' km/dia',2)} · "
-                        f"{fmt_val(media_corrida_cal,' kcal/dia',0)}\n"
-                        f"- Musculação: {total_treinos} treinos · "
-                        f"Vol médio: {fmt_val(media_vol_treino,' kg',0)} · "
-                        f"Duração média: {fmt_val(media_dur_treino,' min',0)}\n"
-                        f"- Passos: {fmt_val(media_passos,'',0)}/dia · "
-                        f"Sono total: {fmt_val(media_sono,' min',0)} · "
-                        f"Sono profundo: {fmt_val(media_sono_prof,' min',0)}\n"
-                        f"- HRV: {fmt_val(media_hrv,' ms',0)} · PAI: {fmt_val(media_pai,'',0)}\n\n"
-
-                        "═══════════════════════════════════════════════════\n"
-                        "DADOS BRUTOS COMPLETOS\n"
-                        "═══════════════════════════════════════════════════\n"
-                        + _txt_peso
-                        + _txt_med
-                        + _txt_corridas
-                        + _txt_diario
-                        + _txt_treinos +
-
-                        "═══════════════════════════════════════════════════\n"
-                        "ANÁLISE SOLICITADA\n"
-                        "═══════════════════════════════════════════════════\n"
-                        "Com base em TODOS os dados acima — padrão diário de sono, HRV, PAI, carga dos treinos, "
-                        "exercícios específicos executados, progressão de cargas, frequência de corridas, "
-                        "histórico de peso e protocolo de Tirzepatida — forneça um parecer clínico estruturado "
-                        "EXATAMENTE nos 5 tópicos abaixo:\n\n"
-                        "1. 🔬 METABOLISMO & TIRZEPATIDA: Avalie o impacto real da medicação no ritmo de "
-                        "perda de peso (analise a curva do histórico), risco de catabolismo muscular dado "
-                        "o déficit e ingestão proteica, e adequação da dose atual.\n\n"
-                        "2. 💪 MUSCULAÇÃO — PROGRESSÃO DE CARGAS: Analise os treinos reais (exercícios, "
-                        "cargas, RPE, volume por sessão). Identifique pontos de estagnação, exercícios com "
-                        "RPE muito alto/baixo, desequilíbrios musculares e recomende ajustes específicos.\n\n"
-                        "3. 🏃 CARDIO (ZONA 2 & HIIT): Avalie a consistência das corridas, volume semanal "
-                        "real registrado, correlação com HRV/PAI (recuperação), e se o estímulo está correto "
-                        "para lipólise máxima sem comprometer recuperação muscular.\n\n"
-                        "4. 😴 RECUPERAÇÃO & BIOMARCADORES: Analise a qualidade do sono (total vs profundo), "
-                        "tendência do HRV (melhora ou piora de recuperação), PAI (carga cardiovascular "
-                        "acumulada). Identifique dias/semanas de sobrecarga ou subrecuperação.\n\n"
-                        "5. ⚡ PLANO DE AÇÃO — PRÓXIMAS 2 SEMANAS: Ações concretas e específicas "
-                        "(exercícios, cargas, volume, macros, sono) para maximizar perda de gordura, "
-                        "preservar/ganhar massa muscular e melhorar biomarcadores. Seja cirúrgico.\n\n"
-                        "Tom: técnico, sênior, clínico, sem introduções genéricas. Cite números reais dos dados."
-                    )
-
-                    _ia_status.write("🤖 Consultando Gemini 2.5 Flash...")
-                    vision = _gemini_model()
-                    res = vision.generate_content(prompt)
-                    st.session_state["ia_coach_result"] = res.text
-                    _ia_status.update(label="✅ Análise concluída!", state="complete", expanded=False)
-
-                    # Salvar no histórico
-                    try:
-                        DB.execute(
-                            "INSERT INTO ia_analises_clinicas (analise_txt, n_dias) VALUES (?, ?)",
-                            [res.text, n_dias]
-                        )
-                    except Exception as save_err:
-                        st.warning(f"⚠️ Erro ao salvar análise no histórico: {save_err}")
-                    st.rerun()
-                except Exception as e:
-                    _ia_status.update(label=f"❌ Erro: {e}", state="error", expanded=True)
-                    st.error(f"❌ Erro ao chamar a IA: {e}")
-          except Exception as _outer_e:
-              st.error(f"❌ Erro ao iniciar análise: {_outer_e}")
-
-        if "ia_coach_result" in st.session_state:
-            st.markdown(f"""
-            <div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;padding:20px;margin-top:10px;margin-bottom:15px;line-height:1.6">
-                <div style="font-family:{MONO};font-size:11px;font-weight:700;color:{GREEN};letter-spacing:1.5px;margin-bottom:15px;text-transform:uppercase">🩺 DIAGNÓSTICO CLÍNICO DA IA</div>
-            
-            {st.session_state["ia_coach_result"]}
-        
-            </div>
-            """, unsafe_allow_html=True)
-
-else:
-    st.markdown(
-        panel(f'<p style="color:{GHOST};font-size:13px;padding:8px 0">'
-              f'Ainda sem dados históricos do Amazfit. Rode /sync no bot para começar.</p>'),
-        unsafe_allow_html=True,
-    )
+_fragment_historico()
 
 if st.session_state.get('sidebar_avancado_open', False):
     # ── BLOCO: CORPO ─────────────────────────────────────────────────────────────
@@ -4578,7 +4679,7 @@ if st.session_state.get('sidebar_avancado_open', False):
                      _nz(_b_peitoral), _nz(_b_quadril), _nz(_b_coxa_d), _nz(_b_coxa_e),
                      _nz(_b_pant_d), _nz(_b_pant_e), _nz(_b_bic_d), _nz(_b_bic_e), _bio_data_sql],
                 )
-            st.cache_data.clear()
+            _invalidate_cache(_q_peso, _q_peso_historico, _q_medidas, _q_biometria)
             st.session_state["bio_nova_open"] = False
             _notif(f"Medidas de {_bio_data.strftime('%d/%m/%Y')} salvas ✓")
             st.rerun()
@@ -4767,7 +4868,7 @@ if st.session_state.get('sidebar_avancado_open', False):
                          _nz2(_e_pant_d), _nz2(_e_pant_e), _nz2(_e_bic_d), _nz2(_e_bic_e),
                          _sel_ord],
                     )
-                    st.cache_data.clear()
+                    _invalidate_cache(_q_peso, _q_peso_historico, _q_medidas, _q_biometria)
                     st.session_state.pop("bio_edit_open", None)
                     _notif(f"Medidas de {_sel_fmt} atualizadas ✓")
                     st.rerun()
@@ -4784,7 +4885,7 @@ if st.session_state.get('sidebar_avancado_open', False):
                     with _dc1:
                         if st.button(f"✓ Confirmar exclusão de {_sel_fmt}", key="bio_del_conf2", use_container_width=True):
                             DB.execute("DELETE FROM medidas WHERE date(data)=?", [_sel_ord])
-                            st.cache_data.clear()
+                            _invalidate_cache(_q_peso, _q_peso_historico, _q_medidas, _q_biometria)
                             st.session_state.pop("bio_del_confirm", None)
                             st.session_state.pop("bio_edit_open", None)
                             _notif(f"Registro de {_sel_fmt} excluído ✓")
@@ -4807,9 +4908,7 @@ st.markdown('<div id="sec-evacuacao"></div>', unsafe_allow_html=True)
 st.markdown(sec("Evacuação", "Registro intestinal — intervalo e histórico"), unsafe_allow_html=True)
 
 # ── Busca todos os registros de evacuação ────────────────────────────────────
-_ev_df = DB.query(
-    "SELECT id, data_hora, esforco, observacao FROM evacuacoes ORDER BY data_hora DESC"
-)
+_ev_df = _q_evacuacoes()
 
 # ── Card de resumo ────────────────────────────────────────────────────────────
 if not _ev_df.empty:
@@ -4904,7 +5003,7 @@ def _dialog_evacuacao():
                 "INSERT INTO evacuacoes (data_hora, esforco, observacao) VALUES (?, ?, ?)",
                 [_evac_dt, _evac_esforco_val, _evac_obs.strip() or None]
             )
-            st.cache_data.clear()
+            _invalidate_cache(_q_evacuacoes)
             _notif("Evacuação registrada ✓")
             st.rerun()
 
@@ -4912,13 +5011,14 @@ if st.button("🚽 REGISTRAR EVACUAÇÃO", key="btn_evac_nova", use_container_wi
     _dialog_evacuacao()
 
 # ── Tabela de histórico ───────────────────────────────────────────────────────
-_evac_hist_open = st.session_state.get("evac_hist_open", False)
-_evac_hist_lbl  = "📋 HISTÓRICO DE EVACUAÇÕES ▴" if _evac_hist_open else "📋 HISTÓRICO DE EVACUAÇÕES ▾"
-if st.button(_evac_hist_lbl, key="btn_evac_hist", use_container_width=True):
-    st.session_state["evac_hist_open"] = not _evac_hist_open
-    st.rerun()
+_ui_toggle_button(
+    "📋 HISTÓRICO DE EVACUAÇÕES ▴",
+    "📋 HISTÓRICO DE EVACUAÇÕES ▾",
+    "evac_hist_open",
+    "btn_evac_hist",
+)
 
-if st.session_state.get("evac_hist_open", False) and not _ev_df.empty:
+if _toggle_key("evac_hist_open") and not _ev_df.empty:
     _ev_show = _ev_df.copy()
     _ev_show["data_hora_fmt"] = pd.to_datetime(_ev_show["data_hora"]).dt.strftime("%d/%m/%Y  %H:%M")
     _ev_show["observacao"] = _ev_show["observacao"].fillna("—")
@@ -4982,7 +5082,7 @@ if st.session_state.get("evac_hist_open", False) and not _ev_df.empty:
             if st.button("✓ Confirmar exclusão do último", key="evac_del_ok", use_container_width=True):
                 _ev_ultimo_id = int(_ev_df["id"].iloc[0])
                 DB.execute("DELETE FROM evacuacoes WHERE id=?", [_ev_ultimo_id])
-                st.cache_data.clear()
+                _invalidate_cache(_q_evacuacoes)
                 st.session_state.pop("evac_del_confirm", None)
                 _notif("Registro removido ✓")
                 st.rerun()
