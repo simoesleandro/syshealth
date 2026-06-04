@@ -74,7 +74,7 @@ def resumo():
             "WHERE date(data_hora,'localtime') = ?",
             [hoje],
         )
-        result["agua_hoje_ml"] = _scalar(df, "total")
+        result["agua_hoje_ml"] = _scalar(df, "total") or 0
     except Exception:
         pass
 
