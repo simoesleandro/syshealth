@@ -54,14 +54,17 @@ def health():
 def resumo():
     hoje = _hoje()
     result = {
-        "agua": None,
-        "peso": None,
-        "sono": None,
-        "passos": None,
-        "treino": None,
-        "deficit": None,
-        "proteina": None,
-        "tirzepatida": False,
+        "agua_hoje_ml": None,
+        "peso_kg": None,
+        "sono_horas": None,
+        "passos_hoje": None,
+        "treino_hoje": None,
+        "deficit_calorico": None,
+        "proteina_g": None,
+        "carboidrato_g": None,
+        "hrv": None,
+        "fadiga": None,
+        "tirzepatida_hoje": False,
         "offline": False,
     }
 
@@ -71,25 +74,31 @@ def resumo():
             "WHERE date(data_hora,'localtime') = ?",
             [hoje],
         )
-        result["agua"] = _scalar(df, "total")
+        result["agua_hoje_ml"] = _scalar(df, "total")
     except Exception:
         pass
 
     try:
-        df = query("SELECT peso FROM medidas ORDER BY id DESC LIMIT 1")
-        result["peso"] = _scalar(df, "peso")
+        df = query("SELECT peso FROM medidas ORDER BY data DESC, id DESC LIMIT 1")
+        result["peso_kg"] = _scalar(df, "peso")
     except Exception:
         pass
 
+    _calorias_gastas = None
     try:
         df = query(
-            "SELECT sono_total_min, passos FROM amazfit_dados "
+            "SELECT sono_total_min, passos, hrv_ms, calorias_gastas FROM amazfit_dados "
             "WHERE date(data_hora,'localtime') = ? LIMIT 1",
             [hoje],
         )
         if not df.empty:
-            result["sono"] = _scalar(df, "sono_total_min")
-            result["passos"] = _scalar(df, "passos")
+            sono_min = _scalar(df, "sono_total_min")
+            if sono_min:
+                result["sono_horas"] = round(sono_min / 60.0, 1)
+            result["passos_hoje"] = _scalar(df, "passos")
+            hrv_raw = _scalar(df, "hrv_ms")
+            result["hrv"] = int(hrv_raw) if hrv_raw else None
+            _calorias_gastas = _scalar(df, "calorias_gastas")
     except Exception:
         pass
 
@@ -101,17 +110,23 @@ def resumo():
             [hoje],
         )
         if not df.empty:
-            result["treino"] = _scalar(df, "titulo")
+            result["treino_hoje"] = _scalar(df, "titulo")
     except Exception:
         pass
 
     try:
         df = query(
-            "SELECT SUM(proteinas) AS total FROM refeicoes "
-            "WHERE date(data_hora,'localtime') = ?",
+            "SELECT SUM(calorias) AS cal, SUM(proteinas) AS prot, SUM(carboidratos) AS carb "
+            "FROM refeicoes WHERE date(data_hora,'localtime') = ?",
             [hoje],
         )
-        result["proteina"] = _scalar(df, "total")
+        prot = _scalar(df, "prot")
+        result["proteina_g"] = round(float(prot), 1) if prot is not None else None
+        carb = _scalar(df, "carb")
+        result["carboidrato_g"] = round(float(carb), 1) if carb is not None else None
+        cal_consumidas = _scalar(df, "cal")
+        if _calorias_gastas is not None and cal_consumidas is not None:
+            result["deficit_calorico"] = int(_calorias_gastas - cal_consumidas)
     except Exception:
         pass
 
@@ -122,7 +137,7 @@ def resumo():
             [hoje],
         )
         cnt = _scalar(df, "cnt", 0)
-        result["tirzepatida"] = bool(cnt and cnt > 0)
+        result["tirzepatida_hoje"] = bool(cnt and cnt > 0)
     except Exception:
         pass
 
