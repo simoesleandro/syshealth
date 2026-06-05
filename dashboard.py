@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-03-ux-audit"
+_APP_BUILD = "2026-06-03-ref-native"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -824,16 +824,83 @@ def _ui_toggle_button(label_open: str, label_closed: str, session_key: str, btn_
         st.rerun()
 
 
-_REF_BUSCA_APPLIED = "ref_busca_applied"
+def _append_alimento_carrinho(carrinho: list, row) -> bool:
+    """Adiciona alimento ao carrinho se ainda não estiver. Retorna True se adicionou."""
+    bid = int(row["id"])
+    if any(c["id"] == bid for c in carrinho):
+        return False
+    carrinho.append({
+        "id": bid,
+        "descricao": str(row["descricao"]),
+        "qtd_ref": float(row.get("qtd_referencia") or 100),
+        "unidade": str(row.get("unidade_referencia") or "g"),
+        "kcal_ref": float(row.get("calorias") or 0),
+        "prot_ref": float(row.get("proteinas") or 0),
+        "carb_ref": float(row.get("carboidratos") or 0),
+        "gord_ref": float(row.get("gorduras") or 0),
+    })
+    return True
 
 
-def _sync_ref_busca_applied():
-    """Copia o texto digitado para o termo efetivo da busca (Enter, blur ou botão 🔍)."""
-    st.session_state[_REF_BUSCA_APPLIED] = (st.session_state.get("ref_busca_rapida") or "").strip()
+def _componentes_to_carrinho(comp_json, descricao, kcal=0, prot=0, carb=0, gord=0):
+    """Converte componentes_json da refeição para itens do carrinho."""
+    items = []
+    if comp_json:
+        try:
+            data = json.loads(comp_json) if isinstance(comp_json, str) else comp_json
+            if isinstance(data, list):
+                for i, d in enumerate(data):
+                    qtd = float(d.get("gramas") or d.get("qtd") or 100)
+                    items.append({
+                        "id": int(d.get("banco_id") or 0),
+                        "descricao": str(d.get("nome") or descricao),
+                        "qtd_ref": qtd if qtd > 0 else 100.0,
+                        "unidade": str(d.get("unidade") or "g"),
+                        "kcal_ref": float(d.get("kcal") or 0),
+                        "prot_ref": float(d.get("prot") or 0),
+                        "carb_ref": float(d.get("carb") or 0),
+                        "gord_ref": float(d.get("gord") or 0),
+                        "_uid": int(d.get("banco_id") or 0) or (900000 + i),
+                    })
+        except Exception:
+            pass
+    if not items and descricao:
+        items.append({
+            "id": 0,
+            "descricao": descricao,
+            "qtd_ref": 100.0,
+            "unidade": "g",
+            "kcal_ref": float(kcal),
+            "prot_ref": float(prot),
+            "carb_ref": float(carb),
+            "gord_ref": float(gord),
+            "_uid": 900001,
+        })
+    return items
 
 
-def _ref_busca_termo() -> str:
-    return st.session_state.get(_REF_BUSCA_APPLIED, "")
+def _salvar_combo_favorito(descricao, componentes, cat, kcal, prot, carb, gord):
+    """Salva combinação de refeição (ex: Banana + Pasta de Amendoim) como favorito."""
+    desc = (descricao or "").strip()
+    if not desc:
+        return
+    comp_json = json.dumps(componentes, ensure_ascii=False)
+    existente = DB.query("SELECT id FROM alimentos_favoritos WHERE descricao=?", [desc])
+    if existente.empty:
+        DB.execute(
+            "INSERT INTO alimentos_favoritos "
+            "(descricao,categoria,calorias,proteinas,carboidratos,gorduras,componentes_json,favorito) "
+            "VALUES (?,?,?,?,?,?,?,1)",
+            [desc, cat, kcal, prot, carb, gord, comp_json],
+        )
+    else:
+        DB.execute(
+            "UPDATE alimentos_favoritos SET categoria=?,calorias=?,proteinas=?,carboidratos=?,"
+            "gorduras=?,componentes_json=?,favorito=1 WHERE descricao=?",
+            [cat, kcal, prot, carb, gord, comp_json, desc],
+        )
+    _invalidate_cache(_q_alimentos_favoritos)
+    _notif(f"⭐ '{desc[:48]}' salvo nos favoritos!")
 
 
 def _salvar_alimento_db(descricao, categoria, kcal, prot, carb, gord, componentes_json="[]"):
@@ -1673,39 +1740,79 @@ def _render_fav_row(frow, key_prefix=""):
             st.rerun()
 
 
+def _carrinho_snapshot(carrinho_key: str, ks: str):
+    """Calcula totais e componentes a partir do carrinho atual."""
+    carrinho = st.session_state.get(carrinho_key, [])
+    total_kcal = total_prot = total_carb = total_gord = 0.0
+    componentes = []
+    descricoes = []
+    for i, item in enumerate(carrinho):
+        qtd = st.session_state.get(f"cart_qtd_{ks}_{i}", item["qtd_ref"])
+        fator = qtd / item["qtd_ref"] if item["qtd_ref"] > 0 else 0
+        kcal = round(item["kcal_ref"] * fator, 1)
+        prot = round(item["prot_ref"] * fator, 1)
+        carb = round(item["carb_ref"] * fator, 1)
+        gord = round(item["gord_ref"] * fator, 1)
+        total_kcal += kcal
+        total_prot += prot
+        total_carb += carb
+        total_gord += gord
+        componentes.append({
+            "nome": item["descricao"],
+            "gramas": qtd,
+            "unidade": item["unidade"],
+            "kcal": kcal,
+            "prot": prot,
+            "carb": carb,
+            "gord": gord,
+            "banco_id": item.get("id") or 0,
+        })
+        descricoes.append(item["descricao"])
+    return total_kcal, total_prot, total_carb, total_gord, componentes, " + ".join(descricoes)
+
+
 @st.fragment
-def _fragment_ref_busca_carrinho():
-    """Busca debounced + carrinho — isolado do modal (foto/IA ficam fora)."""
-    if _REF_BUSCA_APPLIED not in st.session_state:
-        st.session_state[_REF_BUSCA_APPLIED] = ""
+def _fragment_ref_busca_carrinho(
+    carrinho_key: str = "carrinho_refeicao",
+    ks: str = "",
+    show_register: bool = True,
+    register_cat=None,
+):
+    """Busca + carrinho nativos Streamlit (funciona dentro do modal)."""
+    applied_key = f"ref_busca_applied{ks}"
+    busca_key = f"ref_busca_rapida{ks}"
+    if applied_key not in st.session_state:
+        st.session_state[applied_key] = ""
+    if carrinho_key not in st.session_state:
+        st.session_state[carrinho_key] = []
+
+    def _sync_busca():
+        st.session_state[applied_key] = (st.session_state.get(busca_key) or "").strip()
 
     _df_banco = _q_alimentos_favoritos()
+    carrinho = st.session_state[carrinho_key]
 
-    # ── Busca (termo efetivo só após Enter, blur ou 🔍 — não a cada tecla) ───
     _bq_in, _bq_btn = st.columns([1, 0.12])
     with _bq_in:
         st.text_input(
             "busca",
-            placeholder="🔍 Buscar alimento (Enter ou 🔍)...",
-            key="ref_busca_rapida",
+            placeholder="🔍 Buscar alimento (Enter)...",
+            key=busca_key,
             label_visibility="collapsed",
-            on_change=_sync_ref_busca_applied,
+            on_change=_sync_busca,
         )
     with _bq_btn:
         st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
-        if st.button("🔍", key="ref_busca_apply", use_container_width=True, help="Buscar"):
-            _sync_ref_busca_applied()
+        if st.button("🔍", key=f"ref_busca_apply{ks}", use_container_width=True, help="Buscar"):
+            _sync_busca()
             st.rerun(scope="fragment")
 
-    _busca_ref = _ref_busca_termo()
-    _typed_now = (st.session_state.get("ref_busca_rapida") or "").strip()
-    if _typed_now != _busca_ref and _typed_now:
-        st.caption("Pressione Enter ou 🔍 para buscar")
+    _busca_ref = st.session_state.get(applied_key, "")
 
     if _df_banco.empty:
         st.markdown(
             f'<div style="font-size:11px;color:{GHOST};padding:6px 0">'
-            f'Banco vazio. Cadastre alimentos no <b>Banco de Refeições</b> abaixo.</div>',
+            f'Banco vazio. Cadastre alimentos na página <b>Banco de Alimentos</b>.</div>',
             unsafe_allow_html=True,
         )
     elif _busca_ref:
@@ -1718,33 +1825,27 @@ def _fragment_ref_busca_carrinho():
             st.markdown(
                 f'<div style="font-size:11px;color:{GHOST};padding:4px 8px;'
                 f'background:{BG2};border-radius:6px;margin-top:2px">'
-                f'Nenhum resultado. Cadastre no <b>Banco de Refeições</b> abaixo.</div>',
+                f'Nenhum resultado.</div>',
                 unsafe_allow_html=True,
             )
         else:
-            # Dropdown estilizado imediatamente abaixo do input
-            st.markdown(
-                f'<div style="background:{BG2};border:1px solid {BORDER};'
-                f'border-radius:0 0 8px 8px;margin-top:-6px;padding:4px 0">',
-                unsafe_allow_html=True,
-            )
             for _, _hr in _hits.iterrows():
                 _qtd_ref = float(_hr.get("qtd_referencia") or 100)
                 _unit_ref = str(_hr.get("unidade_referencia") or "g")
-                _already  = any(c["id"] == int(_hr["id"]) for c in st.session_state["carrinho_refeicao"])
-                _star     = "⭐ " if int(_hr.get("favorito") or 0) else ""
-                _kcal     = int(_hr.get("calorias") or 0)
-                _prot     = float(_hr.get("proteinas") or 0)
-                _carb     = float(_hr.get("carboidratos") or 0)
-                _gord     = float(_hr.get("gorduras") or 0)
-                _rc, _rb  = st.columns([1, 0.22])
+                _already = any(c["id"] == int(_hr["id"]) for c in carrinho)
+                _star = "⭐ " if int(_hr.get("favorito") or 0) else ""
+                _kcal = int(_hr.get("calorias") or 0)
+                _prot = float(_hr.get("proteinas") or 0)
+                _carb = float(_hr.get("carboidratos") or 0)
+                _gord = float(_hr.get("gorduras") or 0)
+                _rc, _rb = st.columns([1, 0.22])
                 with _rc:
                     st.markdown(
                         f'<div style="padding:5px 10px;border-bottom:1px solid {BORDER2}">'
                         f'<div style="font-size:12px;color:{TEXT};font-weight:600">'
-                        f'{_star}{_hr["descricao"]}'
-                        f'<span style="font-family:{MONO};font-size:9px;color:{GHOST};margin-left:6px">'
-                        f'{_qtd_ref:.0f}{_unit_ref}</span></div>'
+                        f'{_star}{_hr["descricao"]}</div>'
+                        f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};margin-top:2px">'
+                        f'Ref: {_qtd_ref:.0f} {_unit_ref}</div>'
                         f'<div style="display:flex;gap:10px;margin-top:1px">'
                         f'<span style="font-family:{MONO};font-size:9px;color:{AMBER}">🔥{_kcal}</span>'
                         f'<span style="font-size:9px;color:{GREEN}">P:{_prot:.0f}g</span>'
@@ -1755,22 +1856,13 @@ def _fragment_ref_busca_carrinho():
                     )
                 with _rb:
                     _lbl = "✓" if _already else "➕"
-                    if st.button(_lbl, key=f"ref_add_cart_{_hr['id']}",
-                                 use_container_width=True, disabled=_already):
-                        st.session_state["carrinho_refeicao"].append({
-                            "id": int(_hr["id"]),
-                            "descricao": str(_hr["descricao"]),
-                            "qtd_ref": _qtd_ref,
-                            "unidade": _unit_ref,
-                            "kcal_ref": float(_hr.get("calorias") or 0),
-                            "prot_ref": float(_hr.get("proteinas") or 0),
-                            "carb_ref": float(_hr.get("carboidratos") or 0),
-                            "gord_ref": float(_hr.get("gorduras") or 0),
-                        })
+                    if st.button(
+                        _lbl, key=f"ref_add_cart_{_hr['id']}{ks}",
+                        use_container_width=True, disabled=_already,
+                    ):
+                        _append_alimento_carrinho(carrinho, _hr)
                         st.rerun(scope="fragment")
-            st.markdown('</div>', unsafe_allow_html=True)
     else:
-        # Favoritos rápidos quando o campo está vazio
         _fav_df = _df_banco[_df_banco["favorito"] == 1].head(6)
         if not _fav_df.empty:
             st.markdown(
@@ -1780,30 +1872,18 @@ def _fragment_ref_busca_carrinho():
             )
             _fav_cols = st.columns(3)
             for _fi, (_, _fr) in enumerate(_fav_df.iterrows()):
-                _qtd_ref_f  = float(_fr.get("qtd_referencia") or 100)
-                _unit_ref_f = str(_fr.get("unidade_referencia") or "g")
-                _already_f  = any(c["id"] == int(_fr["id"]) for c in st.session_state["carrinho_refeicao"])
+                _already_f = any(c["id"] == int(_fr["id"]) for c in carrinho)
                 with _fav_cols[_fi % 3]:
                     _fav_lbl = f"{'✓ ' if _already_f else ''}{str(_fr['descricao'])[:18]}"
                     if st.button(
-                        _fav_lbl, key=f"ref_fav_cart_{_fr['id']}",
+                        _fav_lbl, key=f"ref_fav_cart_{_fr['id']}{ks}",
                         use_container_width=True, disabled=_already_f,
-                        help=f"🔥{int(_fr['calorias'] or 0)} kcal · P:{float(_fr['proteinas'] or 0):.0f}g",
+                        help=f"🔥{int(_fr['calorias'] or 0)} kcal",
                     ):
-                        st.session_state["carrinho_refeicao"].append({
-                            "id": int(_fr["id"]),
-                            "descricao": str(_fr["descricao"]),
-                            "qtd_ref": _qtd_ref_f,
-                            "unidade": _unit_ref_f,
-                            "kcal_ref": float(_fr["calorias"] or 0),
-                            "prot_ref": float(_fr["proteinas"] or 0),
-                            "carb_ref": float(_fr["carboidratos"] or 0),
-                            "gord_ref": float(_fr["gorduras"] or 0),
-                        })
+                        _append_alimento_carrinho(carrinho, _fr)
                         st.rerun(scope="fragment")
 
-    # ── Carrinho: itens adicionados + porções ─────────────────────────────────
-    if st.session_state["carrinho_refeicao"]:
+    if carrinho:
         st.markdown(
             f'<div style="height:1px;background:{BORDER};margin:10px 0 8px"></div>',
             unsafe_allow_html=True,
@@ -1811,40 +1891,49 @@ def _fragment_ref_busca_carrinho():
         st.markdown(
             f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
             f'letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px">'
-            f'🛒 REFEIÇÃO ATUAL · {len(st.session_state["carrinho_refeicao"])} item(s)</div>',
+            f'🛒 REFEIÇÃO ATUAL · {len(carrinho)} item(s)</div>',
             unsafe_allow_html=True,
         )
 
-        # Cabeçalho da tabela
         _ch1, _ch2, _ch3, _ch4 = st.columns([1.8, 0.85, 1.7, 0.18])
         with _ch1:
-            st.markdown(f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1px">ALIMENTO</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1px">ALIMENTO</div>',
+                unsafe_allow_html=True,
+            )
         with _ch2:
-            st.markdown(f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1px">PORÇÃO</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1px">PORÇÃO</div>',
+                unsafe_allow_html=True,
+            )
         with _ch3:
-            st.markdown(f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1px">MACROS (calculado)</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1px">MACROS</div>',
+                unsafe_allow_html=True,
+            )
 
         total_kcal = total_prot = total_carb = total_gord = 0.0
         _remover = []
 
-        for i, item in enumerate(st.session_state["carrinho_refeicao"]):
+        for i, item in enumerate(carrinho):
             _ci1, _ci2, _ci3, _ci4 = st.columns([1.8, 0.85, 1.7, 0.18])
             with _ci1:
                 st.markdown(
-                    f'<div style="font-size:11px;color:{TEXT};font-weight:600;padding-top:6px">'
-                    f'{item["descricao"]}</div>',
+                    f'<div style="font-size:11px;color:{TEXT};font-weight:600;padding-top:4px">'
+                    f'{item["descricao"]}</div>'
+                    f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};margin-top:2px">'
+                    f'Ref: {item["qtd_ref"]:.0f} {item["unidade"]}</div>',
                     unsafe_allow_html=True,
                 )
             with _ci2:
                 _qtd = st.number_input(
                     f"Porção ({item['unidade']})",
-                    value=item["qtd_ref"],
+                    value=float(st.session_state.get(f"cart_qtd_{ks}_{i}", item["qtd_ref"])),
                     min_value=0.0,
                     step=5.0,
                     format="%.0f",
                     label_visibility="collapsed",
-                    key=f"cart_qtd_{i}",
-                    help=f"Ref: {item['qtd_ref']:.0f} {item['unidade']}",
+                    key=f"cart_qtd_{ks}_{i}",
                 )
             with _ci3:
                 _fator = _qtd / item["qtd_ref"] if item["qtd_ref"] > 0 else 0
@@ -1866,15 +1955,14 @@ def _fragment_ref_busca_carrinho():
                     unsafe_allow_html=True,
                 )
             with _ci4:
-                if st.button("✕", key=f"rm_cart_{i}", help="Remover"):
+                if st.button("✕", key=f"rm_cart_{ks}_{i}", help="Remover"):
                     _remover.append(i)
 
         if _remover:
             for _idx in sorted(_remover, reverse=True):
-                st.session_state["carrinho_refeicao"].pop(_idx)
+                carrinho.pop(_idx)
             st.rerun(scope="fragment")
 
-        # Total
         st.markdown(
             f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:6px;'
             f'padding:8px 12px;margin:8px 0;display:flex;gap:16px;align-items:center;flex-wrap:wrap">'
@@ -1883,49 +1971,44 @@ def _fragment_ref_busca_carrinho():
             f'<span style="font-size:11px;color:{GREEN}">P:{total_prot:.1f}g</span>'
             f'<span style="font-size:11px;color:#2dd4bf">C:{total_carb:.1f}g</span>'
             f'<span style="font-size:11px;color:{PURPLE}">G:{total_gord:.1f}g</span>'
-            f'</div>',
+            f"</div>",
             unsafe_allow_html=True,
         )
 
-        _cs, _cd = st.columns([3, 1])
-        with _cs:
-            if st.button("✅ REGISTRAR REFEIÇÃO", key="btn_registrar_carrinho", use_container_width=True):
-                _total_kcal_salvo = _total_prot_salvo = _total_carb_salvo = _total_gord_salvo = 0.0
-                _componentes = []
-                _descricoes = []
-                for i, item in enumerate(st.session_state["carrinho_refeicao"]):
-                    _qtd_s = st.session_state.get(f"cart_qtd_{i}", item["qtd_ref"])
-                    _fat_s = _qtd_s / item["qtd_ref"] if item["qtd_ref"] > 0 else 0
-                    _kcal_s = round(item["kcal_ref"] * _fat_s, 1)
-                    _prot_s = round(item["prot_ref"] * _fat_s, 1)
-                    _carb_s = round(item["carb_ref"] * _fat_s, 1)
-                    _gord_s = round(item["gord_ref"] * _fat_s, 1)
-                    _total_kcal_salvo += _kcal_s
-                    _total_prot_salvo += _prot_s
-                    _total_carb_salvo += _carb_s
-                    _total_gord_salvo += _gord_s
-                    _componentes.append({"nome": item["descricao"], "gramas": _qtd_s,
-                                         "unidade": item["unidade"],
-                                         "kcal": _kcal_s, "prot": _prot_s,
-                                         "carb": _carb_s, "gord": _gord_s})
-                    _descricoes.append(item["descricao"])
-                    DB.execute("UPDATE alimentos_favoritos SET vezes_usado=vezes_usado+1 WHERE id=?", [item["id"]])
-                _desc_refeicao = " + ".join(_descricoes)
-                DB.execute(
-                    "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) VALUES (?,?,?,?,?,?,?)",
-                    [_cat_hora(), _desc_refeicao,
-                     round(_total_kcal_salvo, 1), round(_total_prot_salvo, 1),
-                     round(_total_carb_salvo, 1), round(_total_gord_salvo, 1),
-                     json.dumps(_componentes)],
-                )
-                st.session_state["carrinho_refeicao"] = []
-                _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check, _q_alimentos_favoritos)
-                _notif(f"Refeição registrada · {_total_kcal_salvo:.0f} kcal total")
-                st.rerun()
-        with _cd:
-            if st.button("🗑️ Limpar", key="btn_limpar_carrinho", use_container_width=True):
-                st.session_state["carrinho_refeicao"] = []
-                st.rerun(scope="fragment")
+        if show_register:
+            _cs, _cf, _cd = st.columns([2, 1, 1])
+            with _cs:
+                if st.button("✅ REGISTRAR REFEIÇÃO", key=f"btn_registrar_carrinho{ks}", use_container_width=True):
+                    tk, tp, tc, tg, comps, desc = _carrinho_snapshot(carrinho_key, ks)
+                    _cat = register_cat or _cat_hora()
+                    try:
+                        for item in carrinho:
+                            if item.get("id"):
+                                DB.execute(
+                                    "UPDATE alimentos_favoritos SET vezes_usado=vezes_usado+1 WHERE id=?",
+                                    [item["id"]],
+                                )
+                        DB.execute(
+                            "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) "
+                            "VALUES (?,?,?,?,?,?,?)",
+                            [_cat, desc, round(tk, 1), round(tp, 1), round(tc, 1), round(tg, 1), json.dumps(comps)],
+                        )
+                        st.session_state[carrinho_key] = []
+                        _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check, _q_alimentos_favoritos)
+                        _notif(f"Refeição registrada · {tk:.0f} kcal total")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao registrar: {e}")
+            with _cf:
+                if st.button("⭐ Favorito", key=f"btn_fav_combo{ks}", use_container_width=True, help="Salvar combinação nos favoritos"):
+                    tk, tp, tc, tg, comps, desc = _carrinho_snapshot(carrinho_key, ks)
+                    if desc:
+                        _salvar_combo_favorito(desc, comps, register_cat or _cat_hora(), tk, tp, tc, tg)
+                        st.rerun(scope="fragment")
+            with _cd:
+                if st.button("🗑️ Limpar", key=f"btn_limpar_carrinho{ks}", use_container_width=True):
+                    st.session_state[carrinho_key] = []
+                    st.rerun(scope="fragment")
 
     st.markdown(f'<div style="height:1px;background:{BORDER};margin:12px 0 8px"></div>', unsafe_allow_html=True)
 
@@ -2582,7 +2665,7 @@ def _render_medicacao_section():
 
 
 def _form_editar_refeicao(row, form_key_suffix=""):
-    """Formulário unificado de edição de refeição (modal)."""
+    """Formulário unificado de edição de refeição (modal) com carrinho de alimentos."""
     rid = int(row["id"])
     cat = str(row["cat"])
     food = str(row["descricao"])
@@ -2591,6 +2674,18 @@ def _form_editar_refeicao(row, form_key_suffix=""):
     carb_v = float(row["carboidratos"] or 0)
     gord_v = float(row["gorduras"] or 0)
     hora = str(row["hora"])[:5]
+    comp_json = row.get("componentes_json")
+
+    sk = f"{rid}{form_key_suffix}"
+    carrinho_key = f"carrinho_edit_{sk}"
+    ks = f"_ed{sk}"
+
+    init_key = f"edit_carrinho_init_{sk}"
+    if st.session_state.get(init_key) != rid:
+        st.session_state[init_key] = rid
+        st.session_state[carrinho_key] = _componentes_to_carrinho(
+            comp_json, food, kcal_v, prot_v, carb_v, gord_v
+        )
 
     st.markdown(
         f'<div class="sh-metric sh-metric--compact" style="min-height:auto;margin-bottom:12px">'
@@ -2601,42 +2696,97 @@ def _form_editar_refeicao(row, form_key_suffix=""):
         unsafe_allow_html=True,
     )
 
-    sk = f"{rid}{form_key_suffix}"
-    with st.form(f"edit_ref_form_{sk}", border=False):
-        _ec, _ed = st.columns([1, 2])
-        with _ec:
-            idx = CATEGORIAS.index(cat) if cat in CATEGORIAS else 0
-            nova_cat = st.selectbox("Categoria", CATEGORIAS, index=idx, key=f"edit_cat_{sk}")
-        with _ed:
-            nova_desc = st.text_input("Descrição", value=food, key=f"edit_desc_{sk}")
+    cat_key = f"edit_cat_{sk}"
+    if cat_key not in st.session_state:
+        st.session_state[cat_key] = cat if cat in CATEGORIAS else CATEGORIAS[0]
+
+    _ec, _ed = st.columns([1, 2])
+    with _ec:
+        nova_cat = st.selectbox("Categoria", CATEGORIAS, key=cat_key)
+    with _ed:
+        nova_desc = st.text_input("Descrição", value=food, key=f"edit_desc_{sk}")
+
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;margin:8px 0 4px">'
+        f'ADICIONAR / EDITAR ALIMENTOS</div>',
+        unsafe_allow_html=True,
+    )
+    _fragment_ref_busca_carrinho(carrinho_key=carrinho_key, ks=ks, show_register=False)
+
+    carrinho = st.session_state.get(carrinho_key, [])
+    with st.expander("Ajustar macros manualmente", expanded=not carrinho):
         _em1, _em2, _em3, _em4 = st.columns(4)
         with _em1:
-            nova_kcal = st.number_input("Kcal", value=float(kcal_v), min_value=0.0, step=1.0, format="%.0f", key=f"edit_kcal_{sk}")
-        with _em2:
-            nova_prot = st.number_input("Prot g", value=prot_v, min_value=0.0, step=0.5, format="%.1f", key=f"edit_prot_{sk}")
-        with _em3:
-            nova_carb = st.number_input("Carb g", value=carb_v, min_value=0.0, step=0.5, format="%.1f", key=f"edit_carb_{sk}")
-        with _em4:
-            nova_gord = st.number_input("Gord g", value=gord_v, min_value=0.0, step=0.5, format="%.1f", key=f"edit_gord_{sk}")
-        ba, bd = st.columns([2, 1])
-        with ba:
-            atualizar = st.form_submit_button("✓ Salvar alterações", use_container_width=True, type="primary")
-        with bd:
-            deletar = st.form_submit_button("🗑 Excluir", use_container_width=True)
-        if atualizar:
-            DB.execute(
-                "UPDATE refeicoes SET categoria=?, descricao=?, calorias=?, "
-                "proteinas=?, carboidratos=?, gorduras=? WHERE id=?",
-                [nova_cat, nova_desc.strip() or food, nova_kcal, nova_prot, nova_carb, nova_gord, rid],
+            nova_kcal = st.number_input(
+                "Kcal", value=float(kcal_v), min_value=0.0, step=1.0, format="%.0f", key=f"edit_kcal_{sk}"
             )
-            _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check, _q_alimentos_favoritos)
-            _notif(f"Refeição atualizada · {int(nova_kcal)} kcal")
-            st.rerun()
-        if deletar:
-            DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
-            _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check, _q_alimentos_favoritos)
-            _notif("Refeição removida", "err")
-            st.rerun()
+        with _em2:
+            nova_prot = st.number_input(
+                "Prot g", value=prot_v, min_value=0.0, step=0.5, format="%.1f", key=f"edit_prot_{sk}"
+            )
+        with _em3:
+            nova_carb = st.number_input(
+                "Carb g", value=carb_v, min_value=0.0, step=0.5, format="%.1f", key=f"edit_carb_{sk}"
+            )
+        with _em4:
+            nova_gord = st.number_input(
+                "Gord g", value=gord_v, min_value=0.0, step=0.5, format="%.1f", key=f"edit_gord_{sk}"
+            )
+
+    ba, bf, bd = st.columns([2, 1, 1])
+    with ba:
+        if st.button("✓ Salvar alterações", key=f"edit_save_{sk}", use_container_width=True, type="primary"):
+            try:
+                if carrinho:
+                    tk, tp, tc, tg, comps, desc_auto = _carrinho_snapshot(carrinho_key, ks)
+                    desc_final = (nova_desc.strip() or desc_auto or food)
+                    DB.execute(
+                        "UPDATE refeicoes SET categoria=?, descricao=?, calorias=?, "
+                        "proteinas=?, carboidratos=?, gorduras=?, componentes_json=? WHERE id=?",
+                        [nova_cat, desc_final, round(tk, 1), round(tp, 1), round(tc, 1), round(tg, 1),
+                         json.dumps(comps), rid],
+                    )
+                    for item in carrinho:
+                        if item.get("id"):
+                            DB.execute(
+                                "UPDATE alimentos_favoritos SET vezes_usado=vezes_usado+1 WHERE id=?",
+                                [item["id"]],
+                            )
+                    kcal_msg = int(tk)
+                else:
+                    DB.execute(
+                        "UPDATE refeicoes SET categoria=?, descricao=?, calorias=?, "
+                        "proteinas=?, carboidratos=?, gorduras=? WHERE id=?",
+                        [nova_cat, nova_desc.strip() or food, nova_kcal, nova_prot, nova_carb, nova_gord, rid],
+                    )
+                    kcal_msg = int(nova_kcal)
+                _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check, _q_alimentos_favoritos)
+                _notif(f"Refeição atualizada · {kcal_msg} kcal")
+                st.session_state.pop(init_key, None)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao salvar: {e}")
+    with bf:
+        if st.button("⭐ Favorito", key=f"edit_fav_{sk}", use_container_width=True):
+            if carrinho:
+                tk, tp, tc, tg, comps, desc_auto = _carrinho_snapshot(carrinho_key, ks)
+                _salvar_combo_favorito(
+                    nova_desc.strip() or desc_auto or food, comps, nova_cat, tk, tp, tc, tg
+                )
+                st.rerun(scope="fragment")
+            else:
+                st.warning("Adicione alimentos ao carrinho para salvar como favorito.")
+    with bd:
+        if st.button("🗑 Excluir", key=f"edit_del_{sk}", use_container_width=True):
+            try:
+                DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
+                _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check, _q_alimentos_favoritos)
+                st.session_state.pop(init_key, None)
+                st.session_state.pop(carrinho_key, None)
+                _notif("Refeição removida", "err")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Erro ao excluir: {e}")
 
 
 @st.dialog("✏️ Editar refeições", width="large")
@@ -2646,7 +2796,8 @@ def _tab_editar():
     if pre_id:
         df_one = DB.query(
             "SELECT id, COALESCE(categoria,'Lanche') as cat, descricao, calorias, proteinas, "
-            "carboidratos, gorduras, time(datetime(data_hora,'localtime')) as hora "
+            "carboidratos, gorduras, componentes_json, "
+            "time(datetime(data_hora,'localtime')) as hora "
             "FROM refeicoes WHERE id=?",
             [int(pre_id)],
         )
@@ -2658,7 +2809,8 @@ def _tab_editar():
 
     df_edit = DB.query(
         "SELECT id, COALESCE(categoria,'Lanche') as cat, descricao, calorias, proteinas, "
-        "carboidratos, gorduras, time(datetime(data_hora,'localtime')) as hora "
+        "carboidratos, gorduras, componentes_json, "
+        "time(datetime(data_hora,'localtime')) as hora "
         "FROM refeicoes WHERE date(data_hora,'localtime')=? "
         "ORDER BY data_hora DESC LIMIT 20",
         [hoje_sql],
@@ -2785,136 +2937,54 @@ st.markdown(
 _render_notif_pendente()
 
 # ── Sidebar — navegação + status + atalhos ────────────────────────────────────
-with st.sidebar:
-    st.markdown("""
-<style>
-/* Pill ativo no sidebar */
-a.sh-nav-active {
-    background: rgba(0,212,255,0.12) !important;
-    border-color: rgba(0,212,255,0.35) !important;
-    color: #00d4ff !important;
-    border-left: 2px solid #00d4ff !important;
-}
-a.sh-nav-active span { color: #00d4ff !important; }
-</style>
-""", unsafe_allow_html=True)
-    st.html("""
+from app_sidebar import render_app_sidebar
+
+def _render_dashboard_sidebar():
+    render_app_sidebar(
+        active_page="dashboard",
+        kpi_data={
+            "cal_h": cal_h,
+            "prot_h": prot_h,
+            "agua_l": agua_l,
+            "def_cor": def_cor,
+            "def_txt": def_txt,
+            "passos": passos,
+            "sono_h_fmt": sono_h_fmt,
+            "hrv": hrv,
+            "hrv_cor": hrv_cor,
+            "pai": pai,
+            "pai_cor": pai_cor,
+        },
+        quick_actions={
+            "refeicao": _tab_refeicao,
+            "editar": _tab_editar,
+            "agua": _tab_agua,
+            "supp": _tab_suplemento,
+        },
+    )
+
+_render_dashboard_sidebar()
+
+_scroll_sec = st.session_state.pop("_scroll_to", None)
+if _scroll_sec:
+    st.html(f"""
 <script>
-(function() {
-  if (window.__shNavInit) return;
-  window.__shNavInit = true;
-
-  document.addEventListener('click', function(e) {
-    var link = e.target.closest('a[href^="#sec-"]');
-    if (!link) return;
-    var target = document.querySelector(link.getAttribute('href'));
-    if (target) {
-      e.preventDefault();
-      var smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      target.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' });
-    }
-  });
-
-  // Sidebar pill: só seções principais (sub-tabs Hoje não têm sec-*)
-  var NAV_IDS = ['sec-hoje','sec-evolucao','sec-registros','sec-treinos','sec-banco',
-                 'sec-historico','sec-medicacao','sec-biometria','sec-evacuacao','sec-ia'];
-  var links = document.querySelectorAll('a[href^="#sec-"]');
-  var secs = Array.from(document.querySelectorAll('div[id^="sec-"]')).filter(function(el) {
-    return NAV_IDS.indexOf(el.id) >= 0;
-  });
-  if (!links.length || !secs.length) return;
-
-  var observer = new IntersectionObserver(function(entries) {
-    entries.forEach(function(entry) {
-      if (!entry.isIntersecting) return;
-      var id = entry.target.id;
-      links.forEach(function(l) { l.classList.remove('sh-nav-active'); });
-      var active = document.querySelector('a.sh-nav-link[href="#' + id + '"]') || document.querySelector('a[href="#' + id + '"]');
-      if (active) active.classList.add('sh-nav-active');
-    });
-  }, { threshold: 0.2, rootMargin: '-8% 0px -55% 0px' });
-
-  secs.forEach(function(sec) { observer.observe(sec); });
-})();
+setTimeout(function() {{
+  var t = document.querySelector("#{_scroll_sec}");
+  if (t) t.scrollIntoView({{ behavior: "smooth", block: "start" }});
+}}, 350);
 </script>
 """)
-    st.markdown(
-        '<div class="sh-sidebar-brand"><span style="font-size:16px">⚡</span> SYS.HEALTH</div>',
-        unsafe_allow_html=True,
-    )
 
-    st.markdown('<div class="sh-side-section">Resumo do dia</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="sh-side-kpis">'
-        f'<div class="sh-side-kpi"><span class="sh-side-kpi__l">Calorias</span>'
-        f'<span class="sh-side-kpi__v" style="color:{CYAN}">{int(cal_h):,}</span></div>'
-        f'<div class="sh-side-kpi"><span class="sh-side-kpi__l">Proteína</span>'
-        f'<span class="sh-side-kpi__v" style="color:{RED}">{int(prot_h)}g</span></div>'
-        f'<div class="sh-side-kpi"><span class="sh-side-kpi__l">Água</span>'
-        f'<span class="sh-side-kpi__v" style="color:#a78bfa">{agua_l:.1f} L</span></div>'
-        f'<div class="sh-side-kpi"><span class="sh-side-kpi__l">Balanço</span>'
-        f'<span class="sh-side-kpi__v" style="color:{def_cor}">{def_txt}</span></div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown(
-        f'<div class="sh-wearable-panel">'
-        f'<div class="sh-wearable-panel__title">⌚ Amazfit hoje</div>'
-        f'<div class="sh-wearable-grid">'
-        f'<div class="sh-wearable-card">'
-        f'<div class="sh-wearable-card__label">👟 Passos</div>'
-        f'<div class="sh-wearable-card__value" style="color:{CYAN}">{passos:,}</div></div>'
-        f'<div class="sh-wearable-card">'
-        f'<div class="sh-wearable-card__label">🌙 Sono</div>'
-        f'<div class="sh-wearable-card__value" style="color:{PURPLE}">{sono_h_fmt}</div></div>'
-        f'<div class="sh-wearable-card">'
-        f'<div class="sh-wearable-card__label">💓 HRV</div>'
-        f'<div class="sh-wearable-card__value" style="color:{hrv_cor}">{hrv} <span style="font-size:12px;font-weight:600">ms</span></div></div>'
-        f'<div class="sh-wearable-card">'
-        f'<div class="sh-wearable-card__label">⚡ PAI</div>'
-        f'<div class="sh-wearable-card__value" style="color:{pai_cor}">{pai}</div></div>'
-        f'</div></div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown('<div class="sh-side-section">Menu</div>', unsafe_allow_html=True)
-    _nav_all = [
-        ("sec-hoje", "🎯", "Hoje"),
-        ("sec-evolucao", "📈", "Evolução"),
-        ("sec-registros", "📝", "Registros"),
-        ("sec-treinos", "🏋️", "Treinos"),
-        ("sec-banco", "🍽️", "Banco"),
-        ("sec-historico", "📊", "Histórico"),
-        ("sec-medicacao", "💊", "Medicação"),
-        ("sec-biometria", "📏", "Biometria"),
-        ("sec-evacuacao", "🚽", "Evacuação"),
-        ("sec-ia", "🤖", "IA Coach"),
-    ]
-    _nav_html = ""
-    for _anc, _ic, _lb in _nav_all:
-        _nav_html += (
-            f'<a href="#{_anc}" class="sh-nav-link" style="display:flex;align-items:center;gap:8px;'
-            f'padding:8px 10px;border-radius:6px;text-decoration:none;margin-bottom:4px;'
-            f'font-family:var(--sh-font-display);font-size:13px;font-weight:600;color:{TEXT};background:transparent;'
-            f'border:1px solid {BORDER}">'
-            f'<span>{_ic}</span><span>{_lb}</span></a>'
-        )
-    st.markdown(_nav_html, unsafe_allow_html=True)
-
-    st.markdown(
-        '<div class="sh-side-section" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--sh-border)">'
-        'Ações rápidas</div>',
-        unsafe_allow_html=True,
-    )
-    if st.button("➕ Nova refeição", key="sb_btn_ref", use_container_width=True):
-        _tab_refeicao()
-    if st.button("✏️ Editar refeições", key="sb_btn_edit_ref", use_container_width=True):
-        _tab_editar()
-    if st.button("💧 Água / HRV", key="sb_btn_agua", use_container_width=True):
-        _tab_agua()
-    if st.button("💊 Suplemento", key="sb_btn_supp", use_container_width=True):
-        _tab_suplemento()
+_open_dlg = st.session_state.pop("open_dialog", None)
+if _open_dlg == "refeicao":
+    _tab_refeicao()
+elif _open_dlg == "editar":
+    _tab_editar()
+elif _open_dlg == "agua":
+    _tab_agua()
+elif _open_dlg == "supp":
+    _tab_suplemento()
 
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 1 — HOJE (tabs: Nutrição · Wearable · Agenda)
@@ -3808,198 +3878,28 @@ if _toggle_key("corrida_tab_open"):
 
 # ── BLOCO: ANÁLISE ───────────────────────────────────────────────────────────
 # ════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 7 — BANCO DE REFEIÇÕES (colapsável)
+# SEÇÃO 7 — BANCO DE ALIMENTOS (página dedicada)
 # ════════════════════════════════════════════════════════════════════════════
 st.markdown('<div id="sec-banco"></div>', unsafe_allow_html=True)
+st.markdown(sh_section("Banco", "Cadastro · Edição · Favoritos"), unsafe_allow_html=True)
 
+_df_banco_cnt = _q_alimentos_favoritos()
+_banco_n = len(_df_banco_cnt)
+_banco_fav = int((_df_banco_cnt["favorito"] == 1).sum()) if not _df_banco_cnt.empty else 0
 
-@st.fragment
-def _fragment_banco_refeicoes():
-    """Toggle + painel do banco — conteúdo e botão no mesmo fragment."""
-    _banco_open = _toggle_key("banco_open")
-    _banco_lbl = (
-        "🍽️  BANCO DE REFEIÇÕES  ·  Cadastro · Edição · Favoritos  ▴"
-        if _banco_open
-        else "🍽️  BANCO DE REFEIÇÕES  ·  Cadastro · Edição · Favoritos  ▾"
-    )
-    if st.button(_banco_lbl, key="btn_banco_toggle", use_container_width=True):
-        _flip_toggle("banco_open")
-        st.rerun(scope="fragment")
+st.markdown(
+    f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;padding:16px 18px;margin-bottom:12px">'
+    f'<div style="font-size:14px;color:{TEXT};font-weight:600;margin-bottom:6px">🍽️ Banco de Alimentos</div>'
+    f'<div style="font-size:12px;color:{MUTED};line-height:1.5;margin-bottom:10px">'
+    f'Cadastre alimentos, defina porção de referência (g, ml, L, und) e marque favoritos. '
+    f'Combinações de refeição também podem ser salvas como favorito na nova/edição de refeição.</div>'
+    f'<div style="display:flex;gap:16px;font-family:{MONO};font-size:10px;color:{GHOST}">'
+    f'<span>{_banco_n} alimento(s)</span><span>⭐ {_banco_fav} favorito(s)</span></div></div>',
+    unsafe_allow_html=True,
+)
 
-    if not _banco_open:
-        return
-
-    _banco_cols = st.columns([1.1, 1.9])
-
-    with _banco_cols[0]:
-        # ── Adicionar novo alimento ───────────────────────────────────────────
-        st.markdown(
-            f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
-            f'letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">'
-            f'➕ CADASTRAR NOVO ALIMENTO</div>',
-            unsafe_allow_html=True,
-        )
-        with st.form("form_banco_add", clear_on_submit=True):
-            b_desc = st.text_input("Nome do alimento *", placeholder="Ex: Frango Grelhado, Whey Protein...")
-            bcq1, bcq2 = st.columns([2, 1])
-            with bcq1:
-                b_qtd = st.number_input("Qtd. de referência", min_value=0.0, value=100.0, step=1.0, format="%.0f")
-            with bcq2:
-                b_unit = st.selectbox("Unidade", ["g", "kg", "ml", "L", "und"])
-            bc1, bc2 = st.columns(2)
-            with bc1:
-                b_kcal = st.number_input("Kcal", min_value=0.0, step=1.0, format="%.0f")
-                b_carb = st.number_input("Carb (g)", min_value=0.0, step=0.5, format="%.1f")
-            with bc2:
-                b_prot = st.number_input("Prot (g)", min_value=0.0, step=0.5, format="%.1f")
-                b_gord = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f")
-            if st.form_submit_button("✅ CADASTRAR", use_container_width=True):
-                if b_desc.strip():
-                    _existente = DB.query(
-                        "SELECT id FROM alimentos_favoritos WHERE descricao=?",
-                        [b_desc.strip()]
-                    )
-                    if _existente.empty:
-                        DB.execute(
-                            "INSERT INTO alimentos_favoritos "
-                            "(descricao,calorias,proteinas,carboidratos,gorduras,componentes_json,qtd_referencia,unidade_referencia) "
-                            "VALUES (?,?,?,?,?,?,?,?)",
-                            [b_desc.strip(), b_kcal, b_prot, b_carb, b_gord,
-                             json.dumps([{"nome": b_desc.strip(), "gramas": b_qtd,
-                                          "unidade": b_unit, "kcal": b_kcal,
-                                          "prot": b_prot, "carb": b_carb, "gord": b_gord}]),
-                             b_qtd, b_unit],
-                        )
-                        _invalidate_cache(_q_alimentos_favoritos)
-                        _notif(f"'{b_desc.strip()}' cadastrado no banco!")
-                        st.rerun(scope="fragment")
-                    else:
-                        st.warning("Já existe um alimento com este nome. Edite-o na lista ao lado.")
-                else:
-                    st.warning("Nome do alimento obrigatório.")
-
-    with _banco_cols[1]:
-        # ── Lista editável de todos os alimentos ──────────────────────────────
-        st.markdown(
-            f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
-            f'letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px">'
-            f'📋 TODOS OS ALIMENTOS CADASTRADOS</div>',
-            unsafe_allow_html=True,
-        )
-        _df_banco_all = _q_alimentos_favoritos()
-        _banco_busca  = st.text_input(
-            "banco_busca",
-            placeholder="🔍 Buscar alimento...",
-            key="banco_search",
-            label_visibility="collapsed",
-        )
-
-        if _df_banco_all.empty:
-            st.markdown(
-                f'<div style="text-align:center;padding:24px;color:{GHOST};font-size:12px">'
-                f'Nenhum alimento cadastrado ainda. Use o formulário ao lado.</div>',
-                unsafe_allow_html=True,
-            )
-        else:
-            if _banco_busca:
-                _df_banco_all = _df_banco_all[
-                    _df_banco_all["descricao"].str.contains(_banco_busca, case=False, na=False)
-                ]
-
-            _banco_edit_id = st.session_state.get("banco_edit_id", None)
-
-            for _, _brow in _df_banco_all.iterrows():
-                _bid   = int(_brow["id"])
-                _bdesc = str(_brow["descricao"])
-                _bkcal = float(_brow["calorias"] or 0)
-                _bprot = float(_brow["proteinas"] or 0)
-                _bcarb = float(_brow["carboidratos"] or 0)
-                _bgord = float(_brow["gorduras"] or 0)
-                _bfav  = int(_brow["favorito"] or 0)
-                _bused = int(_brow["vezes_usado"] or 0)
-
-                if _banco_edit_id == _bid:
-                    # ── Modo edição ──────────────────────────────────────────
-                    with st.container(border=True):
-                        st.markdown(
-                            f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};'
-                            f'font-weight:700;letter-spacing:1px;margin-bottom:6px">'
-                            f'✏️ EDITANDO: {_bdesc}</div>',
-                            unsafe_allow_html=True,
-                        )
-                        with st.form(f"form_banco_edit_{_bid}"):
-                            _e_desc = st.text_input("Nome", value=_bdesc)
-                            _em1, _em2 = st.columns(2)
-                            with _em1:
-                                _e_kcal = st.number_input("Kcal", value=_bkcal, min_value=0.0, step=1.0, format="%.0f")
-                                _e_carb = st.number_input("Carb (g)", value=_bcarb, min_value=0.0, step=0.5, format="%.1f")
-                            with _em2:
-                                _e_prot = st.number_input("Prot (g)", value=_bprot, min_value=0.0, step=0.5, format="%.1f")
-                                _e_gord = st.number_input("Gord (g)", value=_bgord, min_value=0.0, step=0.5, format="%.1f")
-                            _esb, _ecb = st.columns(2)
-                            with _esb:
-                                if st.form_submit_button("✅ Salvar", use_container_width=True):
-                                    DB.execute(
-                                        "UPDATE alimentos_favoritos SET descricao=?,calorias=?,proteinas=?,carboidratos=?,gorduras=? WHERE id=?",
-                                        [_e_desc.strip(), _e_kcal, _e_prot, _e_carb, _e_gord, _bid],
-                                    )
-                                    st.session_state["banco_edit_id"] = None
-                                    _invalidate_cache(_q_alimentos_favoritos)
-                                    _notif(f"'{_e_desc.strip()}' atualizado!")
-                                    st.rerun(scope="fragment")
-                            with _ecb:
-                                if st.form_submit_button("✗ Cancelar", use_container_width=True):
-                                    st.session_state["banco_edit_id"] = None
-                                    st.rerun(scope="fragment")
-                else:
-                    # ── Modo visualização ────────────────────────────────────
-                    _bv, _bstar, _bedit, _bdel = st.columns([1, 0.07, 0.1, 0.1])
-                    with _bv:
-                        st.markdown(
-                            f'<div style="padding:5px 0;border-bottom:1px solid {BORDER2}">'
-                            f'<div style="font-size:12px;color:{TEXT};font-weight:600">{_bdesc}</div>'
-                            f'<div style="display:flex;gap:10px;margin-top:2px">'
-                            f'<span style="font-family:{MONO};font-size:9px;color:{AMBER}">🔥{int(_bkcal)}</span>'
-                            f'<span style="font-size:9px;color:{GREEN}">P:{_bprot:.0f}g</span>'
-                            f'<span style="font-size:9px;color:#2dd4bf">C:{_bcarb:.0f}g</span>'
-                            f'<span style="font-size:9px;color:{PURPLE}">G:{_bgord:.0f}g</span>'
-                            f'<span style="font-size:9px;color:{GHOST}">×{_bused}</span>'
-                            f'</div></div>',
-                            unsafe_allow_html=True,
-                        )
-                    with _bstar:
-                        _star_lbl = "⭐" if _bfav else "☆"
-                        if st.button(_star_lbl, key=f"banco_star_{_bid}", use_container_width=True, help="Favoritar"):
-                            DB.execute("UPDATE alimentos_favoritos SET favorito=? WHERE id=?", [1 - _bfav, _bid])
-                            _invalidate_cache(_q_alimentos_favoritos)
-                            st.rerun(scope="fragment")
-                    with _bedit:
-                        if st.button("✏️", key=f"banco_edit_{_bid}", use_container_width=True, help="Editar"):
-                            st.session_state["banco_edit_id"] = _bid
-                            st.rerun(scope="fragment")
-                    with _bdel:
-                        if st.button("🗑️", key=f"banco_del_{_bid}", use_container_width=True, help="Excluir"):
-                            st.session_state["banco_del_confirm"] = _bid
-                            st.rerun(scope="fragment")
-
-                    # Confirmação inline de exclusão
-                    if st.session_state.get("banco_del_confirm") == _bid:
-                        st.warning(f"Excluir **{_bdesc}** permanentemente?")
-                        _cc1, _cc2 = st.columns(2)
-                        with _cc1:
-                            if st.button("✅ Confirmar", key=f"banco_del_ok_{_bid}", use_container_width=True):
-                                DB.execute("DELETE FROM alimentos_favoritos WHERE id=?", [_bid])
-                                st.session_state.pop("banco_del_confirm", None)
-                                _invalidate_cache(_q_alimentos_favoritos)
-                                _notif(f"'{_bdesc}' excluído do banco.")
-                                st.rerun(scope="fragment")
-                        with _cc2:
-                            if st.button("✗ Cancelar", key=f"banco_del_cancel_{_bid}", use_container_width=True):
-                                st.session_state.pop("banco_del_confirm", None)
-                                st.rerun(scope="fragment")
-
-
-_fragment_banco_refeicoes()
+if st.button("Abrir Banco de Alimentos →", key="btn_open_banco_page", use_container_width=True, type="primary"):
+    st.switch_page("pages/1_Banco_de_Alimentos.py")
 
 
 # ════════════════════════════════════════════════════════════════════════════

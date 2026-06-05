@@ -3,6 +3,9 @@ headless      = true
 enableCORS    = true
 enableXsrfProtection = true
 
+[client]
+showSidebarNavigation = false
+
 [theme]
 base            = "dark"
 backgroundColor = "#080c14"
