@@ -10,6 +10,9 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from flask import Flask, jsonify, request
+from dotenv import load_dotenv
+import os
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 from db import query
 
 app = Flask(__name__)
