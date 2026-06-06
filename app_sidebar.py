@@ -308,16 +308,25 @@ def _render_banco_quick_action(active_page: str):
 
 _MOB_QUICK_CSS = """
 <style>
-.sh-mob-quick-start{display:none!important;height:0!important;overflow:hidden!important}
+.sh-mob-quick-host{display:none!important;height:0!important;overflow:hidden!important}
+/* Desktop — oculta container inteiro (marker + botões) */
 @media(min-width:681px){
-  [data-testid="element-container"]:has(.sh-mob-quick-start),
-  [data-testid="element-container"]:has(.sh-mob-quick-start)+[data-testid="element-container"]{
+  [data-testid="element-container"]:has([data-testid="stVerticalBlock"]:has(.sh-mob-quick-host)),
+  [data-testid="stVerticalBlock"]:has(.sh-mob-quick-host){
     display:none!important;height:0!important;min-height:0!important;
     overflow:hidden!important;margin:0!important;padding:0!important;
     visibility:hidden!important;pointer-events:none!important}
 }
+html.sh-md [data-testid="element-container"]:has([data-testid="stVerticalBlock"]:has(.sh-mob-quick-host)),
+html.sh-lg [data-testid="element-container"]:has([data-testid="stVerticalBlock"]:has(.sh-mob-quick-host)),
+html.sh-md [data-testid="stVerticalBlock"]:has(.sh-mob-quick-host),
+html.sh-lg [data-testid="stVerticalBlock"]:has(.sh-mob-quick-host){
+  display:none!important;height:0!important;min-height:0!important;
+  overflow:hidden!important;margin:0!important;padding:0!important;
+  visibility:hidden!important;pointer-events:none!important}
+/* Mobile — barra fixa no rodapé */
 @media(max-width:680px){
-  [data-testid="element-container"]:has(.sh-mob-quick-start)+[data-testid="element-container"]{
+  [data-testid="element-container"]:has([data-testid="stVerticalBlock"]:has(.sh-mob-quick-host)){
     display:block!important;position:fixed!important;
     bottom:0!important;left:0!important;right:0!important;
     z-index:9998!important;
@@ -325,24 +334,64 @@ _MOB_QUICK_CSS = """
     margin:0!important;
     background:linear-gradient(180deg,transparent 0%,rgba(8,12,20,.92) 28%,rgba(8,12,20,.98) 100%)!important;
     visibility:visible!important;pointer-events:none!important}
-  [data-testid="element-container"]:has(.sh-mob-quick-start)+[data-testid="element-container"] [data-testid="stHorizontalBlock"]{
+  [data-testid="element-container"]:has(.sh-mob-quick-host) [data-testid="stHorizontalBlock"]{
     pointer-events:auto!important;gap:8px!important;flex-wrap:nowrap!important}
-  [data-testid="element-container"]:has(.sh-mob-quick-start)+[data-testid="element-container"] [data-testid="column"]{
+  [data-testid="element-container"]:has(.sh-mob-quick-host) [data-testid="column"]{
     flex:1 1 0!important;min-width:0!important}
-  [data-testid="element-container"]:has(.sh-mob-quick-start)+[data-testid="element-container"] button{
+  [data-testid="element-container"]:has(.sh-mob-quick-host) button{
     font-size:11px!important;padding:10px 6px!important;min-height:44px!important;
     border-radius:10px!important}
   .main .block-container{padding-bottom:calc(88px + env(safe-area-inset-bottom))!important}
 }
+html.sh-xs [data-testid="element-container"]:has([data-testid="stVerticalBlock"]:has(.sh-mob-quick-host)),
+html.sh-sm [data-testid="element-container"]:has([data-testid="stVerticalBlock"]:has(.sh-mob-quick-host)){
+  display:block!important;position:fixed!important;
+  bottom:0!important;left:0!important;right:0!important;
+  z-index:9998!important;
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom))!important;
+  margin:0!important;
+  background:linear-gradient(180deg,transparent 0%,rgba(8,12,20,.92) 28%,rgba(8,12,20,.98) 100%)!important;
+  visibility:visible!important;pointer-events:none!important}
+html.sh-xs [data-testid="element-container"]:has(.sh-mob-quick-host) [data-testid="stHorizontalBlock"],
+html.sh-sm [data-testid="element-container"]:has(.sh-mob-quick-host) [data-testid="stHorizontalBlock"]{
+  pointer-events:auto!important;gap:8px!important;flex-wrap:nowrap!important}
+html.sh-xs [data-testid="element-container"]:has(.sh-mob-quick-host) [data-testid="column"],
+html.sh-sm [data-testid="element-container"]:has(.sh-mob-quick-host) [data-testid="column"]{
+  flex:1 1 0!important;min-width:0!important}
+html.sh-xs [data-testid="element-container"]:has(.sh-mob-quick-host) button,
+html.sh-sm [data-testid="element-container"]:has(.sh-mob-quick-host) button{
+  font-size:11px!important;padding:10px 6px!important;min-height:44px!important;
+  border-radius:10px!important}
+html.sh-xs .main .block-container,
+html.sh-sm .main .block-container{
+  padding-bottom:calc(88px + env(safe-area-inset-bottom))!important}
 </style>
+"""
+
+_MOB_BP_JS = """
+<script>
+(function(){
+  if(window.__shBpInit)return;
+  window.__shBpInit=true;
+  function bp(){
+    var w=window.innerWidth,h=document.documentElement;
+    h.classList.remove('sh-xs','sh-sm','sh-md','sh-lg');
+    if(w<=400)h.classList.add('sh-xs');
+    else if(w<=680)h.classList.add('sh-sm');
+    else if(w<=960)h.classList.add('sh-md');
+    else h.classList.add('sh-lg');
+  }
+  bp();
+  window.addEventListener('resize',bp);
+})();
+</script>
 """
 
 
 def render_mobile_quick_bar(on_dashboard: bool = False):
     """Barra fixa no rodapé — só visível em mobile (≤680px). Desktop usa sidebar."""
     st.markdown(_MOB_QUICK_CSS, unsafe_allow_html=True)
-    st.markdown('<div class="sh-mob-quick-start"></div>', unsafe_allow_html=True)
-    _mq1, _mq2, _mq3 = st.columns(3)
+    st.html(_MOB_BP_JS)
 
     def _open(dlg: str):
         st.session_state["open_dialog"] = dlg
@@ -351,15 +400,18 @@ def render_mobile_quick_bar(on_dashboard: bool = False):
         else:
             st.switch_page(DASHBOARD_PAGE)
 
-    with _mq1:
-        if st.button("➕ Refeição", key="mob_q_ref", use_container_width=True):
-            _open("refeicao")
-    with _mq2:
-        if st.button("💧 Água", key="mob_q_agua", use_container_width=True):
-            _open("agua")
-    with _mq3:
-        if st.button("💊 Suplemento", key="mob_q_supp", use_container_width=True):
-            _open("supp")
+    with st.container():
+        st.markdown('<div class="sh-mob-quick-host"></div>', unsafe_allow_html=True)
+        _mq1, _mq2, _mq3 = st.columns(3)
+        with _mq1:
+            if st.button("➕ Refeição", key="mob_q_ref", use_container_width=True):
+                _open("refeicao")
+        with _mq2:
+            if st.button("💧 Água", key="mob_q_agua", use_container_width=True):
+                _open("agua")
+        with _mq3:
+            if st.button("💊 Suplemento", key="mob_q_supp", use_container_width=True):
+                _open("supp")
 
 
 def render_app_sidebar(
