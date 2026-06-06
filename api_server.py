@@ -15,6 +15,9 @@ import os
 load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 from db import query
 
+import sys
+sys.stdout.reconfigure(line_buffering=True)
+
 app = Flask(__name__)
 _TZ = ZoneInfo("America/Sao_Paulo")
 

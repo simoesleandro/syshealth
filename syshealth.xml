@@ -1,0 +1,13 @@
+﻿<service>
+  <id>syshealth</id>
+  <name>syshealth</name>
+  <description>API do Syshealth</description>
+  <executable>C:\Users\Leand\OneDrive\Desktop\Projeto_Fit\start_api.bat</executable>
+  <workingdirectory>C:\Users\Leand\OneDrive\Desktop\Projeto_Fit</workingdirectory>
+  
+  <startmode>Automatic</startmode>
+  
+  <log mode="roll"></log>
+  <onfailure action="restart" delay="10 sec"/>
+  <stopparentprocessfirst>true</stopparentprocessfirst>
+</service>
