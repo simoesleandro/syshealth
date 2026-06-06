@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-06-peso-chart"
+_APP_BUILD = "2026-06-06-ia-coach"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -4313,19 +4313,24 @@ def _render_ia_coach():
         with st.status("🧠 IA Coach — coletando dados e gerando análise...", expanded=True) as _ia_status:
             _ia_status.write("📊 Calculando médias do período selecionado...")
             try:
+                n_dias = _ia_coach_periodo_dias()
+                df_hist, df_macro_hist, total_treinos, media_vol_treino, media_dur_treino, media_deficit = (
+                    _ia_coach_load_data(n_dias)
+                )
+
                 # ── 1. MÉDIAS DO PERÍODO SELECIONADO ─────────────────────────
-                media_passos      = media(df_hist, "passos")
-                media_cal_gastas  = media(df_hist, "calorias_gastas")
-                media_sono        = media(df_hist, "sono_total_min")
-                media_sono_prof   = media(df_hist, "sono_profundo_min")
-                media_hrv         = media(df_hist, "hrv_ms")
-                media_pai         = media(df_hist, "pai")
-                media_cal_ingestao= media(df_macro_hist, "cal")
-                media_prot        = media(df_macro_hist, "prot")
-                media_carb        = media(df_macro_hist, "carb")
-                media_gord        = media(df_macro_hist, "gord")
-                media_corrida_km  = media(df_hist, "corrida_km")
-                media_corrida_cal = media(df_hist, "corrida_cal")
+                media_passos      = _df_media(df_hist, "passos")
+                media_cal_gastas  = _df_media(df_hist, "calorias_gastas")
+                media_sono        = _df_media(df_hist, "sono_total_min")
+                media_sono_prof   = _df_media(df_hist, "sono_profundo_min")
+                media_hrv         = _df_media(df_hist, "hrv_ms")
+                media_pai         = _df_media(df_hist, "pai")
+                media_cal_ingestao= _df_media(df_macro_hist, "cal")
+                media_prot        = _df_media(df_macro_hist, "prot")
+                media_carb        = _df_media(df_macro_hist, "carb")
+                media_gord        = _df_media(df_macro_hist, "gord")
+                media_corrida_km  = _df_media(df_hist, "corrida_km")
+                media_corrida_cal = _df_media(df_hist, "corrida_cal")
 
                 # ── 2. DADOS BRUTOS COMPLETOS (queries extras) ────────────────
                 _ia_status.write("⚖️ Buscando histórico de peso...")
@@ -4555,21 +4560,21 @@ def _render_ia_coach():
                     f"═══════════════════════════════════════════════════\n"
                     f"MÉDIAS DO PERÍODO ANALISADO ({n_dias} dias)\n"
                     "═══════════════════════════════════════════════════\n"
-                    f"- Calorias ingeridas: {fmt_val(media_cal_ingestao,' kcal',0)} · "
-                    f"Proteínas: {fmt_val(media_prot,' g',0)} · "
-                    f"Carb: {fmt_val(media_carb,' g',0)} · "
-                    f"Gordura: {fmt_val(media_gord,' g',0)}\n"
-                    f"- Gasto calórico ativ: {fmt_val(media_cal_gastas,' kcal',0)} · "
-                    f"Déficit médio: {fmt_val(media_deficit,' kcal',0)}\n"
-                    f"- Corrida: {fmt_val(media_corrida_km,' km/dia',2)} · "
-                    f"{fmt_val(media_corrida_cal,' kcal/dia',0)}\n"
+                    f"- Calorias ingeridas: {_fmt_metric(media_cal_ingestao,' kcal',0)} · "
+                    f"Proteínas: {_fmt_metric(media_prot,' g',0)} · "
+                    f"Carb: {_fmt_metric(media_carb,' g',0)} · "
+                    f"Gordura: {_fmt_metric(media_gord,' g',0)}\n"
+                    f"- Gasto calórico ativ: {_fmt_metric(media_cal_gastas,' kcal',0)} · "
+                    f"Déficit médio: {_fmt_metric(media_deficit,' kcal',0)}\n"
+                    f"- Corrida: {_fmt_metric(media_corrida_km,' km/dia',2)} · "
+                    f"{_fmt_metric(media_corrida_cal,' kcal/dia',0)}\n"
                     f"- Musculação: {total_treinos} treinos · "
-                    f"Vol médio: {fmt_val(media_vol_treino,' kg',0)} · "
-                    f"Duração média: {fmt_val(media_dur_treino,' min',0)}\n"
-                    f"- Passos: {fmt_val(media_passos,'',0)}/dia · "
-                    f"Sono total: {fmt_val(media_sono,' min',0)} · "
-                    f"Sono profundo: {fmt_val(media_sono_prof,' min',0)}\n"
-                    f"- HRV: {fmt_val(media_hrv,' ms',0)} · PAI: {fmt_val(media_pai,'',0)}\n\n"
+                    f"Vol médio: {_fmt_metric(media_vol_treino,' kg',0)} · "
+                    f"Duração média: {_fmt_metric(media_dur_treino,' min',0)}\n"
+                    f"- Passos: {_fmt_metric(media_passos,'',0)}/dia · "
+                    f"Sono total: {_fmt_metric(media_sono,' min',0)} · "
+                    f"Sono profundo: {_fmt_metric(media_sono_prof,' min',0)}\n"
+                    f"- HRV: {_fmt_metric(media_hrv,' ms',0)} · PAI: {_fmt_metric(media_pai,'',0)}\n\n"
 
                     "═══════════════════════════════════════════════════\n"
                     "DADOS BRUTOS COMPLETOS\n"
