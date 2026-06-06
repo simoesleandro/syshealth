@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-06-fixes"
+_APP_BUILD = "2026-06-06-peso-chart"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -609,21 +609,7 @@ html.sh-sm .sh-wearable-card__value,html.sh-xs .sh-wearable-card__value{font-siz
   .sh-side-kpis{grid-template-columns:1fr!important}
   div[id^="sec-"]{scroll-margin-top:48px}}
 
-/* ── Mobile quick-action bar (refeição · água · suplemento) ── */
-.sh-mobile-quick-wrap{display:none!important}
-@media(max-width:768px){
-  .sh-mobile-quick-wrap{
-    display:block!important;position:fixed!important;
-    bottom:0!important;left:0!important;right:0!important;
-    z-index:9998!important;padding:8px 10px calc(8px + env(safe-area-inset-bottom))!important;
-    background:linear-gradient(180deg,transparent 0%,rgba(8,12,20,.92) 28%,rgba(8,12,20,.98) 100%)!important;
-    pointer-events:none!important}
-  .sh-mobile-quick-wrap [data-testid="stHorizontalBlock"]{
-    pointer-events:auto!important;gap:8px!important;flex-wrap:nowrap!important}
-  .sh-mobile-quick-wrap [data-testid="column"]{flex:1 1 0!important;min-width:0!important}
-  .sh-mobile-quick-wrap button{
-    font-size:11px!important;padding:10px 6px!important;min-height:44px!important;
-    border-radius:10px!important}}
+/* ── Overlay semitransparente atrás do sidebar aberto em mobile ── */
 @media(max-width:768px){
   section[data-testid="stSidebar"][aria-expanded="true"]::before{
     content:'';
@@ -1310,7 +1296,83 @@ def _q_alimentos_favoritos():
 
 @st.cache_data(ttl=600)
 def _q_peso_historico():
-    return DB.query("SELECT date(data) as dt, peso FROM medidas ORDER BY date(data) ASC")
+    return DB.query(
+        "SELECT date(data) as dt, peso FROM medidas "
+        "WHERE peso IS NOT NULL ORDER BY date(data) ASC"
+    )
+
+
+def _fig_peso_evolucao(df_raw: pd.DataFrame) -> go.Figure | None:
+    """Gráfico de peso — um ponto/dia, eixo X proporcional ao período com dados."""
+    _INICIO_DT = pd.Timestamp("2026-01-26")
+    _META_PESO = 83.0
+
+    df = df_raw.copy()
+    df["dt"] = pd.to_datetime(df["dt"], errors="coerce").dt.normalize()
+    df = df.dropna(subset=["dt", "peso"]).sort_values("dt")
+    df = df.groupby("dt", as_index=False)["peso"].last()
+    if df.empty:
+        return None
+
+    peso_min = float(df["peso"].min())
+    peso_max = float(df["peso"].max())
+    span_days = max(1, (df["dt"].max() - df["dt"].min()).days)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df["dt"], y=df["peso"],
+        mode="lines+markers",
+        line=dict(color=CYAN, width=2),
+        marker=dict(size=6, color=CYAN, line=dict(color=BG, width=1.5)),
+        fill="tozeroy", fillcolor="rgba(0,212,255,0.06)",
+        hovertemplate="<b>%{x|%d/%m/%Y}</b><br>%{y:.1f} kg<extra></extra>",
+    ))
+
+    fig.add_hline(
+        y=_META_PESO, line_dash="dash", line_color=RED, line_width=1, opacity=0.45,
+        annotation_text="Meta 83 kg", annotation_font_color=RED, annotation_font_size=10,
+    )
+
+    if df["dt"].min() > _INICIO_DT:
+        fig.add_annotation(
+            xref="paper", yref="paper",
+            x=0.01, y=0.98, xanchor="left", yanchor="top",
+            text="Início 115,3 kg · 26/01/26",
+            showarrow=False,
+            font=dict(color=RED, size=9, family=MONO),
+            bgcolor="rgba(8,12,20,0.75)", bordercolor=RED, borderwidth=1, borderpad=3,
+        )
+
+    _x_pad = pd.Timedelta(days=max(1, min(5, span_days // 8)))
+    _y_lo = max(80.0, peso_min - 2.5)
+    _y_hi = peso_max + 2.5
+    _n_ticks = 6 if span_days <= 45 else (8 if span_days <= 180 else 10)
+    _tickvals = pd.date_range(df["dt"].min(), df["dt"].max(), periods=_n_ticks)
+
+    fig.update_layout(
+        height=300, margin=dict(t=16, b=28, l=4, r=8),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(
+            type="date",
+            range=[df["dt"].min() - _x_pad, df["dt"].max() + _x_pad],
+            tickmode="array",
+            tickvals=_tickvals,
+            tickformat="%d/%m/%y",
+            tickfont=dict(color=GHOST, size=9, family="monospace"),
+            gridcolor=BORDER,
+            title=None,
+        ),
+        yaxis=dict(
+            range=[_y_lo, _y_hi],
+            dtick=2 if (_y_hi - _y_lo) <= 12 else 5,
+            tickformat=".0f",
+            tickfont=dict(color=GHOST, size=9),
+            gridcolor=BORDER,
+            title=None,
+        ),
+        showlegend=False,
+    )
+    return fig
 
 @st.cache_data(ttl=300)
 def _q_medicacao():
@@ -3031,9 +3093,6 @@ if _celebrate:
 
 from app_sidebar import render_app_sidebar, render_mobile_quick_bar
 
-# ── Barra rápida mobile (refeição · água · suplemento) ───────────────────────
-render_mobile_quick_bar(on_dashboard=True)
-
 # ── Sidebar — navegação + status + atalhos ────────────────────────────────────
 def _render_dashboard_sidebar():
     render_app_sidebar(
@@ -3339,49 +3398,9 @@ c1, c2 = st.columns([2, 1])
 
 with c1:
     df_p = _q_peso_historico()
-    if not df_p.empty:
-        df_p["dt"] = pd.to_datetime(df_p["dt"], errors="coerce")
-        df_p = df_p.dropna(subset=["dt", "peso"]).sort_values("dt").reset_index(drop=True)
-        _peso_min = float(df_p["peso"].min())
-        _peso_max = float(df_p["peso"].max())
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df_p["dt"], y=df_p["peso"], mode="lines+markers",
-            line=dict(color=CYAN, width=2, shape="spline"),
-            marker=dict(size=7, color=CYAN, line=dict(color=BG, width=1.5)),
-            fill="tozeroy", fillcolor="rgba(0,212,255,0.04)",
-            connectgaps=False,
-            hovertemplate="<b>%{x|%d/%m/%Y}</b><br>%{y:.1f} kg<extra></extra>",
-        ))
-        _inicio = pd.Timestamp("2026-01-26")
-        if df_p["dt"].min() > _inicio:
-            fig.add_trace(go.Scatter(
-                x=[_inicio], y=[115.3], mode="markers+text",
-                marker=dict(size=10, color=RED, symbol="star"),
-                text=["Início 115,3kg"], textposition="top right",
-                textfont=dict(color=RED, size=10),
-                hovertemplate="<b>Início</b><br>115,3 kg<extra></extra>",
-                showlegend=False,
-            ))
-        fig.add_hline(y=83, line_dash="dash", line_color=RED, line_width=1, opacity=0.4,
-                      annotation_text="Meta 83 kg", annotation_font_color=RED,
-                      annotation_font_size=10)
-        _y_min = max(80, _peso_min - 3)
-        _y_max = _peso_max + 3
-        fig.update_layout(
-            height=300, margin=dict(t=12, b=8, l=0, r=0),
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            xaxis=dict(
-                gridcolor=BORDER, title=None, type="date",
-                tickformat="%d/%m/%y", dtick="14D",
-                tickfont=dict(color=GHOST, size=9, family="monospace"),
-            ),
-            yaxis=dict(gridcolor=BORDER, title=None,
-                       tickfont=dict(color=GHOST, size=9),
-                       range=[_y_min, _y_max]),
-            showlegend=False,
-        )
-        st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
+    _fig_p = _fig_peso_evolucao(df_p) if not df_p.empty else None
+    if _fig_p is not None:
+        st.plotly_chart(_fig_p, width="stretch", config={"displayModeBar": False})
 
 with c2:
     def mrow_dinamico(nome, val, meta):
@@ -5375,6 +5394,9 @@ if _toggle_key("evac_hist_open") and not _ev_df.empty:
 # SEÇÃO — IA COACH
 # ════════════════════════════════════════════════════════════════════════════
 _render_ia_coach()
+
+# ── Barra rápida mobile (rodapé — oculta no desktop) ─────────────────────────
+render_mobile_quick_bar(on_dashboard=True)
 
 # ════════════════════════════════════════════════════════════════════════════
 # RODAPÉ

@@ -306,28 +306,72 @@ def _render_banco_quick_action(active_page: str):
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+_MOB_QUICK_CSS = """
+<style>
+.sh-mob-quick-start{display:none!important;height:0!important;margin:0!important;padding:0!important}
+.sh-mob-quick-row{display:none!important}
+html.sh-xs .sh-mob-quick-row,
+html.sh-sm .sh-mob-quick-row{
+  display:block!important;position:fixed!important;
+  bottom:0!important;left:0!important;right:0!important;
+  z-index:9998!important;
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom))!important;
+  margin:0!important;
+  background:linear-gradient(180deg,transparent 0%,rgba(8,12,20,.92) 28%,rgba(8,12,20,.98) 100%)!important;
+  pointer-events:none!important}
+html.sh-xs .sh-mob-quick-row [data-testid="stHorizontalBlock"],
+html.sh-sm .sh-mob-quick-row [data-testid="stHorizontalBlock"]{
+  pointer-events:auto!important;gap:8px!important;flex-wrap:nowrap!important}
+html.sh-xs .sh-mob-quick-row [data-testid="column"],
+html.sh-sm .sh-mob-quick-row [data-testid="column"]{flex:1 1 0!important;min-width:0!important}
+html.sh-xs .sh-mob-quick-row button,
+html.sh-sm .sh-mob-quick-row button{
+  font-size:11px!important;padding:10px 6px!important;min-height:44px!important;
+  border-radius:10px!important}
+</style>
+"""
+
+_MOB_QUICK_JS = """
+<script>
+(function(){
+  if(window.__shMobQuickInit) return;
+  window.__shMobQuickInit=true;
+  function bp(){
+    var w=window.innerWidth,h=document.documentElement;
+    h.classList.remove('sh-xs','sh-sm','sh-md','sh-lg');
+    if(w<=400) h.classList.add('sh-xs');
+    else if(w<=680) h.classList.add('sh-sm');
+    else if(w<=960) h.classList.add('sh-md');
+    else h.classList.add('sh-lg');
+    syncMobQuick();
+  }
+  function syncMobQuick(){
+    document.querySelectorAll('.sh-mob-quick-start').forEach(function(start){
+      var ec=start.closest('[data-testid="element-container"]');
+      if(!ec) return;
+      var sib=ec.nextElementSibling;
+      while(sib){
+        if(sib.querySelector('[data-testid="column"]')&&sib.querySelector('button')){
+          sib.classList.add('sh-mob-quick-row');
+          break;
+        }
+        sib=sib.nextElementSibling;
+      }
+    });
+  }
+  bp();
+  window.addEventListener('resize',bp);
+  new MutationObserver(syncMobQuick).observe(document.body,{childList:true,subtree:true});
+})();
+</script>
+"""
+
+
 def render_mobile_quick_bar(on_dashboard: bool = False):
-    """Barra fixa no rodapé (mobile) — refeição, água, suplemento."""
-    st.markdown(
-        """<style>
-.sh-mobile-quick-wrap{display:none!important}
-@media(max-width:768px){
-  .sh-mobile-quick-wrap{
-    display:block!important;position:fixed!important;
-    bottom:0!important;left:0!important;right:0!important;
-    z-index:9998!important;padding:8px 10px calc(8px + env(safe-area-inset-bottom))!important;
-    background:linear-gradient(180deg,transparent 0%,rgba(8,12,20,.92) 28%,rgba(8,12,20,.98) 100%)!important;
-    pointer-events:none!important}
-  .sh-mobile-quick-wrap [data-testid="stHorizontalBlock"]{
-    pointer-events:auto!important;gap:8px!important;flex-wrap:nowrap!important}
-  .sh-mobile-quick-wrap [data-testid="column"]{flex:1 1 0!important;min-width:0!important}
-  .sh-mobile-quick-wrap button{
-    font-size:11px!important;padding:10px 6px!important;min-height:44px!important;
-    border-radius:10px!important}}
-</style>""",
-        unsafe_allow_html=True,
-    )
-    st.markdown('<div class="sh-mobile-quick-wrap">', unsafe_allow_html=True)
+    """Barra fixa no rodapé — só visível em mobile (html.sh-xs / html.sh-sm)."""
+    st.markdown(_MOB_QUICK_CSS, unsafe_allow_html=True)
+    st.html(_MOB_QUICK_JS)
+    st.markdown('<div class="sh-mob-quick-start"></div>', unsafe_allow_html=True)
     _mq1, _mq2, _mq3 = st.columns(3)
 
     def _open(dlg: str):
@@ -346,7 +390,6 @@ def render_mobile_quick_bar(on_dashboard: bool = False):
     with _mq3:
         if st.button("💊 Suplemento", key="mob_q_supp", use_container_width=True):
             _open("supp")
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_app_sidebar(
