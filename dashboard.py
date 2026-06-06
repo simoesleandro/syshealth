@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-06-ia-coach"
+_APP_BUILD = "2026-06-06-ia-ux"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -4632,14 +4632,24 @@ def _render_ia_coach():
           st.error(f"❌ Erro ao iniciar análise: {_outer_e}")
 
     if "ia_coach_result" in st.session_state:
-        st.markdown(f"""
-        <div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;padding:20px;margin-top:10px;margin-bottom:15px;line-height:1.6">
-            <div style="font-family:{MONO};font-size:11px;font-weight:700;color:{GREEN};letter-spacing:1.5px;margin-bottom:15px;text-transform:uppercase">🩺 DIAGNÓSTICO CLÍNICO DA IA</div>
-    
-        {st.session_state["ia_coach_result"]}
-    
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;'
+            f'padding:16px 20px 10px;margin-top:10px">'
+            f'<div style="font-family:{MONO};font-size:11px;font-weight:700;color:{GREEN};'
+            f'letter-spacing:1.5px;text-transform:uppercase">🩺 DIAGNÓSTICO CLÍNICO DA IA</div></div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(st.session_state["ia_coach_result"])
+
+        _ia_nav1, _ia_nav2, _ia_nav3 = st.columns([1, 1.2, 1])
+        with _ia_nav1:
+            if st.button("⬆ Início do dashboard", key="btn_ia_top", use_container_width=True):
+                st.session_state["_scroll_to"] = "sec-hoje"
+                st.rerun()
+        with _ia_nav3:
+            if st.button("✕ Fechar análise", key="btn_ia_close", use_container_width=True):
+                st.session_state.pop("ia_coach_result", None)
+                st.rerun()
 
 
 
