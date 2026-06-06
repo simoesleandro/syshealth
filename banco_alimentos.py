@@ -64,7 +64,10 @@ def _render_notif():
         return
     msg, tipo = st.session_state.pop("_notif_pending")
     cor = {"ok": GREEN, "err": "#ff6b6b", "info": CYAN}.get(tipo, GREEN)
-    st.toast(msg, icon="✓" if tipo == "ok" else "✗")
+    if tipo == "ok":
+        st.toast(msg, icon="✅")
+    else:
+        st.toast(msg)
 
 
 def _open_dialog_on_dashboard(dialog: str):
@@ -291,7 +294,7 @@ def render_banco_page():
     DB.init_tables()
     _handle_banco_url_actions()
 
-    from app_sidebar import render_app_sidebar
+    from app_sidebar import render_app_sidebar, render_mobile_quick_bar
 
     render_app_sidebar(
         active_page="banco",
@@ -399,3 +402,5 @@ def render_banco_page():
                         st.rerun()
 
         _render_banco_busca_live(_df_busca)
+
+    render_mobile_quick_bar(on_dashboard=False)

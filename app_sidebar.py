@@ -284,18 +284,13 @@ def _render_nav_menu(active_page: str):
     st.markdown('<div class="sh-nav-menu">', unsafe_allow_html=True)
 
     for anc, ic, lb in _NAV_ANCHORS:
+        key = f"sb_nav_{anc}_{active_page}"
         if active_page == "dashboard":
-            st.markdown(
-                f'<a href="#{anc}" class="sh-nav-link" style="display:flex;align-items:center;gap:8px;'
-                f'padding:8px 10px;border-radius:6px;text-decoration:none;margin-bottom:4px;'
-                f'font-family:var(--sh-font-display);font-size:13px;font-weight:600;color:{TEXT};'
-                f'background:transparent;border:1px solid {BORDER}">'
-                f'<span>{ic}</span><span>{lb}</span></a>',
-                unsafe_allow_html=True,
-            )
-        else:
-            if st.button(f"{ic} {lb}", key=f"sb_nav_{anc}", use_container_width=True):
-                _go_dashboard(anc)
+            if st.button(f"{ic} {lb}", key=key, use_container_width=True):
+                st.session_state["_scroll_to"] = anc
+                st.rerun()
+        elif st.button(f"{ic} {lb}", key=key, use_container_width=True):
+            _go_dashboard(anc)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -308,6 +303,49 @@ def _render_banco_quick_action(active_page: str):
         st.button("🍽️ Banco de Alimentos", key="sb_btn_banco_banco", use_container_width=True, disabled=True)
     elif st.button("🍽️ Banco de Alimentos", key=f"sb_btn_banco_{active_page}", use_container_width=True):
         st.switch_page(BANCO_PAGE)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def render_mobile_quick_bar(on_dashboard: bool = False):
+    """Barra fixa no rodapé (mobile) — refeição, água, suplemento."""
+    st.markdown(
+        """<style>
+.sh-mobile-quick-wrap{display:none!important}
+@media(max-width:768px){
+  .sh-mobile-quick-wrap{
+    display:block!important;position:fixed!important;
+    bottom:0!important;left:0!important;right:0!important;
+    z-index:9998!important;padding:8px 10px calc(8px + env(safe-area-inset-bottom))!important;
+    background:linear-gradient(180deg,transparent 0%,rgba(8,12,20,.92) 28%,rgba(8,12,20,.98) 100%)!important;
+    pointer-events:none!important}
+  .sh-mobile-quick-wrap [data-testid="stHorizontalBlock"]{
+    pointer-events:auto!important;gap:8px!important;flex-wrap:nowrap!important}
+  .sh-mobile-quick-wrap [data-testid="column"]{flex:1 1 0!important;min-width:0!important}
+  .sh-mobile-quick-wrap button{
+    font-size:11px!important;padding:10px 6px!important;min-height:44px!important;
+    border-radius:10px!important}}
+</style>""",
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="sh-mobile-quick-wrap">', unsafe_allow_html=True)
+    _mq1, _mq2, _mq3 = st.columns(3)
+
+    def _open(dlg: str):
+        st.session_state["open_dialog"] = dlg
+        if on_dashboard:
+            st.rerun()
+        else:
+            st.switch_page(DASHBOARD_PAGE)
+
+    with _mq1:
+        if st.button("➕ Refeição", key="mob_q_ref", use_container_width=True):
+            _open("refeicao")
+    with _mq2:
+        if st.button("💧 Água", key="mob_q_agua", use_container_width=True):
+            _open("agua")
+    with _mq3:
+        if st.button("💊 Suplemento", key="mob_q_supp", use_container_width=True):
+            _open("supp")
     st.markdown("</div>", unsafe_allow_html=True)
 
 

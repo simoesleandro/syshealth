@@ -36,24 +36,27 @@ if USE_PG:
 
 
 def _pg_sql(sql):
-    """Converte dialetos de data/hora do SQLite → PostgreSQL."""
-    # 1. Mais longos/específicos PRIMEIRO para evitar quebrar a string
-    sql = sql.replace("time(datetime(data_hora,'localtime'))", "TO_CHAR(data_hora::timestamp,'HH24:MI:SS')")
-    sql = sql.replace("time(datetime(data_hora, 'localtime'))", "TO_CHAR(data_hora::timestamp,'HH24:MI:SS')")
+    """Converte dialetos de data/hora do SQLite → PostgreSQL (horário America/Sao_Paulo)."""
+    # Timestamps no Supabase são UTC; converter para BRT nas leituras/filtros
+    _br = "(data_hora AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')"
 
-    sql = sql.replace("strftime('%d/%m/%Y', datetime(data_hora,'localtime'))", "TO_CHAR(data_hora::timestamp,'DD/MM/YYYY')")
-    sql = sql.replace("strftime('%d/%m/%Y', datetime(data_hora, 'localtime'))", "TO_CHAR(data_hora::timestamp,'DD/MM/YYYY')")
+    # 1. Mais longos/específicos PRIMEIRO para evitar quebrar a string
+    sql = sql.replace("time(datetime(data_hora,'localtime'))", f"TO_CHAR({_br}, 'HH24:MI:SS')")
+    sql = sql.replace("time(datetime(data_hora, 'localtime'))", f"TO_CHAR({_br}, 'HH24:MI:SS')")
+
+    sql = sql.replace("strftime('%d/%m/%Y', datetime(data_hora,'localtime'))", f"TO_CHAR({_br}, 'DD/MM/YYYY')")
+    sql = sql.replace("strftime('%d/%m/%Y', datetime(data_hora, 'localtime'))", f"TO_CHAR({_br}, 'DD/MM/YYYY')")
 
     # 2. Intermediários
     sql = sql.replace("strftime('%d/%m/%Y',data)", "TO_CHAR(data,'DD/MM/YYYY')")
     sql = sql.replace("strftime('%d/%m/%Y', data)", "TO_CHAR(data,'DD/MM/YYYY')")
 
     # 3. Curtos POR ÚLTIMO
-    sql = sql.replace("datetime(data_hora,'localtime')", "(data_hora::timestamp)")
-    sql = sql.replace("datetime(data_hora, 'localtime')", "(data_hora::timestamp)")
+    sql = sql.replace("datetime(data_hora,'localtime')", _br)
+    sql = sql.replace("datetime(data_hora, 'localtime')", _br)
 
-    sql = sql.replace("date(data_hora,'localtime')", "DATE(data_hora)")
-    sql = sql.replace("date(data_hora, 'localtime')", "DATE(data_hora)")
+    sql = sql.replace("date(data_hora,'localtime')", f"DATE({_br})")
+    sql = sql.replace("date(data_hora, 'localtime')", f"DATE({_br})")
 
     sql = re.sub(r"date\('now',\s*'-(\d+)\s+days'\)", r"(CURRENT_DATE - INTERVAL '\1 days')", sql)
     return sql

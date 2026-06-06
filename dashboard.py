@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-03-ref-native"
+_APP_BUILD = "2026-06-06-fixes"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -88,7 +88,9 @@ def _app_global_css() -> str:
 
 html,body,.stApp{background:radial-gradient(1100px 500px at 8% -8%,rgba(0,212,255,.06),transparent 50%),var(--sh-bg)!important;color:var(--sh-text)!important;font-family:var(--sh-font-display)!important}
 .block-container{padding:1.5rem 2rem!important;max-width:1320px!important;margin-left:auto!important;margin-right:auto!important}
-#MainMenu,footer,header,[data-testid="stToolbar"]{visibility:hidden!important;height:0!important}
+#MainMenu,footer,[data-testid="stToolbar"]{visibility:hidden!important;height:0!important}
+[data-testid="stHeader"]{background:transparent!important;visibility:visible!important;height:auto!important}
+[data-testid="collapsedControl"]{visibility:visible!important;opacity:1!important;display:flex!important}
 .stDeployButton{display:none!important}
 
 /* ── Sidebar container ── */
@@ -607,7 +609,21 @@ html.sh-sm .sh-wearable-card__value,html.sh-xs .sh-wearable-card__value{font-siz
   .sh-side-kpis{grid-template-columns:1fr!important}
   div[id^="sec-"]{scroll-margin-top:48px}}
 
-/* ── Overlay semitransparente atrás do sidebar aberto em mobile ── */
+/* ── Mobile quick-action bar (refeição · água · suplemento) ── */
+.sh-mobile-quick-wrap{display:none!important}
+@media(max-width:768px){
+  .sh-mobile-quick-wrap{
+    display:block!important;position:fixed!important;
+    bottom:0!important;left:0!important;right:0!important;
+    z-index:9998!important;padding:8px 10px calc(8px + env(safe-area-inset-bottom))!important;
+    background:linear-gradient(180deg,transparent 0%,rgba(8,12,20,.92) 28%,rgba(8,12,20,.98) 100%)!important;
+    pointer-events:none!important}
+  .sh-mobile-quick-wrap [data-testid="stHorizontalBlock"]{
+    pointer-events:auto!important;gap:8px!important;flex-wrap:nowrap!important}
+  .sh-mobile-quick-wrap [data-testid="column"]{flex:1 1 0!important;min-width:0!important}
+  .sh-mobile-quick-wrap button{
+    font-size:11px!important;padding:10px 6px!important;min-height:44px!important;
+    border-radius:10px!important}}
 @media(max-width:768px){
   section[data-testid="stSidebar"][aria-expanded="true"]::before{
     content:'';
@@ -759,6 +775,52 @@ def _notif(msg: str, tipo: str = "ok"):
     tipo: 'ok' (verde) | 'err' (vermelho) | 'info' (ciano)
     """
     st.session_state["_notif_pending"] = (msg, tipo)
+
+
+def _render_goal_celebration(kind: str):
+    """Overlay animado em tela cheia ao bater meta de proteína ou água."""
+    cfg = {
+        "protein": ("🥩", "Meta de proteína!", "#00e676", "rgba(0,230,118"),
+        "agua":    ("💧", "Meta de água!", "#a78bfa", "rgba(167,139,250"),
+    }
+    ic, titulo, cor, rgba = cfg.get(kind, cfg["protein"])
+    particles = "".join(
+        f'<div style="position:absolute;left:{10 + i * 11}%;bottom:-20px;font-size:{18 + (i % 3) * 6}px;'
+        f'animation:shGoalFloat {2.2 + i * 0.15}s linear {i * 0.08}s forwards">{p}</div>'
+        for i, p in enumerate(["✨", "⭐", "💫", "🎉", "✨", "⭐"])
+    )
+    st.html(f"""
+<style>
+@keyframes shGoalPop {{
+  0%   {{ opacity:0; transform:scale(.6); }}
+  18%  {{ opacity:1; transform:scale(1.05); }}
+  35%  {{ transform:scale(1); }}
+  80%  {{ opacity:1; }}
+  100% {{ opacity:0; }}
+}}
+@keyframes shGoalRing {{
+  0%   {{ transform:scale(.4); opacity:.9; }}
+  100% {{ transform:scale(2.8); opacity:0; }}
+}}
+@keyframes shGoalFloat {{
+  0%   {{ transform:translateY(0) rotate(0deg); opacity:1; }}
+  100% {{ transform:translateY(-120vh) rotate(720deg); opacity:0; }}
+}}
+</style>
+<div style="position:fixed;inset:0;z-index:9999999;pointer-events:none;
+  display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(circle at 50% 40%,{rgba},.18),rgba(0,0,0,.72);
+  animation:shGoalPop 3.2s ease forwards">
+  <div style="position:absolute;width:180px;height:180px;border-radius:50%;
+    border:3px solid {cor};animation:shGoalRing 1.8s ease-out infinite"></div>
+  <div style="text-align:center">
+    <div style="font-size:64px;line-height:1;margin-bottom:12px">{ic}</div>
+    <div style="font-family:'Space Mono',monospace;font-size:22px;font-weight:800;
+      color:{cor};letter-spacing:2px;text-transform:uppercase">{titulo}</div>
+  </div>
+  {particles}
+</div>
+""")
 
 
 def _render_notif_pendente():
@@ -1423,7 +1485,8 @@ corrida_cal = int(_az["corrida_cal"].iloc[0])   if not _az.empty and "corrida_ca
 
 # Derivações — Método Dinâmico
 gasto_total_dia   = TMB + cal_gasta                    # TMB + atividade registrada
-meta_cal_dinamica = 1980                               # meta calórica fixa
+meta_cal_macros   = META_PROT * 4 + META_CARB * 4 + META_GORD * 9
+meta_cal_dinamica = meta_cal_macros                   # meta alinhada aos macros
 deficit           = gasto_total_dia - int(cal_h)       # gasto real - consumido
 def_cor   = GREEN if deficit > 0 else RED
 def_txt   = (f"Déficit {abs(deficit):,}" if deficit > 0
@@ -1436,8 +1499,27 @@ hrv_cor   = GREEN if hrv >= 35 else (AMBER if hrv >= 25 else RED)
 hrv_txt   = "↑ Bom" if hrv >= 35 else ("→ Médio" if hrv >= 25 else "↓ Baixo")
 pai_cor   = GREEN if pai >= META_PAI else (AMBER if pai >= 70 else RED)
 pai_arc   = min(251, int(251 * pai / META_PAI)) if META_PAI else 0
-restam    = int(meta_cal_dinamica - cal_h)             # quanto ainda pode comer
+restam    = int(deficit)                              # mesmo saldo do balanço calórico
 rc_cor    = GREEN if restam > 0 else RED
+
+
+def _check_goal_celebrations(prot_h: float, agua_l: float, dia: str):
+    """Dispara animação quando meta de proteína ou água é atingida pela 1ª vez no dia."""
+    prev = st.session_state.setdefault("_goals_prev", {"prot": 0.0, "agua": 0.0, "day": ""})
+    if prev.get("day") != dia:
+        prev.update({"prot": 0.0, "agua": 0.0, "day": dia})
+    celebrate = None
+    if prot_h >= META_PROT and prev["prot"] < META_PROT:
+        celebrate = "protein"
+    elif agua_l >= META_AGUA and prev["agua"] < META_AGUA:
+        celebrate = "agua"
+    prev["prot"] = prot_h
+    prev["agua"] = agua_l
+    if celebrate:
+        st.session_state["_celebrate_pending"] = celebrate
+
+
+_check_goal_celebrations(prot_h, agua_l, hoje_sql)
 
 # ════════════════════════════════════════════════════════════════════════════
 # CONSTANTES DO PAINEL
@@ -1445,6 +1527,7 @@ rc_cor    = GREEN if restam > 0 else RED
 CATEGORIAS = [
     "Café da Manhã", "Lanche da Manhã", "Almoço",
     "Lanche da Tarde", "Jantar", "Lanche da Noite",
+    "Pré-Treino", "Pós-Treino",
 ]
 
 SUPP_REGISTER = [
@@ -2186,6 +2269,7 @@ def _tab_agua():
         nova = agua_l + ml / 1000
         if nova >= META_AGUA and agua_l < META_AGUA:
             st.session_state["_agua_meta_atingida"] = True
+            st.session_state["_celebrate_pending"] = "agua"
             _notif(f"Meta de água atingida · {nova:.1f} L", "ok")
         else:
             _notif(f"+{ml} ml · {nova:.1f} / {META_AGUA} L", "info")
@@ -2679,6 +2763,8 @@ def _form_editar_refeicao(row, form_key_suffix=""):
     sk = f"{rid}{form_key_suffix}"
     carrinho_key = f"carrinho_edit_{sk}"
     ks = f"_ed{sk}"
+    cat_key = f"edit_cat_{sk}"
+    desc_key = f"edit_desc_{sk}"
 
     init_key = f"edit_carrinho_init_{sk}"
     if st.session_state.get(init_key) != rid:
@@ -2686,6 +2772,8 @@ def _form_editar_refeicao(row, form_key_suffix=""):
         st.session_state[carrinho_key] = _componentes_to_carrinho(
             comp_json, food, kcal_v, prot_v, carb_v, gord_v
         )
+        st.session_state.pop(cat_key, None)
+        st.session_state.pop(desc_key, None)
 
     st.markdown(
         f'<div class="sh-metric sh-metric--compact" style="min-height:auto;margin-bottom:12px">'
@@ -2696,15 +2784,17 @@ def _form_editar_refeicao(row, form_key_suffix=""):
         unsafe_allow_html=True,
     )
 
-    cat_key = f"edit_cat_{sk}"
+    _cat_ix = CATEGORIAS.index(cat) if cat in CATEGORIAS else 0
     if cat_key not in st.session_state:
-        st.session_state[cat_key] = cat if cat in CATEGORIAS else CATEGORIAS[0]
+        st.session_state[cat_key] = _cat_ix
+    if desc_key not in st.session_state:
+        st.session_state[desc_key] = food
 
     _ec, _ed = st.columns([1, 2])
     with _ec:
         nova_cat = st.selectbox("Categoria", CATEGORIAS, key=cat_key)
     with _ed:
-        nova_desc = st.text_input("Descrição", value=food, key=f"edit_desc_{sk}")
+        nova_desc = st.text_input("Descrição", key=desc_key)
 
     st.markdown(
         f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;margin:8px 0 4px">'
@@ -2935,10 +3025,16 @@ st.markdown(
 
 # ── Notificação animada pendente (roda UMA vez por ação) ─────────────────────
 _render_notif_pendente()
+_celebrate = st.session_state.pop("_celebrate_pending", None)
+if _celebrate:
+    _render_goal_celebration(_celebrate)
+
+from app_sidebar import render_app_sidebar, render_mobile_quick_bar
+
+# ── Barra rápida mobile (refeição · água · suplemento) ───────────────────────
+render_mobile_quick_bar(on_dashboard=True)
 
 # ── Sidebar — navegação + status + atalhos ────────────────────────────────────
-from app_sidebar import render_app_sidebar
-
 def _render_dashboard_sidebar():
     render_app_sidebar(
         active_page="dashboard",
@@ -3007,7 +3103,7 @@ with tab_nutri:
     with h_a:
         st.markdown(sh_metric(
             def_cor, "Balanço calórico", f"{int(cal_h):,}", "kcal",
-            meta=f"{int(pct_cal * 100)}% da meta · restam {restam} kcal · {def_txt}",
+            meta=f"{int(pct_cal * 100)}% da meta · saldo {restam:+,} kcal · {def_txt}",
             extra_html=pbar(pct_cal, GREEN), variant="compact",
         ), unsafe_allow_html=True)
     with h_b:
@@ -3244,38 +3340,42 @@ c1, c2 = st.columns([2, 1])
 with c1:
     df_p = _q_peso_historico()
     if not df_p.empty:
-        # Converte dt para string antes de qualquer operação
-        df_p["dt"] = df_p["dt"].apply(lambda x: str(x)[:10] if x else "")
-        # Adiciona ponto inicial se não existir
-        ponto_inicial = pd.DataFrame([{"dt": "2026-01-26", "peso": 115.3}])
-        df_p = pd.concat([ponto_inicial, df_p]).drop_duplicates("dt").sort_values("dt").reset_index(drop=True)
+        df_p["dt"] = pd.to_datetime(df_p["dt"], errors="coerce")
+        df_p = df_p.dropna(subset=["dt", "peso"]).sort_values("dt").reset_index(drop=True)
+        _peso_min = float(df_p["peso"].min())
+        _peso_max = float(df_p["peso"].max())
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=df_p["dt"], y=df_p["peso"], mode="lines+markers",
-            line=dict(color=CYAN, width=2),
+            line=dict(color=CYAN, width=2, shape="spline"),
             marker=dict(size=7, color=CYAN, line=dict(color=BG, width=1.5)),
             fill="tozeroy", fillcolor="rgba(0,212,255,0.04)",
-            hovertemplate="<b>%{x|%d/%m/%Y}</b><br>%{y} kg<extra></extra>",
+            connectgaps=False,
+            hovertemplate="<b>%{x|%d/%m/%Y}</b><br>%{y:.1f} kg<extra></extra>",
         ))
-        # Marca ponto inicial
-        fig.add_trace(go.Scatter(
-            x=["2026-01-26"], y=[115.3], mode="markers+text",
-            marker=dict(size=10, color=RED, symbol="star"),
-            text=["Início 115,3kg"], textposition="top right",
-            textfont=dict(color=RED, size=10),
-            hovertemplate="<b>Início</b><br>115,3 kg<extra></extra>",
-            showlegend=False,
-        ))
+        _inicio = pd.Timestamp("2026-01-26")
+        if df_p["dt"].min() > _inicio:
+            fig.add_trace(go.Scatter(
+                x=[_inicio], y=[115.3], mode="markers+text",
+                marker=dict(size=10, color=RED, symbol="star"),
+                text=["Início 115,3kg"], textposition="top right",
+                textfont=dict(color=RED, size=10),
+                hovertemplate="<b>Início</b><br>115,3 kg<extra></extra>",
+                showlegend=False,
+            ))
         fig.add_hline(y=83, line_dash="dash", line_color=RED, line_width=1, opacity=0.4,
                       annotation_text="Meta 83 kg", annotation_font_color=RED,
                       annotation_font_size=10)
-        _y_min = max(80, df_p["peso"].min() - 3)
-        _y_max = df_p["peso"].max() + 3
+        _y_min = max(80, _peso_min - 3)
+        _y_max = _peso_max + 3
         fig.update_layout(
             height=300, margin=dict(t=12, b=8, l=0, r=0),
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            xaxis=dict(gridcolor=BORDER, title=None, tickformat="%d/%m/%y",
-                       tickfont=dict(color=GHOST, size=9, family="monospace")),
+            xaxis=dict(
+                gridcolor=BORDER, title=None, type="date",
+                tickformat="%d/%m/%y", dtick="14D",
+                tickfont=dict(color=GHOST, size=9, family="monospace"),
+            ),
             yaxis=dict(gridcolor=BORDER, title=None,
                        tickfont=dict(color=GHOST, size=9),
                        range=[_y_min, _y_max]),
@@ -3318,7 +3418,7 @@ with c2:
             f'<div style="border-top:1px solid {BORDER2};padding-top:10px;display:flex;'
             f'justify-content:space-between;align-items:center">'
             f'<span style="font-family:{MONO};font-size:9px;text-transform:uppercase;'
-            f'letter-spacing:1.5px;color:{GHOST}">Calorias restantes</span>'
+            f'letter-spacing:1.5px;color:{GHOST}">Saldo calórico</span>'
             f'<span style="font-size:17px;font-weight:800;color:{rc_cor}">{restam:+,} kcal</span>'
             f'</div>',
             extra="height:210px;display:flex;flex-direction:column;justify-content:space-between"
@@ -3340,6 +3440,8 @@ BADGE_STYLE = {
     "Lanche da Tarde": f"background:rgba(129,140,248,0.08);color:#818cf8;border:1px solid rgba(129,140,248,0.22)",
     "Jantar":          f"background:rgba(255,107,107,0.08);color:{RED};border:1px solid rgba(255,107,107,0.2)",
     "Lanche da Noite": f"background:rgba(167,139,250,0.08);color:{PURPLE};border:1px solid rgba(167,139,250,0.2)",
+    "Pré-Treino":      f"background:rgba(0,212,255,0.08);color:{CYAN};border:1px solid rgba(0,212,255,0.22)",
+    "Pós-Treino":      f"background:rgba(0,230,118,0.08);color:{GREEN};border:1px solid rgba(0,230,118,0.2)",
     "Lanche":          f"background:rgba(74,85,104,0.15);color:{MUTED};border:1px solid {BORDER}",
 }
 
