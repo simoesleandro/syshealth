@@ -468,18 +468,38 @@ def handle_nav_scroll_query():
 
 
 def render_mobile_quick_bar(active_page: str = "dashboard"):
-    """Barra mobile no dashboard — HTML + ?open_dialog= (sem st.button/columns no Cloud)."""
+    """Barra mobile no dashboard — st.button + on_click (mesmo fluxo da sidebar)."""
     if active_page != "dashboard":
         return
     st.markdown(
-        '<div class="sh-mob-quick-bar-host" aria-label="Ações rápidas">'
-        '<div class="sh-mob-quick-bar">'
-        '<a class="sh-mob-quick-btn" href="?open_dialog=refeicao">➕ Refeição</a>'
-        '<a class="sh-mob-quick-btn" href="?open_dialog=agua">💧 Água</a>'
-        '<a class="sh-mob-quick-btn" href="?open_dialog=supp">💊 Suplemento</a>'
-        '</div></div>',
+        '<div class="sh-mob-quick-bar-host" aria-hidden="true"></div>',
         unsafe_allow_html=True,
     )
+    _mc1, _mc2, _mc3 = st.columns(3)
+    with _mc1:
+        st.button(
+            "➕ Refeição",
+            key=f"mob_ref_{active_page}",
+            use_container_width=True,
+            on_click=_queue_open_dialog,
+            kwargs={"dlg": "refeicao", "active_page": active_page},
+        )
+    with _mc2:
+        st.button(
+            "💧 Água",
+            key=f"mob_agua_{active_page}",
+            use_container_width=True,
+            on_click=_queue_open_dialog,
+            kwargs={"dlg": "agua", "active_page": active_page},
+        )
+    with _mc3:
+        st.button(
+            "💊 Suplemento",
+            key=f"mob_supp_{active_page}",
+            use_container_width=True,
+            on_click=_queue_open_dialog,
+            kwargs={"dlg": "supp", "active_page": active_page},
+        )
 
 
 def render_app_sidebar(
