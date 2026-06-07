@@ -468,16 +468,19 @@ def handle_nav_scroll_query():
 
 
 def render_mobile_quick_bar(active_page: str = "dashboard"):
-    """Barra de ações rápidas no dashboard — visível só ≤680px (CSS media query)."""
+    """Barra de ações rápidas no dashboard — visível so <=680px (CSS media query)."""
     st.markdown(
         '<div class="sh-mob-quick-bar-host" aria-hidden="true"></div>',
         unsafe_allow_html=True,
     )
-    with st.container(horizontal=True, gap="small"):
+    _mc1, _mc2, _mc3 = st.columns(3)
+    with _mc1:
         if st.button("➕ Refeição", key=f"mob_ref_{active_page}", use_container_width=True):
             _queue_open_dialog("refeicao", active_page)
+    with _mc2:
         if st.button("💧 Água", key=f"mob_agua_{active_page}", use_container_width=True):
             _queue_open_dialog("agua", active_page)
+    with _mc3:
         if st.button("💊 Suplemento", key=f"mob_supp_{active_page}", use_container_width=True):
             _queue_open_dialog("supp", active_page)
 

@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-07-cloud-boot-fix"
+_APP_BUILD = "2026-06-07-cloud-line3209-fix"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -2338,8 +2338,9 @@ def _fragment_ref_busca_carrinho(
 
         if show_register:
             st.markdown('<div class="sh-ref-actions-mark" aria-hidden="true"></div>', unsafe_allow_html=True)
-            with st.container(horizontal=True, gap="medium"):
-                if st.button("✅ REGISTRAR REFEIÇÃO", key=f"btn_registrar_carrinho{ks}", use_container_width=False):
+            _ra1, _ra2, _ra3 = st.columns(3)
+            with _ra1:
+                if st.button("✅ REGISTRAR REFEIÇÃO", key=f"btn_registrar_carrinho{ks}", use_container_width=True):
                     tk, tp, tc, tg, comps, desc = _carrinho_snapshot(carrinho_key, ks)
                     _cat = register_cat or _cat_hora()
                     try:
@@ -2360,12 +2361,14 @@ def _fragment_ref_busca_carrinho(
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao registrar: {e}")
-                if st.button("⭐ Favorito", key=f"btn_fav_combo{ks}", use_container_width=False, help="Salvar combinação nos favoritos"):
+            with _ra2:
+                if st.button("⭐ Favorito", key=f"btn_fav_combo{ks}", use_container_width=True, help="Salvar combinação nos favoritos"):
                     tk, tp, tc, tg, comps, desc = _carrinho_snapshot(carrinho_key, ks)
                     if desc:
                         _salvar_combo_favorito(desc, comps, register_cat or _cat_hora(), tk, tp, tc, tg)
                         st.rerun(scope="fragment")
-                if st.button("🗑️ Limpar", key=f"btn_limpar_carrinho{ks}", use_container_width=False, help="Limpar carrinho de alimentos"):
+            with _ra3:
+                if st.button("🗑️ Limpar", key=f"btn_limpar_carrinho{ks}", use_container_width=True, help="Limpar carrinho de alimentos"):
                     st.session_state[carrinho_key] = []
                     st.rerun(scope="fragment")
 
@@ -3206,8 +3209,8 @@ with _h_actions:
 st.markdown(f'<div style="border-bottom:1px solid {BORDER};margin-bottom:12px;padding-bottom:4px"></div>', unsafe_allow_html=True)
 st.markdown(
     f'<div class="sh-mobile-hint">'
-    f'<span style="color:{CYAN};font-size:14px">☰</span>'
-    f'<span>Use o menu ☰ ou os atalhos abaixo · deslize tabelas horizontalmente</span>'
+    f'<span style="color:{CYAN};font-size:14px">&#9776;</span>'
+    f'<span>Use o menu lateral ou os atalhos abaixo · deslize tabelas horizontalmente</span>'
     f'</div>',
     unsafe_allow_html=True,
 )
