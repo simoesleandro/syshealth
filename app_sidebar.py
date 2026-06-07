@@ -409,13 +409,12 @@ def _render_quick_actions(active_page: str, quick_actions: Optional[dict[str, Ca
     for action_key, label, icon in _items:
         if action_key not in quick_actions:
             continue
-        st.button(
+        if st.button(
             f"{icon} {label}",
             key=f"sb_{action_key}_{active_page}",
             use_container_width=True,
-            on_click=_queue_open_dialog,
-            kwargs={"dlg": action_key, "active_page": active_page},
-        )
+        ):
+            _queue_open_dialog(action_key, active_page)
     if active_page == "banco":
         st.button(
             "🍽️ Banco de Alimentos",
@@ -423,13 +422,12 @@ def _render_quick_actions(active_page: str, quick_actions: Optional[dict[str, Ca
             use_container_width=True,
             disabled=True,
         )
-    else:
-        st.button(
-            "🍽️ Banco de Alimentos",
-            key=f"sb_banco_{active_page}",
-            use_container_width=True,
-            on_click=_sidebar_goto_banco,
-        )
+    elif st.button(
+        "🍽️ Banco de Alimentos",
+        key=f"sb_banco_{active_page}",
+        use_container_width=True,
+    ):
+        _sidebar_goto_banco()
 
 
 def _qp_val(key: str):
@@ -440,7 +438,7 @@ def _qp_val(key: str):
 
 
 def handle_quick_dialog_query():
-    """Abre modal via ?open_dialog=refeicao|agua|supp (links da barra mobile)."""
+    """Legado: ?open_dialog= na URL (sem rerun — evita nova aba)."""
     dlg = _qp_val("open_dialog")
     if not dlg or dlg not in ("refeicao", "editar", "agua", "supp"):
         return
@@ -451,7 +449,65 @@ def handle_quick_dialog_query():
         st.query_params.clear()
     except Exception:
         pass
-    st.rerun()
+
+
+_MOB_QUICK_GUARD_JS = """
+<script>
+(function () {
+  if (window.__shMobQuickGuard) return;
+  window.__shMobQuickGuard = true;
+  var docs = [document];
+  try {
+    if (window.parent && window.parent.document) docs.push(window.parent.document);
+  } catch (e) {}
+  docs.forEach(function (doc) {
+    doc.addEventListener(
+      "click",
+      function (e) {
+        var a = e.target.closest('a[href*="open_dialog"]');
+        if (!a) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      },
+      true
+    );
+  });
+})();
+</script>
+"""
+
+
+def render_mobile_quick_bar(active_page: str = "dashboard"):
+    """Barra mobile — st.button inline (sem href / on_click)."""
+    if active_page != "dashboard":
+        return
+    st.markdown(
+        '<div class="sh-mob-quick-bar-host" aria-hidden="true"></div>',
+        unsafe_allow_html=True,
+    )
+    st.html(_MOB_QUICK_GUARD_JS)
+    _mc1, _mc2, _mc3 = st.columns(3)
+    with _mc1:
+        if st.button(
+            "➕ Refeição",
+            key=f"mob_ref_{active_page}",
+            use_container_width=True,
+        ):
+            _queue_open_dialog("refeicao", active_page)
+    with _mc2:
+        if st.button(
+            "💧 Água",
+            key=f"mob_agua_{active_page}",
+            use_container_width=True,
+        ):
+            _queue_open_dialog("agua", active_page)
+    with _mc3:
+        if st.button(
+            "💊 Suplemento",
+            key=f"mob_supp_{active_page}",
+            use_container_width=True,
+        ):
+            _queue_open_dialog("supp", active_page)
 
 
 def handle_nav_scroll_query():
@@ -465,41 +521,6 @@ def handle_nav_scroll_query():
     except Exception:
         pass
     st.rerun()
-
-
-def render_mobile_quick_bar(active_page: str = "dashboard"):
-    """Barra mobile no dashboard — st.button + on_click (mesmo fluxo da sidebar)."""
-    if active_page != "dashboard":
-        return
-    st.markdown(
-        '<div class="sh-mob-quick-bar-host" aria-hidden="true"></div>',
-        unsafe_allow_html=True,
-    )
-    _mc1, _mc2, _mc3 = st.columns(3)
-    with _mc1:
-        st.button(
-            "➕ Refeição",
-            key=f"mob_ref_{active_page}",
-            use_container_width=True,
-            on_click=_queue_open_dialog,
-            kwargs={"dlg": "refeicao", "active_page": active_page},
-        )
-    with _mc2:
-        st.button(
-            "💧 Água",
-            key=f"mob_agua_{active_page}",
-            use_container_width=True,
-            on_click=_queue_open_dialog,
-            kwargs={"dlg": "agua", "active_page": active_page},
-        )
-    with _mc3:
-        st.button(
-            "💊 Suplemento",
-            key=f"mob_supp_{active_page}",
-            use_container_width=True,
-            on_click=_queue_open_dialog,
-            kwargs={"dlg": "supp", "active_page": active_page},
-        )
 
 
 def render_app_sidebar(
