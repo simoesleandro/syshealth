@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-07-sync-align"
+_APP_BUILD = "2026-06-07-no-footer-bar"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -4645,16 +4645,6 @@ _render_ia_coach()
 # BANCO — teaser (fora do menu; após fluxo principal)
 # ════════════════════════════════════════════════════════════════════════════
 render_banco_teaser(_q_alimentos_favoritos())
-
-# ── Ações rápidas mobile (rodapé — só ≤680px; sidebar cobre desktop) ─────────
-from app_sidebar import render_mobile_quick_bar
-
-render_mobile_quick_bar(
-    on_dashboard=True,
-    on_refeicao=_open_refeicao_dialog,
-    on_agua=_tab_agua,
-    on_supp=_tab_suplemento,
-)
 
 # ════════════════════════════════════════════════════════════════════════════
 # RODAPÉ
