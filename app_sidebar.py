@@ -275,42 +275,6 @@ _SIDEBAR_NAV_JS = """
 </script>
 """
 
-_MOB_QUICK_JS = """
-<script>
-(function(){
-  if (window.__shMobQuickInit) return;
-  window.__shMobQuickInit = true;
-  function findRow(host){
-    var ec = host.closest('[data-testid="stElementContainer"]');
-    if (!ec || !ec.parentElement) return null;
-    var kids = Array.prototype.slice.call(ec.parentElement.children);
-    var idx = kids.indexOf(ec);
-    for (var i = idx + 1; i < kids.length; i++) {
-      if (kids[i].querySelector && kids[i].querySelector('[data-testid="stHorizontalBlock"]')) {
-        return kids[i];
-      }
-    }
-    return null;
-  }
-  function apply(){
-    document.querySelectorAll('.sh-mob-quick-host').forEach(function(host){
-      var row = findRow(host);
-      if (!row) return;
-      row.classList.add('sh-mob-quick-bar');
-      var show = window.innerWidth <= 680;
-      row.style.setProperty('display', show ? 'block' : 'none', 'important');
-      var hb = row.querySelector('[data-testid="stHorizontalBlock"]');
-      if (hb) hb.style.setProperty('display', show ? 'flex' : 'none', 'important');
-    });
-  }
-  apply();
-  window.addEventListener('resize', apply);
-  new MutationObserver(apply).observe(document.documentElement, {childList:true, subtree:true});
-})();
-</script>
-"""
-
-
 @st.cache_data(ttl=60)
 def _q_agua(dia: str):
     return DB.query(
@@ -500,49 +464,19 @@ def handle_nav_scroll_query():
     st.rerun()
 
 
-def render_mobile_quick_bar(
-    on_dashboard: bool = False,
-    on_refeicao: Optional[Callable[[], None]] = None,
-    on_agua: Optional[Callable[[], None]] = None,
-    on_supp: Optional[Callable[[], None]] = None,
-):
-    """Barra mobile — st.button (sem links que abrem nova aba)."""
+def render_mobile_quick_bar(active_page: str = "dashboard"):
+    """Barra de ações rápidas no dashboard — visível só ≤680px (CSS media query)."""
     st.markdown(
-        """
-<style>
-.sh-mob-quick-host{display:none!important;height:0!important;margin:0!important;padding:0!important}
-html.sh-md .sh-mob-quick-bar,html.sh-lg .sh-mob-quick-bar{display:none!important}
-html.sh-sm .sh-mob-quick-bar,html.sh-xs .sh-mob-quick-bar{display:block!important;margin:12px 0!important}
-html.sh-sm .sh-mob-quick-bar [data-testid="stHorizontalBlock"],
-html.sh-xs .sh-mob-quick-bar [data-testid="stHorizontalBlock"]{
-  display:flex!important;gap:8px!important;flex-wrap:nowrap!important}
-html.sh-sm .sh-mob-quick-bar [data-testid="stButton"],
-html.sh-xs .sh-mob-quick-bar [data-testid="stButton"]{flex:1 1 0!important;width:auto!important;margin:0!important}
-html.sh-sm .sh-mob-quick-bar button,html.sh-xs .sh-mob-quick-bar button{
-  width:100%!important;min-height:44px!important;font-size:11px!important}
-</style>
-<div class="sh-mob-quick-host" aria-hidden="true"></div>
-""",
+        '<div class="sh-mob-quick-bar-host" aria-hidden="true"></div>',
         unsafe_allow_html=True,
     )
-
-    def _dispatch(dlg: str, fn: Optional[Callable[[], None]]):
-        if on_dashboard and fn:
-            fn()
-        elif not on_dashboard:
-            st.session_state["open_dialog"] = dlg
-            if dlg == "refeicao":
-                st.session_state["_ref_busca_reset"] = True
-            st.switch_page(DASHBOARD_PAGE)
-
-    with st.container(horizontal=True):
-        if st.button("➕ Refeição", key=f"mob_ref_{on_dashboard}"):
-            _dispatch("refeicao", on_refeicao)
-        if st.button("💧 Água", key=f"mob_agua_{on_dashboard}"):
-            _dispatch("agua", on_agua)
-        if st.button("💊 Suplemento", key=f"mob_supp_{on_dashboard}"):
-            _dispatch("supp", on_supp)
-    st.html(_MOB_QUICK_JS)
+    with st.container(horizontal=True, gap="small"):
+        if st.button("➕ Refeição", key=f"mob_ref_{active_page}", use_container_width=True):
+            _queue_open_dialog("refeicao", active_page)
+        if st.button("💧 Água", key=f"mob_agua_{active_page}", use_container_width=True):
+            _queue_open_dialog("agua", active_page)
+        if st.button("💊 Suplemento", key=f"mob_supp_{active_page}", use_container_width=True):
+            _queue_open_dialog("supp", active_page)
 
 
 def render_app_sidebar(

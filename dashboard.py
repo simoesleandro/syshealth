@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-07-ref-cart-spacing"
+_APP_BUILD = "2026-06-07-mobile-quick-bar"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -349,13 +349,25 @@ button[data-baseweb="tab"][aria-selected="true"]{color:var(--sh-accent)!importan
 html.sh-sm .sh-stat-grid--4,html.sh-xs .sh-stat-grid--4{grid-template-columns:repeat(2,1fr)!important}
 html.sh-xs .sh-stat-grid--3,html.sh-sm .sh-stat-grid--3{grid-template-columns:1fr!important}
 
-/* Barra ações rápidas mobile — só ≤680px (classes sh-sm/sh-xs) */
-html.sh-md .sh-mob-quick-bar,html.sh-lg .sh-mob-quick-bar{display:none!important}
-html.sh-sm .sh-mob-quick-bar,html.sh-xs .sh-mob-quick-bar{
-  display:block!important;margin:0 0 12px!important}
-html.sh-sm .sh-mob-quick-bar [data-testid="stHorizontalBlock"],
-html.sh-xs .sh-mob-quick-bar [data-testid="stHorizontalBlock"]{
-  display:flex!important;gap:8px!important;flex-wrap:nowrap!important}
+/* Barra ações rápidas mobile — só dashboard, ≤680px (media query; não depende de JS) */
+.sh-mob-quick-bar-host{display:none!important;height:0!important;margin:0!important;padding:0!important}
+@media (min-width:681px){
+  [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host){
+    display:none!important;height:0!important;min-height:0!important;overflow:hidden!important;
+    margin:0!important;padding:0!important;visibility:hidden!important}}
+@media (max-width:680px){
+  [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host){
+    margin:0 0 12px!important}
+  [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host) [data-testid="stHorizontalBlock"]{
+    display:flex!important;gap:8px!important;flex-wrap:nowrap!important;width:100%!important}
+  [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host) [data-testid="stButton"]{
+    flex:1 1 0!important;width:auto!important;margin:0!important}
+  [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host) button{
+    width:100%!important;min-height:44px!important;font-size:11px!important;font-weight:600!important}}
+html.sh-md [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host),
+html.sh-lg [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host){display:none!important}
+html.sh-sm [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host),
+html.sh-xs [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host){display:flex!important}
 .sh-header-actions-mark,.sh-header-sync-host{display:none!important;height:0!important;margin:0!important;padding:0!important}
 [data-testid="stHorizontalBlock"]:has(.sh-header-actions-mark){
   align-items:flex-start!important}
@@ -3180,7 +3192,7 @@ st.markdown(f'<div style="border-bottom:1px solid {BORDER};margin-bottom:12px;pa
 st.markdown(
     f'<div class="sh-mobile-hint">'
     f'<span style="color:{CYAN};font-size:14px">☰</span>'
-    f'<span>Use o menu lateral para navegar e registrar refeições · deslize tabelas horizontalmente</span>'
+    f'<span>Use o menu ☰ ou os atalhos abaixo · deslize tabelas horizontalmente</span>'
     f'</div>',
     unsafe_allow_html=True,
 )
@@ -3189,10 +3201,12 @@ from app_sidebar import (
     handle_nav_scroll_query,
     handle_quick_dialog_query,
     render_app_sidebar,
+    render_mobile_quick_bar,
 )
 
 handle_quick_dialog_query()
 handle_nav_scroll_query()
+render_mobile_quick_bar(active_page="dashboard")
 
 # ── Notificação animada pendente (roda UMA vez por ação) ─────────────────────
 _render_notif_pendente()
