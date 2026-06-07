@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-07-mobile-quick-bar"
+_APP_BUILD = "2026-06-07-cloud-boot-fix"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -103,6 +103,13 @@ st.set_page_config(
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="auto",
+)
+
+from app_sidebar import (
+    handle_nav_scroll_query,
+    handle_quick_dialog_query,
+    render_app_sidebar,
+    render_mobile_quick_bar,
 )
 
 # ── RESET STREAMLIT CHROME + SIDEBAR WIDGET THEME ───────────────────────────
@@ -1713,29 +1720,37 @@ if "med_seeded" not in st.session_state:
     _invalidate_cache(_q_medicacao)
 
 # ── Leitura dos dados com cache ───────────────────────────────────────────────
-_dp = _q_peso()
-_dp_val = _dp["peso"].iloc[0] if not _dp.empty else None
-peso = float(_dp_val) if _dp_val is not None else 93.0
+_boot_err = None
+try:
+    _dp = _q_peso()
+    _dp_val = _dp["peso"].iloc[0] if not _dp.empty else None
+    peso = float(_dp_val) if _dp_val is not None else 93.0
 
-_da    = _q_agua(hoje_sql)
-agua_l = float(_da["t"].iloc[0] or 0) / 1000
+    _da = _q_agua(hoje_sql)
+    agua_l = float(_da["t"].iloc[0] or 0) / 1000
 
-_dr    = _q_macros(hoje_sql)
-cal_h  = float(_dr["cal"].iloc[0]  or 0)
-prot_h = float(_dr["prot"].iloc[0] or 0)
-carb_h = float(_dr["carb"].iloc[0] or 0)
-gord_h = float(_dr["gord"].iloc[0] or 0)
+    _dr = _q_macros(hoje_sql)
+    cal_h = float(_dr["cal"].iloc[0] or 0)
+    prot_h = float(_dr["prot"].iloc[0] or 0)
+    carb_h = float(_dr["carb"].iloc[0] or 0)
+    gord_h = float(_dr["gord"].iloc[0] or 0)
 
-_az       = _amazfit_hoje_df()
-passos    = int(_az["passos"].iloc[0])            if not _az.empty else 0
-cal_gasta = int(_az["calorias_gastas"].iloc[0])   if not _az.empty else 0
-dist_km   = float(_az["distancia_km"].iloc[0])    if not _az.empty else 0.0
-sono_tot  = int(_az["sono_total_min"].iloc[0])    if not _az.empty else 0
-sono_prof = int(_az["sono_profundo_min"].iloc[0]) if not _az.empty else 0
-hrv       = int(_az["hrv_ms"].iloc[0])            if not _az.empty else 0
-pai       = int(_az["pai"].iloc[0])               if not _az.empty else 0
-corrida_km  = float(_az["corrida_km"].iloc[0])  if not _az.empty and "corrida_km" in _az.columns else 0.0
-corrida_cal = int(_az["corrida_cal"].iloc[0])   if not _az.empty and "corrida_cal" in _az.columns else 0
+    _az = _amazfit_hoje_df()
+    passos = int(_az["passos"].iloc[0]) if not _az.empty else 0
+    cal_gasta = int(_az["calorias_gastas"].iloc[0]) if not _az.empty else 0
+    dist_km = float(_az["distancia_km"].iloc[0]) if not _az.empty else 0.0
+    sono_tot = int(_az["sono_total_min"].iloc[0]) if not _az.empty else 0
+    sono_prof = int(_az["sono_profundo_min"].iloc[0]) if not _az.empty else 0
+    hrv = int(_az["hrv_ms"].iloc[0]) if not _az.empty else 0
+    pai = int(_az["pai"].iloc[0]) if not _az.empty else 0
+    corrida_km = float(_az["corrida_km"].iloc[0]) if not _az.empty and "corrida_km" in _az.columns else 0.0
+    corrida_cal = int(_az["corrida_cal"].iloc[0]) if not _az.empty and "corrida_cal" in _az.columns else 0
+except Exception as e:
+    _boot_err = e
+    peso = 93.0
+    agua_l = cal_h = prot_h = carb_h = gord_h = 0.0
+    passos = cal_gasta = sono_tot = sono_prof = hrv = pai = corrida_cal = 0
+    dist_km = corrida_km = 0.0
 
 # Derivações — Método Dinâmico
 gasto_total_dia   = TMB + cal_gasta                    # TMB + atividade registrada
@@ -3197,15 +3212,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-from app_sidebar import (
-    handle_nav_scroll_query,
-    handle_quick_dialog_query,
-    render_app_sidebar,
-    render_mobile_quick_bar,
-)
-
 handle_quick_dialog_query()
 handle_nav_scroll_query()
+if _boot_err is not None:
+    st.error(f"Erro ao conectar ao banco — verifique SUPABASE_URL nos Secrets. ({_boot_err})")
 render_mobile_quick_bar(active_page="dashboard")
 
 # ── Notificação animada pendente (roda UMA vez por ação) ─────────────────────

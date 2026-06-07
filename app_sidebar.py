@@ -300,12 +300,15 @@ def _q_amazfit():
 
 
 def _load_kpi_data(hoje_sql: str) -> dict:
-    _da = _q_agua(hoje_sql)
-    agua_l = float(_da["t"].iloc[0] or 0) / 1000
+    try:
+        _da = _q_agua(hoje_sql)
+        agua_l = float(_da["t"].iloc[0] or 0) / 1000
 
-    _dr = _q_macros(hoje_sql)
-    cal_h = float(_dr["cal"].iloc[0] or 0)
-    prot_h = float(_dr["prot"].iloc[0] or 0)
+        _dr = _q_macros(hoje_sql)
+        cal_h = float(_dr["cal"].iloc[0] or 0)
+        prot_h = float(_dr["prot"].iloc[0] or 0)
+    except Exception:
+        agua_l = cal_h = prot_h = 0.0
 
     try:
         _az = _q_amazfit()
