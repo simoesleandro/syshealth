@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-07-mob-bar-no-tab"
+_APP_BUILD = "2026-06-07-mob-bar-removed"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -3252,7 +3252,6 @@ def _render_dashboard_sidebar():
     )
 
 _render_dashboard_sidebar()
-render_mobile_quick_bar(active_page="dashboard")
 
 _open_dlg = st.session_state.pop("open_dialog", None)
 if _open_dlg == "refeicao":
