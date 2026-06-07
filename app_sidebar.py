@@ -9,17 +9,26 @@ import streamlit as st
 from zoneinfo import ZoneInfo
 
 import db as DB
-from sh_tokens import AMBER, CYAN, GREEN, MUTED, PURPLE, RED, ROOT_CSS, TEXT
+from sh_tokens import (
+    AMBER,
+    CYAN,
+    DELETE_ICON,
+    EDIT_ICON,
+    GREEN,
+    MUTED,
+    PURPLE,
+    RED,
+    ROOT_CSS,
+    STAR_ICON,
+    STAR_OUTLINE_ICON,
+    TEXT,
+)
 
 TMB = 1863
 META_PAI = 100
 _BR = ZoneInfo("America/Sao_Paulo")
 BANCO_PAGE = "pages/1_Banco_de_Alimentos.py"
 DASHBOARD_PAGE = "dashboard.py"
-EDIT_ICON = ":material/edit:"
-STAR_ICON = ":material/star:"
-STAR_OUTLINE_ICON = ":material/star_outline:"
-DELETE_ICON = ":material/delete:"
 
 _NAV_ANCHORS = [
     ("sec-hoje", "🎯", "Hoje"),

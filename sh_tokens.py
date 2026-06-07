@@ -64,3 +64,9 @@ ROOT_CSS = f"""
   --sh-font-mono:{MONO};
 }}
 """
+
+# ── Ícones Material (Streamlit st.button icon=) ───────────────────────────────
+EDIT_ICON = ":material/edit:"
+STAR_ICON = ":material/star:"
+STAR_OUTLINE_ICON = ":material/star_outline:"
+DELETE_ICON = ":material/delete:"

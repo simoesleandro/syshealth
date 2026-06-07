@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-07-no-footer-bar"
+_APP_BUILD = "2026-06-07-icon-fix"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -32,6 +32,7 @@ from sh_tokens import (
     BORDER,
     BORDER2,
     CYAN,
+    EDIT_ICON,
     GHOST,
     GREEN,
     MONO,
@@ -3072,7 +3073,6 @@ st.markdown(
 )
 
 from app_sidebar import (
-    EDIT_ICON,
     handle_nav_scroll_query,
     handle_quick_dialog_query,
     render_app_sidebar,

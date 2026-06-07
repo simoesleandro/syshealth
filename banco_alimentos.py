@@ -14,7 +14,7 @@ except Exception:
     pass
 
 import db as DB
-from app_sidebar import DELETE_ICON, EDIT_ICON, STAR_ICON, STAR_OUTLINE_ICON
+from sh_tokens import DELETE_ICON, EDIT_ICON, STAR_ICON, STAR_OUTLINE_ICON
 from sh_tokens import AMBER, BG, BG2, BG3, BORDER, BORDER2, CYAN, GHOST, GREEN, MONO, MUTED, PURPLE, TEXT
 
 _BANCO_HIT_CSS = f"""
