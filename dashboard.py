@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-07-cloud-line3209-fix"
+_APP_BUILD = "2026-06-07-mob-bar-html"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -356,25 +356,24 @@ button[data-baseweb="tab"][aria-selected="true"]{color:var(--sh-accent)!importan
 html.sh-sm .sh-stat-grid--4,html.sh-xs .sh-stat-grid--4{grid-template-columns:repeat(2,1fr)!important}
 html.sh-xs .sh-stat-grid--3,html.sh-sm .sh-stat-grid--3{grid-template-columns:1fr!important}
 
-/* Barra ações rápidas mobile — só dashboard, ≤680px (media query; não depende de JS) */
-.sh-mob-quick-bar-host{display:none!important;height:0!important;margin:0!important;padding:0!important}
-@media (min-width:681px){
-  [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host){
-    display:none!important;height:0!important;min-height:0!important;overflow:hidden!important;
-    margin:0!important;padding:0!important;visibility:hidden!important}}
+/* Barra ações rápidas mobile — HTML puro, só dashboard ≤680px */
+.sh-mob-quick-bar-host{display:none!important;height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+.sh-mob-quick-bar{display:flex!important;gap:8px!important;width:100%!important;flex-wrap:nowrap!important}
+.sh-mob-quick-btn{
+  flex:1 1 0!important;display:flex!important;align-items:center!important;justify-content:center!important;
+  min-height:44px!important;padding:8px 6px!important;border-radius:var(--sh-radius-md)!important;
+  border:1px solid var(--sh-border)!important;background:var(--sh-bg-subtle)!important;
+  color:var(--sh-text)!important;font-family:var(--sh-font-display)!important;
+  font-size:11px!important;font-weight:600!important;text-decoration:none!important;
+  text-align:center!important;box-sizing:border-box!important;
+  transition:border-color .15s,color .15s,background .15s!important}
+.sh-mob-quick-btn:hover{border-color:rgba(0,212,255,.35)!important;color:var(--sh-accent)!important;background:rgba(0,212,255,.08)!important}
 @media (max-width:680px){
-  [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host){
-    margin:0 0 12px!important}
-  [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host) [data-testid="stHorizontalBlock"]{
-    display:flex!important;gap:8px!important;flex-wrap:nowrap!important;width:100%!important}
-  [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host) [data-testid="stButton"]{
-    flex:1 1 0!important;width:auto!important;margin:0!important}
-  [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host) button{
-    width:100%!important;min-height:44px!important;font-size:11px!important;font-weight:600!important}}
-html.sh-md [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host),
-html.sh-lg [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host){display:none!important}
-html.sh-sm [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host),
-html.sh-xs [data-testid="stVerticalBlock"]:has(.sh-mob-quick-bar-host){display:flex!important}
+  .sh-mob-quick-bar-host{display:block!important;height:auto!important;margin:0 0 12px!important;overflow:visible!important}}
+@media (min-width:681px){
+  .sh-mob-quick-bar-host{display:none!important;height:0!important;overflow:hidden!important}}
+html.sh-md .sh-mob-quick-bar-host,html.sh-lg .sh-mob-quick-bar-host{display:none!important}
+html.sh-sm .sh-mob-quick-bar-host,html.sh-xs .sh-mob-quick-bar-host{display:block!important;margin:0 0 12px!important}
 .sh-header-actions-mark,.sh-header-sync-host{display:none!important;height:0!important;margin:0!important;padding:0!important}
 [data-testid="stHorizontalBlock"]:has(.sh-header-actions-mark){
   align-items:flex-start!important}
@@ -3219,7 +3218,6 @@ handle_quick_dialog_query()
 handle_nav_scroll_query()
 if _boot_err is not None:
     st.error(f"Erro ao conectar ao banco — verifique SUPABASE_URL nos Secrets. ({_boot_err})")
-render_mobile_quick_bar(active_page="dashboard")
 
 # ── Notificação animada pendente (roda UMA vez por ação) ─────────────────────
 _render_notif_pendente()
@@ -3253,6 +3251,7 @@ def _render_dashboard_sidebar():
     )
 
 _render_dashboard_sidebar()
+render_mobile_quick_bar(active_page="dashboard")
 
 _scroll_sec = st.session_state.pop("_scroll_to", None)
 if _scroll_sec:
