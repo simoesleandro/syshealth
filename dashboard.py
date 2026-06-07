@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-06-ia-ux"
+_APP_BUILD = "2026-06-07-sync-align"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -24,6 +24,54 @@ except Exception:
     pass
 
 import db as DB
+from sh_tokens import (
+    AMBER,
+    BG,
+    BG2,
+    BG3,
+    BORDER,
+    BORDER2,
+    CYAN,
+    GHOST,
+    GREEN,
+    MONO,
+    MUTED,
+    PURPLE,
+    RED,
+    TEXT,
+)
+from sections.banco_teaser import render_banco_teaser
+from sections.evacuacao import (
+    render_evacuacao_actions,
+    render_evacuacao_delete,
+    render_evacuacao_history,
+    render_evacuacao_summary,
+)
+from sections.biometria import render_biometria_section
+from sections.historico import df_media, fmt_metric, render_historico_fragment
+from sections.medicacao import med_doses_list, render_medicacao_section
+from sh_components import (
+    COMPONENTS_CSS,
+    panel,
+    pbar,
+    ptitl,
+    sec,
+    section_actions,
+    sh_card,
+    sh_chip_row,
+    sh_empty_state,
+    sh_kpi_chip,
+    sh_lane,
+    sh_lane_close,
+    sh_metric,
+    section_anchor,
+    sh_section,
+    sh_skip_link,
+    sh_subheading,
+    sh_treino_shell_close,
+    sh_treino_shell_open,
+    sh_zone,
+)
 
 # ── Gemini Vision (análise de fotos) ─────────────────────────────────────────
 # Lê a chave diretamente dos secrets do Streamlit Cloud primeiro,
@@ -57,34 +105,21 @@ st.set_page_config(
 )
 
 # ── RESET STREAMLIT CHROME + SIDEBAR WIDGET THEME ───────────────────────────
-@st.cache_resource
+# Sem @st.cache_resource — strings enormes quebram inspect.getsource no Python 3.13
+_CSS_BUNDLE: str | None = None
+
+
 def _app_global_css() -> str:
-    return """
+    global _CSS_BUNDLE
+    if _CSS_BUNDLE is not None:
+        return _CSS_BUNDLE
+    from sh_buttons_css import FLUID_BUTTONS_CSS, A11Y_CSS
+    from sh_tokens import ROOT_CSS
+
+    _css = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;700;800&display=swap');
-
-:root{
-  --sh-bg:#080c14;
-  --sh-bg-elevated:#0d1424;
-  --sh-bg-subtle:#0a0f1a;
-  --sh-border:rgba(255,255,255,.07);
-  --sh-border-strong:rgba(0,212,255,.22);
-  --sh-text:#e8edf5;
-  --sh-text-muted:#8b9cb3;
-  --sh-text-dim:#5a6b82;
-  --sh-accent:#00d4ff;
-  --sh-accent-soft:rgba(0,212,255,.10);
-  --sh-radius-sm:6px;
-  --sh-radius-md:10px;
-  --sh-shadow-sm:0 1px 2px rgba(0,0,0,.35);
-  --sh-shadow-md:0 8px 24px rgba(0,0,0,.45);
-  --sh-space-2:8px;
-  --sh-space-3:12px;
-  --sh-space-4:16px;
-  --sh-space-5:24px;
-  --sh-font-display:'DM Sans',system-ui,sans-serif;
-  --sh-font-mono:'Space Mono',ui-monospace,monospace;
-}
+""" + ROOT_CSS + """
 
 html,body,.stApp{background:radial-gradient(1100px 500px at 8% -8%,rgba(0,212,255,.06),transparent 50%),var(--sh-bg)!important;color:var(--sh-text)!important;font-family:var(--sh-font-display)!important}
 .block-container{padding:1.5rem 2rem!important;max-width:1320px!important;margin-left:auto!important;margin-right:auto!important}
@@ -194,30 +229,33 @@ section[data-testid="stSidebar"] > div:first-child{padding:0.75rem 1rem 1rem!imp
 /* ── Botões regulares (secondary) ── */
 [data-testid="stBaseButton-secondary"]{
   background:#0c1525!important;border:1px solid #1e2840!important;
-  color:#7a8a9a!important;font-family:'Space Mono',monospace!important;font-size:10px!important;
-  font-weight:700!important;letter-spacing:1.2px!important;text-transform:uppercase!important;
-  border-radius:8px!important;padding:10px 12px!important;min-height:44px!important;
+  color:#e8edf5!important;font-family:var(--sh-font-display)!important;font-size:12px!important;
+  font-weight:600!important;letter-spacing:0!important;text-transform:none!important;
+  border-radius:8px!important;padding:8px 14px!important;min-height:36px!important;
   transition:border-color 0.15s,color 0.15s,background 0.15s!important}
 [data-testid="stBaseButton-secondary"]:hover{
-  border-color:#2a3448!important;color:#e8edf5!important;background:#0d1628!important}
+  border-color:rgba(0,212,255,.45)!important;color:#00d4ff!important;
+  background:rgba(0,212,255,.1)!important;box-shadow:0 0 16px rgba(0,212,255,.2)!important;
+  transform:translateY(-1px)!important}
 [data-testid="stBaseButton-secondary"]:active{
   background:rgba(0,212,255,0.05)!important}
 
-/* ── Botão nav ATIVO (primary) — glow só no hover ── */
+/* ── Botão primary — mesmo visual neutro que secondary; cyan só no hover ── */
 [data-testid="stBaseButton-primary"]{
-  background:rgba(0,212,255,0.10)!important;border:1.5px solid #00d4ff!important;
-  color:#00d4ff!important;font-family:'Space Mono',monospace!important;font-size:10px!important;
-  font-weight:700!important;letter-spacing:1.5px!important;text-transform:uppercase!important;
-  border-radius:8px!important;padding:10px 12px!important;min-height:44px!important;
+  background:#0c1525!important;border:1px solid #1e2840!important;
+  color:#e8edf5!important;font-family:var(--sh-font-display)!important;font-size:12px!important;
+  font-weight:600!important;letter-spacing:0!important;text-transform:none!important;
+  border-radius:8px!important;padding:8px 14px!important;min-height:36px!important;
   box-shadow:none!important;
   transition:all 0.15s ease!important}
 [data-testid="stBaseButton-primary"]:hover{
-  background:rgba(0,212,255,0.17)!important;box-shadow:0 0 20px rgba(0,212,255,0.22)!important;
-  transform:translateY(-2px)!important}
-[data-testid="stBaseButton-secondary"]:hover,
+  border-color:rgba(0,212,255,.45)!important;color:#00d4ff!important;
+  background:rgba(0,212,255,.1)!important;box-shadow:0 0 16px rgba(0,212,255,.2)!important;
+  transform:translateY(-1px)!important}
 [data-testid="stFormSubmitButton"] button:hover{
-  transform:translateY(-1px)!important;
-  box-shadow:0 4px 16px rgba(0,212,255,.12)!important}
+  border-color:rgba(0,212,255,.45)!important;color:#00d4ff!important;
+  background:rgba(0,212,255,.12)!important;box-shadow:0 0 16px rgba(0,212,255,.2)!important;
+  transform:translateY(-1px)!important}
 [data-testid="stBaseButton-primary"],
 [data-testid="stBaseButton-secondary"],
 [data-testid="stFormSubmitButton"] button,
@@ -294,47 +332,58 @@ button[data-baseweb="tab"][aria-selected="true"]{color:var(--sh-accent)!importan
 .sh-app-header__meta{font-size:12px;color:var(--sh-text-dim);margin-top:4px}
 .sh-app-header__status{font-size:11px;text-align:right;margin-bottom:8px;line-height:1.5;white-space:nowrap}
 .sh-status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:middle}
-[data-testid="stHorizontalBlock"]:has(.sh-topbar) [data-testid="column"]:last-child [data-testid="stBaseButton-secondary"]{
-  min-height:32px!important;font-size:10px!important;letter-spacing:.04em!important;text-transform:none!important}
 .sh-metric--hero{background:linear-gradient(145deg,rgba(0,212,255,.08),rgba(13,20,36,.95))}
 .sh-metric--hero .sh-metric__value{font-size:clamp(1.5rem,2.4vw,1.85rem)}
 .sh-metric--compact .sh-metric__value{font-size:clamp(1.35rem,2vw,1.65rem)}
+.sh-metrics-row [data-testid="stHorizontalBlock"]{align-items:stretch!important}
+.sh-metrics-row .sh-metric{min-height:128px;height:100%}
 .sh-nutri-metrics [data-testid="stHorizontalBlock"]{align-items:stretch!important}
 .sh-nutri-metrics .sh-metric{min-height:128px;height:100%}
-.sh-header-actions{display:flex;flex-direction:column;align-items:flex-end;gap:10px;width:100%}
-.sh-header-status{font-family:var(--sh-font-display);font-size:12px;font-weight:500;line-height:1.6;text-align:right}
-.sh-header-sync{width:100%;max-width:168px;margin-left:auto}
-.sh-header-sync [data-testid="stHorizontalBlock"]{gap:8px!important;width:100%!important;max-width:168px!important;margin-left:auto!important}
-.sh-header-sync [data-testid="column"]{flex:1 1 0!important;min-width:0!important;width:auto!important}
-.sh-header-sync button[data-testid="stBaseButton-secondary"]{
-  min-height:32px!important;max-height:36px!important;padding:5px 10px!important;
+
+/* ── KPI grids (medicação / evacuação) — fallback se inline falhar ── */
+.sh-stat-grid{display:grid!important;gap:8px!important;width:100%!important;margin-bottom:8px!important}
+.sh-stat-grid--4{grid-template-columns:repeat(4,1fr)!important}
+.sh-stat-grid--3{grid-template-columns:repeat(3,1fr)!important}
+.sh-med-row{display:flex!important;align-items:center!important;gap:8px!important}
+html.sh-sm .sh-stat-grid--4,html.sh-xs .sh-stat-grid--4{grid-template-columns:repeat(2,1fr)!important}
+html.sh-xs .sh-stat-grid--3,html.sh-sm .sh-stat-grid--3{grid-template-columns:1fr!important}
+
+/* Barra ações rápidas mobile — só ≤680px (classes sh-sm/sh-xs) */
+html.sh-md .sh-mob-quick-bar,html.sh-lg .sh-mob-quick-bar{display:none!important}
+html.sh-sm .sh-mob-quick-bar,html.sh-xs .sh-mob-quick-bar{
+  display:block!important;margin:0 0 12px!important}
+html.sh-sm .sh-mob-quick-bar [data-testid="stHorizontalBlock"],
+html.sh-xs .sh-mob-quick-bar [data-testid="stHorizontalBlock"]{
+  display:flex!important;gap:8px!important;flex-wrap:nowrap!important}
+.sh-header-actions-mark{display:none!important;height:0!important;margin:0!important;padding:0!important}
+[data-testid="column"]:has(.sh-header-actions-mark){
+  padding-right:0!important;margin-right:0!important}
+[data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stVerticalBlock"]{
+  align-items:flex-end!important;width:100%!important;padding:0!important;margin:0!important}
+[data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stMarkdownContainer"]:has(.sh-header-sync){
+  width:100%!important;padding:0!important;margin:0!important}
+.sh-header-sync{display:flex!important;flex-direction:column!important;align-items:flex-end!important;
+  width:100%!important;gap:8px!important;margin:0!important;padding:0!important}
+.sh-header-sync .sh-header-status-html{
+  font-size:11px!important;line-height:1.5!important;text-align:right!important;width:100%!important;
+  display:flex!important;flex-direction:column!important;align-items:flex-end!important;gap:2px!important}
+.sh-header-sync .sh-header-status-line{white-space:nowrap!important}
+.sh-header-sync-btns{display:flex!important;flex-direction:row!important;justify-content:flex-end!important;
+  align-items:center!important;gap:16px!important;width:100%!important;margin:0!important;padding:0!important}
+button.sh-sync-link{
+  appearance:none!important;-webkit-appearance:none!important;background:none!important;border:none!important;
+  padding:0!important;margin:0!important;cursor:pointer!important;white-space:nowrap!important;
   font-family:var(--sh-font-display)!important;font-size:12px!important;font-weight:600!important;
-  border-radius:8px!important;letter-spacing:0!important;text-transform:none!important;
-  border-color:rgba(0,212,255,.28)!important;background:rgba(0,212,255,.07)!important;width:100%!important}
-.sh-header-sync button[data-testid="stBaseButton-secondary"]:hover{
-  background:rgba(0,212,255,.14)!important;border-color:#00d4ff!important;
-  box-shadow:0 0 14px rgba(0,212,255,.22)!important;transform:translateY(-1px)!important}
+  color:#c8d0dc!important;line-height:1.3!important;transition:color .15s!important}
+button.sh-sync-link:hover{color:#00d4ff!important}
+button.sh-sync-link:focus-visible{outline:2px solid rgba(0,212,255,.45)!important;outline-offset:2px!important}
 .sh-chart-frame{background:var(--sh-bg-subtle);border:1px solid var(--sh-border);border-radius:var(--sh-radius-md);padding:8px 4px 0;margin-bottom:12px}
 .sh-side-card{background:var(--sh-bg-surface);border:1px solid var(--sh-border);border-radius:var(--sh-radius-md);padding:12px;margin-bottom:12px}
-button:focus-visible,a:focus-visible,summary:focus-visible{
-  outline:2px solid var(--sh-accent)!important;outline-offset:2px!important;
-}
+/* Foco visível — ver A11Y_CSS em sh_buttons_css.py */
 
-/* ── Sidebar buttons (mantidos) ── */
-section[data-testid="stSidebar"] .stButton button{
-  background:rgba(13,20,36,.6)!important;border:1px solid #1a2840!important;
-  color:#e8edf5!important;font-family:var(--sh-font-display)!important;font-size:13px!important;
-  font-weight:600!important;letter-spacing:0!important;text-transform:none!important;
-  border-radius:8px!important;padding:10px 12px!important;width:100%!important;
-  min-height:40px!important;text-align:left!important}
-section[data-testid="stSidebar"] .stButton button:hover{
-  border-color:rgba(0,212,255,.45)!important;color:#00d4ff!important;
-  background:rgba(0,212,255,0.1)!important;box-shadow:0 0 16px rgba(0,212,255,.18)!important;
-  transform:translateX(3px)!important}
-section[data-testid="stSidebar"] .stButton button:active{
-  background:rgba(0,212,255,0.14)!important;transform:translateX(1px)!important}
+/* Sidebar stacks — ver app_sidebar.py (.sh-sidebar-stack) */
 
-/* ── Botões de ação compactos (✏ ✕ nos cards de refeição e medicação) ── */
+/* ── Botões de ação compactos (editar / fechar nos cards de refeição e medicação) ── */
 /* Alvo: botões secundários dentro de colunas muito estreitas (< 80px) */
 [data-testid="stHorizontalBlock"]:has([data-testid="stMarkdownContainer"]) [data-testid="column"]:last-child [data-testid="stBaseButton-secondary"]{
   min-height:34px!important;
@@ -354,7 +403,7 @@ section[data-testid="stSidebar"] .stButton button:active{
   padding:6px 10px!important;cursor:pointer!important}
 [data-testid="stDateInput"] > div > div{cursor:pointer!important}
 
-/* ── Tirzepatida — botões compactos (+ DOSE e ✏ editar) ── */
+/* ── Tirzepatida — botões compactos (+ DOSE e editar) ── */
 [data-testid="stHorizontalBlock"]:has(.sh-med-hdr) button,
 [data-testid="stHorizontalBlock"]:has(.sh-med-row) button{
   min-height:24px!important;
@@ -363,19 +412,6 @@ section[data-testid="stSidebar"] .stButton button:active{
   line-height:1!important;
   border-radius:4px!important}
 
-/* ── Sync buttons compactos (topbar direito) ── */
-/* Targetamos o stHorizontalBlock que contém .sh-topbar (topbar) → última coluna → botões */
-[data-testid="stHorizontalBlock"]:has(.sh-topbar) [data-testid="column"]:last-child [data-testid="stBaseButton-secondary"]{
-  min-height:30px!important;
-  padding:4px 8px!important;
-  font-size:9px!important;
-  border-radius:20px!important;
-  letter-spacing:0.8px!important;
-  border-color:#1a2035!important}
-[data-testid="stHorizontalBlock"]:has(.sh-topbar) [data-testid="column"]:last-child [data-testid="stBaseButton-secondary"]:hover{
-  border-color:#00d4ff88!important;
-  color:#00d4ff!important}
-
 /* ── Painel de conteúdo (container com borda) ── */
 [data-testid="stVerticalBlockBorderWrapper"]{
   background:#070b15!important;border:1px solid rgba(0,212,255,0.22)!important;
@@ -383,15 +419,17 @@ section[data-testid="stSidebar"] .stButton button:active{
   box-shadow:0 4px 32px rgba(0,0,0,0.45),0 0 30px rgba(0,212,255,0.04)!important;
   margin-top:4px!important}
 
-/* ── Form submit button ── */
+/* ── Form submit button — neutro em repouso, cyan no hover ── */
 [data-testid="stFormSubmitButton"] button{
-  background:rgba(0,212,255,0.07)!important;border:1px solid rgba(0,212,255,0.25)!important;
-  color:#00d4ff!important;font-family:'Space Mono',monospace!important;font-size:10px!important;
-  font-weight:700!important;letter-spacing:1.5px!important;text-transform:uppercase!important;
-  border-radius:4px!important;padding:10px 12px!important;width:100%!important;
-  min-height:44px!important;transition:all 0.15s ease!important}
+  background:#0c1525!important;border:1px solid #1e2840!important;
+  color:#e8edf5!important;font-family:var(--sh-font-display)!important;font-size:12px!important;
+  font-weight:600!important;letter-spacing:0!important;text-transform:none!important;
+  border-radius:8px!important;padding:8px 16px!important;width:auto!important;
+  min-height:36px!important;transition:all 0.15s ease!important}
 [data-testid="stFormSubmitButton"] button:hover{
-  background:rgba(0,212,255,0.14)!important;border-color:#00d4ff!important}
+  border-color:rgba(0,212,255,.45)!important;color:#00d4ff!important;
+  background:rgba(0,212,255,.1)!important;box-shadow:0 0 16px rgba(0,212,255,.2)!important;
+  transform:translateY(-1px)!important}
 
 /* ── Success / Error alerts ── */
 [data-testid="stAlert"]{border-radius:4px!important;font-size:11px!important;padding:6px 10px!important}
@@ -404,7 +442,7 @@ section[data-testid="stSidebar"] .stButton button:active{
 button[data-baseweb="tab"]{
   font-family:'Space Mono',monospace!important;font-size:10px!important;
   font-weight:700!important;letter-spacing:1.5px!important;text-transform:uppercase!important;
-  color:#4a5568!important;padding:10px 18px!important;border:none!important;
+  color:#6b7c93!important;padding:10px 18px!important;border:none!important;
   background:transparent!important}
 button[data-baseweb="tab"][aria-selected="true"]{color:#00d4ff!important}
 [data-baseweb="tab-highlight"]{background:#00d4ff!important;height:2px!important}
@@ -439,7 +477,7 @@ section[data-testid="stSidebar"] ::-webkit-scrollbar-thumb{background:#1a2035;bo
   display:none!important;align-items:center;gap:8px;
   padding:8px 12px;margin-bottom:10px;border-radius:8px;
   background:rgba(0,212,255,0.06);border:1px solid rgba(0,212,255,0.2);
-  font-family:'Space Mono',monospace;font-size:10px;color:#718096;letter-spacing:0.5px}
+  font-family:'Space Mono',monospace;font-size:10px;color:#6b7c93;letter-spacing:0.5px}
 .sh-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto!important}}
 
@@ -512,7 +550,7 @@ html.sh-xs section[data-testid="stSidebar"]{
 
   /* Garante que o conteúdo principal não fique coberto */
   .main .block-container{
-    padding:0.75rem 0.75rem 80px!important;
+    padding:0.75rem 0.75rem 1rem!important;
     margin-left:0!important;width:100%!important}
 
   /* FAB circular para abrir/fechar sidebar */
@@ -573,21 +611,150 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"]{font-family
 .sh-wearable-card:hover{border-color:rgba(0,212,255,.3);box-shadow:0 4px 16px rgba(0,0,0,.35)}
 .sh-wearable-card__label{font-family:var(--sh-font-display);font-size:11px;font-weight:500;color:var(--sh-text-muted)}
 .sh-wearable-card__value{font-family:var(--sh-font-display);font-size:20px;font-weight:800;letter-spacing:-.03em;line-height:1.1;margin-top:6px}
-.sh-modal-zone{background:var(--sh-bg-subtle);border:1px solid var(--sh-border);border-radius:var(--sh-radius-md);padding:var(--sh-space-4);margin-bottom:8px}
-.sh-modal-zone__title{font-family:var(--sh-font-display);font-size:13px;font-weight:700;color:var(--sh-text);margin-bottom:10px}
-.sh-modal-zone__sub{font-size:12px;color:var(--sh-text-muted);margin-bottom:12px}
-.sh-agua-chips [data-testid="stHorizontalBlock"]{gap:8px!important}
-.sh-agua-chips button[data-testid="stBaseButton-secondary"]{
-  min-height:40px!important;font-family:var(--sh-font-display)!important;font-size:12px!important;
-  font-weight:600!important;border-radius:8px!important;letter-spacing:0!important;text-transform:none!important}
-.sh-agua-chips button[data-testid="stBaseButton-secondary"]:hover{
-  border-color:rgba(0,212,255,.45)!important;background:rgba(0,212,255,.1)!important;
-  transform:translateY(-2px)!important;box-shadow:0 0 14px rgba(0,212,255,.18)!important}
+.sh-modal-zone__title{font-family:var(--sh-font-display);font-size:13px;font-weight:700;color:var(--sh-text);margin:0 0 6px}
+.sh-modal-zone__sub{font-size:12px;color:var(--sh-text-muted);margin:0 0 12px;line-height:1.4}
+.sh-ref-block{margin-bottom:16px!important}
+.sh-ref-edit-meta{font-size:12px;color:var(--sh-text-muted);margin:0 0 12px;line-height:1.45}
+[data-testid="stDialog"]:has(.sh-agua-dialog-host) [data-testid="stVerticalBlockBorderWrapper"]{
+  background:var(--sh-bg-subtle)!important;border:1px solid var(--sh-border)!important;
+  border-radius:var(--sh-radius-md)!important;padding:14px 16px!important;margin:0!important}
+[data-testid="stDialog"]:has(.sh-agua-dialog-host) [data-testid="stHorizontalBlock"]:has([data-testid="stVerticalBlockBorderWrapper"]){
+  gap:12px!important;align-items:stretch!important}
+[data-testid="stDialog"]:has(.sh-agua-dialog-host) [data-testid="stNumberInput"] input,
+[data-testid="stDialog"]:has(.sh-agua-dialog-host) [data-testid="stNumberInput"] > div{
+  background:#0c1525!important;border-color:#1e2840!important;color:#e8edf5!important}
+[data-testid="stDialog"]:has(.sh-agua-dialog-host) [data-testid="stForm"]{margin-top:8px!important}
+[data-testid="stDialog"]:has(.sh-agua-dialog-host) [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stHorizontalBlock"]{
+  gap:8px!important;flex-wrap:wrap!important;justify-content:flex-start!important;margin:0 0 12px!important}
+[data-testid="stDialog"]:has(.sh-agua-dialog-host) [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stButton"] button{
+  min-height:36px!important;padding:6px 10px!important;font-size:11px!important;font-weight:600!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) .sh-ref-block-sep{
+  height:1px;background:var(--sh-border);margin:16px 0}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stSelectbox"] > div,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stTextInput"] input{
+  background:#0c1525!important}
 [data-testid="stDialog"] [data-testid="stFormSubmitButton"] button,
 [data-testid="stDialog"] [data-testid="stBaseButton-primary"]{
   font-family:var(--sh-font-display)!important;font-size:13px!important;font-weight:600!important;
   letter-spacing:0!important;text-transform:none!important;min-height:42px!important}
-section[data-testid="stSidebar"] .stButton button{text-transform:none!important;letter-spacing:0!important;font-size:13px!important}
+/* Modais — centro do viewport inteiro */
+.react-aria-ModalOverlay{
+  position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;
+  display:flex!important;align-items:center!important;justify-content:center!important;
+  padding:24px 16px!important;box-sizing:border-box!important;z-index:1000010!important}
+.react-aria-ModalOverlay [data-testid="stDialog"]{
+  margin:0!important;position:relative!important;left:auto!important;top:auto!important;
+  right:auto!important;bottom:auto!important;max-height:calc(100vh - 48px)!important}
+[data-testid="stDialog"] header button,
+[data-testid="stDialog"] [data-testid="stModalHeader"] button{
+  background:transparent!important;border:none!important;box-shadow:none!important;
+  min-width:36px!important;min-height:36px!important;padding:6px!important;
+  color:#c8d0dc!important;transform:none!important}
+[data-testid="stDialog"] header button svg,
+[data-testid="stDialog"] [data-testid="stModalHeader"] button svg{
+  display:block!important;width:20px!important;height:20px!important;
+  stroke:#c8d0dc!important;fill:none!important;opacity:1!important}
+/* Modal Nova Refeição — compacto, hover = dashboard */
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]{
+  gap:10px!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stHorizontalBlock"]{
+  gap:8px!important;align-items:flex-end!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stWidgetLabel"] p,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stWidgetLabel"] label{
+  font-family:var(--sh-font-mono)!important;font-size:9px!important;font-weight:700!important;
+  letter-spacing:1.1px!important;text-transform:uppercase!important;
+  color:var(--sh-accent)!important;margin-bottom:6px!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"] button,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stHorizontalBlock"] button,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) details[data-testid="stExpander"] button{
+  min-height:32px!important;padding:6px 12px!important;font-size:11px!important;
+  letter-spacing:0!important;text-transform:none!important;border-radius:8px!important;
+  background:#0c1525!important;border:1px solid #1e2840!important;color:#e8edf5!important;
+  transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease,background .18s ease,color .18s ease!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"] button:hover,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stHorizontalBlock"] button:hover,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) details[data-testid="stExpander"] button:hover,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stBaseButton-primary"]:hover,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stBaseButton-primary"] button:hover,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stFormSubmitButton"] button:hover{
+  border-color:rgba(0,212,255,.45)!important;color:#00d4ff!important;
+  background:rgba(0,212,255,.1)!important;box-shadow:0 0 16px rgba(0,212,255,.18)!important;
+  transform:translateY(-1px)!important}
+/* Ícones fechar/remover — ghost (coluna com marcador; não depende de irmão adjacente) */
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="column"]:has(.sh-ref-rm-col) [data-testid="stButton"] > button,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="column"]:has(.sh-ref-rm-col) [data-testid="stButton"] button,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stHorizontalBlock"]:has([data-testid="stNumberInput"]) > [data-testid="column"]:last-child [data-testid="stButton"] > button,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stMarkdownContainer"]:has(.sh-ref-rm-mark)~[data-testid="stButton"] > button,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stMarkdownContainer"]:has(.sh-ref-icon-mark)~[data-testid="stButton"] > button{
+  background:transparent!important;border:none!important;box-shadow:none!important;
+  min-width:34px!important;width:34px!important;max-width:34px!important;
+  min-height:34px!important;padding:0!important;font-size:18px!important;font-weight:700!important;
+  color:#c8d0dc!important;transform:none!important;line-height:1!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="column"]:has(.sh-ref-rm-col) [data-testid="stButton"] > button:hover,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stHorizontalBlock"]:has([data-testid="stNumberInput"]) > [data-testid="column"]:last-child [data-testid="stButton"] > button:hover,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stMarkdownContainer"]:has(.sh-ref-rm-mark)~[data-testid="stButton"] > button:hover,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stMarkdownContainer"]:has(.sh-ref-icon-mark)~[data-testid="stButton"] > button:hover{
+  color:#00d4ff!important;background:rgba(0,212,255,.1)!important;border-radius:6px!important;
+  transform:none!important;box-shadow:none!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) .sh-ref-actions-mark+[data-testid="stHorizontalBlock"],
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-actions-mark)>[data-testid="stHorizontalBlock"]{
+  gap:8px!important;flex-wrap:wrap!important;justify-content:flex-start!important;margin:8px 0 0!important;width:100%!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) .sh-ref-actions-mark+[data-testid="stHorizontalBlock"] [data-testid="stButton"],
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-actions-mark)>[data-testid="stHorizontalBlock"] [data-testid="stButton"]{
+  width:auto!important;flex:0 0 auto!important;align-self:flex-start!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stTextInput"] input,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stNumberInput"] input{
+  min-height:32px!important;font-size:12px!important;padding:6px 10px!important;
+  transition:border-color .18s ease,box-shadow .18s ease!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stTextInput"] input:hover,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stTextInput"] input:focus{
+  border-color:rgba(0,212,255,.4)!important;box-shadow:0 0 0 1px rgba(0,212,255,.15)!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stFileUploader"]{
+  padding:8px 10px!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stFileUploader"] section{
+  padding:8px!important;min-height:0!important;
+  transition:border-color .2s ease,box-shadow .2s ease!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stFileUploader"] section:hover{
+  border-color:rgba(0,212,255,.3)!important;box-shadow:0 4px 16px rgba(0,0,0,.35)!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stFileUploader"] small{
+  font-size:10px!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) details[data-testid="stExpander"]{
+  border:1px solid var(--sh-border)!important;border-radius:var(--sh-radius-md)!important;
+  background:var(--sh-bg-subtle)!important;margin-top:2px!important;
+  width:100%!important;max-width:100%!important;
+  box-shadow:var(--sh-shadow-sm)!important;
+  transition:border-color .2s ease,box-shadow .2s ease,transform .15s ease!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) details[data-testid="stExpander"]:hover{
+  border-color:rgba(0,212,255,.22)!important;box-shadow:var(--sh-shadow-md)!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) details[data-testid="stExpander"] summary{
+  font-size:11px!important;padding:8px 12px!important;min-height:0!important;
+  color:var(--sh-text-muted)!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) details[data-testid="stExpander"] summary:hover{
+  background:rgba(0,212,255,.04)!important;color:var(--sh-text)!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-fav-anchor){
+  width:100%!important;max-width:100%!important;padding:0!important;margin-top:4px!important;
+  background:transparent!important;border:none!important;box-shadow:none!important}
+.sh-ref-fav-label{
+  font-family:var(--sh-font-mono)!important;font-size:9px!important;font-weight:700!important;
+  letter-spacing:1.1px!important;color:var(--sh-accent)!important;margin:0 0 6px!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-fav-anchor) [data-testid="stHorizontalBlock"]{
+  flex-wrap:wrap!important;gap:6px!important;justify-content:flex-start!important;width:auto!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-fav-anchor) [data-testid="column"]{
+  flex:0 0 auto!important;width:auto!important;min-width:0!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-fav-anchor) button{
+  width:auto!important;flex:0 0 auto!important;white-space:nowrap!important;
+  min-height:32px!important;max-height:32px!important;padding:5px 11px!important;
+  font-size:11px!important;font-weight:600!important;line-height:1.2!important;
+  user-select:none!important;-webkit-user-select:none!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-fav-anchor) button p{
+  white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;
+  max-width:min(220px,42vw)!important;margin:0!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) details[data-testid="stExpander"] button{
+  width:auto!important;min-height:30px!important;padding:5px 12px!important;font-size:11px!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) details[data-testid="stExpander"] [data-testid="stHorizontalBlock"]{
+  align-items:flex-end!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) details[data-testid="stExpander"] [data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child{
+  flex:0 0 auto!important;width:auto!important;min-width:0!important;padding-bottom:2px!important}
 button[data-baseweb="tab"]{text-transform:none!important;letter-spacing:.02em!important;font-size:12px!important}
 html.sh-sm .sh-metric--hero,html.sh-xs .sh-metric--hero{min-height:140px}
 html.sh-sm [data-testid="stHorizontalBlock"]:has(.sh-metric--hero)>[data-testid="column"],
@@ -597,9 +764,15 @@ html.sh-sm [data-testid="stHorizontalBlock"]:has(.sh-metric--compact)>[data-test
 html.sh-xs [data-testid="stHorizontalBlock"]:has(.sh-metric--compact)>[data-testid="column"]{flex:1 1 calc(50% - 8px)!important}
 html.sh-xs [data-testid="stHorizontalBlock"]:has(.sh-metric--compact)>[data-testid="column"]:only-child,
 html.sh-xs [data-testid="stHorizontalBlock"]:has(.sh-metric--hero)>[data-testid="column"]{flex:1 1 100%!important}
-html.sh-sm .sh-header-actions,html.sh-xs .sh-header-actions{align-items:flex-start!important}
-html.sh-sm .sh-header-status,html.sh-xs .sh-header-status{text-align:left!important}
-html.sh-sm .sh-header-sync,html.sh-xs .sh-header-sync{max-width:100%!important;margin-left:0!important}
+html.sh-sm [data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stVerticalBlock"],
+html.sh-xs [data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stVerticalBlock"]{
+  align-items:flex-start!important}
+html.sh-sm .sh-header-sync,html.sh-xs .sh-header-sync{align-items:flex-start!important}
+html.sh-sm .sh-header-sync .sh-header-status-html,html.sh-xs .sh-header-sync .sh-header-status-html{
+  align-items:flex-start!important;text-align:left!important}
+html.sh-sm [data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stHorizontalBlock"]:has([data-testid="stButton"]),
+html.sh-xs [data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stHorizontalBlock"]:has([data-testid="stButton"]){
+  justify-content:flex-start!important}
 html.sh-sm .sh-wearable-card__value,html.sh-xs .sh-wearable-card__value{font-size:18px!important}
 @media(max-width:768px){
   div[id^="sec-"]{scroll-margin-top:56px}
@@ -619,15 +792,16 @@ html.sh-sm .sh-wearable-card__value,html.sh-xs .sh-wearable-card__value{font-siz
     pointer-events:auto;
   }
 }
-</style>
 """
+    _CSS_BUNDLE = _css + COMPONENTS_CSS + FLUID_BUTTONS_CSS + A11Y_CSS + "\n/* css-build:fase5 */\n</style>\n"
+    return _CSS_BUNDLE
 
 st.markdown(_app_global_css(), unsafe_allow_html=True)
+st.markdown(f"<style>{COMPONENTS_CSS}</style>", unsafe_allow_html=True)
+st.markdown(sh_skip_link(), unsafe_allow_html=True)
 
 
-@st.cache_resource
-def _app_breakpoint_js() -> str:
-    return """
+_APP_BREAKPOINT_JS = """
 <script>
 (function(){
   function bp(){
@@ -645,113 +819,11 @@ def _app_breakpoint_js() -> str:
 </script>
 """
 
-st.html(_app_breakpoint_js())
-
-# ── CONSTANTES DE COR ────────────────────────────────────────────────────────
-BG      = "#080c14"
-BG2     = "#0d1424"
-BG3     = "#080e1a"
-BORDER  = "#1a2035"
-BORDER2 = "#111c2e"
-CYAN    = "#00d4ff"
-GREEN   = "#00e676"
-RED     = "#ff6b6b"
-PURPLE  = "#a78bfa"
-AMBER   = "#fbbf24"
-TEXT    = "#e8edf5"
-MUTED   = "#4a5568"
-GHOST   = "#2a3448"
-MONO    = "'Space Mono',monospace"
+st.html(_APP_BREAKPOINT_JS)
 
 # ── HELPERS ──────────────────────────────────────────────────────────────────
 def db(query, params=None):
     return DB.query(query, params)
-
-def pbar(pct, cor, h=4):
-    p = min(100, max(0, int(pct * 100)))
-    return (
-        f'<div style="background:{BORDER};border-radius:3px;height:{h}px;'
-        f'overflow:hidden;margin-top:8px">'
-        f'<div style="width:{p}%;height:{h}px;border-radius:3px;background:{cor}"></div>'
-        f'</div>'
-    )
-
-def sec(tag, titulo):
-    return (
-        f'<div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px">'
-        f'<span style="font-family:{MONO};font-size:12px;font-weight:700;letter-spacing:1.5px;'
-        f'text-transform:uppercase;color:{CYAN};background:rgba(0,212,255,0.07);'
-        f'border:1px solid rgba(0,212,255,0.2);border-radius:3px;padding:3px 8px">{tag}</span>'
-        f'<span style="font-size:13px;color:{MUTED}">{titulo}</span>'
-        f'<div style="flex:1;height:1px;background:{BORDER2}"></div>'
-        f'</div>'
-    )
-
-def panel(conteudo, extra=""):
-    return (
-        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;'
-        f'padding:14px 16px;{extra}">{conteudo}</div>'
-    )
-
-def ptitl(txt):
-    return (
-        f'<div style="font-family:{MONO};font-size:13px;font-weight:700;letter-spacing:1px;'
-        f'text-transform:uppercase;color:{TEXT};margin-bottom:12px">{txt}</div>'
-    )
-
-
-def sh_section(tag: str, titulo: str = "") -> str:
-    title_html = f'<span class="sh-section__title">{titulo}</span>' if titulo else ""
-    return (
-        f'<div class="sh-section">'
-        f'<span class="sh-section__tag">{tag}</span>{title_html}'
-        f'<div class="sh-section__rule"></div></div>'
-    )
-
-
-def sh_zone(label: str) -> str:
-    return f'<div class="sh-zone">{label}</div>'
-
-
-def sh_metric(
-    accent: str,
-    label: str,
-    value: str,
-    unit: str = "",
-    meta: str = "",
-    extra_html: str = "",
-    variant: str = "",
-) -> str:
-    unit_html = f'<span class="sh-metric__unit">{unit}</span>' if unit else ""
-    meta_html = f'<div class="sh-metric__meta">{meta}</div>' if meta else ""
-    extra_block = f'<div class="sh-metric__meta">{extra_html}</div>' if extra_html else ""
-    mod = f" sh-metric--{variant}" if variant else ""
-    return (
-        f'<div class="sh-metric{mod}">'
-        f'<div class="sh-metric__accent" style="background:{accent}"></div>'
-        f'<div class="sh-metric__label">{label}</div>'
-        f'<div class="sh-metric__value">{value}{unit_html}</div>'
-        f'{meta_html}{extra_block}</div>'
-    )
-
-
-def sh_lane(title: str, desc: str = "") -> str:
-    d = f'<div class="sh-lane__desc">{desc}</div>' if desc else ""
-    return f'<div class="sh-lane"><div class="sh-lane__title">{title}</div>{d}'
-
-
-def sh_lane_close() -> str:
-    return "</div>"
-
-
-def sh_kpi_chip(label: str, value: str, sub: str = "", color: str = "") -> str:
-    style = f' style="color:{color}"' if color else ""
-    sub_html = f'<span class="sh-kpi-chip__sub">{sub}</span>' if sub else ""
-    return (
-        f'<div class="sh-kpi-chip"><span class="sh-kpi-chip__label">{label}</span>'
-        f'<span class="sh-kpi-chip__value"{style}>{value}</span>{sub_html}</div>'
-    )
-
 
 
 # ── NOTIFICAÇÕES VISUAIS ─────────────────────────────────────────────────────
@@ -793,7 +865,7 @@ def _render_goal_celebration(kind: str):
   100% {{ transform:translateY(-120vh) rotate(720deg); opacity:0; }}
 }}
 </style>
-<div style="position:fixed;inset:0;z-index:9999999;pointer-events:none;
+<div class="sh-goal-overlay" style="position:fixed;inset:0;z-index:9999999;pointer-events:none;
   display:flex;align-items:center;justify-content:center;
   background:radial-gradient(circle at 50% 40%,{rgba},.18),rgba(0,0,0,.72);
   animation:shGoalPop 3.2s ease forwards">
@@ -828,7 +900,7 @@ def _render_notif_pendente():
   100% {{ opacity:0; transform:translate(-50%,12px) scale(.97); }}
 }}
 </style>
-<div style="
+<div class="sh-notif-overlay" style="
   position:fixed; bottom:36px; left:50%;
   background:#0c1525; border:1.5px solid {cor};
   border-radius:12px; padding:14px 32px;
@@ -867,7 +939,7 @@ def _ui_toggle_button(label_open: str, label_closed: str, session_key: str, btn_
     """
     open_ = _toggle_key(session_key)
     lbl = label_open if open_ else label_closed
-    if st.button(lbl, key=btn_key, use_container_width=True):
+    if st.button(lbl, key=btn_key, use_container_width=False):
         _flip_toggle(session_key)
         st.rerun()
 
@@ -1868,12 +1940,12 @@ def _render_fav_row(frow, key_prefix=""):
         )
     with _fs:
         _star_lbl = "⭐" if fstar else "☆"
-        if st.button(_star_lbl, key=f"fav_star_{key_prefix}{fid}", use_container_width=True, help="Favoritar"):
+        if st.button(_star_lbl, key=f"fav_star_{key_prefix}{fid}", use_container_width=False, help="Favoritar"):
             DB.execute("UPDATE alimentos_favoritos SET favorito=? WHERE id=?", [1 - fstar, fid])
             _invalidate_cache(_q_alimentos_favoritos)
             st.rerun()
     with _fa:
-        if st.button("➕ Usar", key=f"fav_use_{key_prefix}{fid}", use_container_width=True):
+        if st.button("➕ Usar", key=f"fav_use_{key_prefix}{fid}", use_container_width=False, help="Adicionar favorito ao carrinho"):
             DB.execute(
                 "INSERT INTO refeicoes (categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) VALUES (?,?,?,?,?,?,?)",
                 [_cat_hora(), fdesc, fkcal, fprot, fcarb, fgord, fcomp]
@@ -1937,20 +2009,13 @@ def _fragment_ref_busca_carrinho(
     _df_banco = _q_alimentos_favoritos()
     carrinho = st.session_state[carrinho_key]
 
-    _bq_in, _bq_btn = st.columns([1, 0.12])
-    with _bq_in:
-        st.text_input(
-            "busca",
-            placeholder="🔍 Buscar alimento (Enter)...",
-            key=busca_key,
-            label_visibility="collapsed",
-            on_change=_sync_busca,
-        )
-    with _bq_btn:
-        st.markdown("<div style='height:2px'></div>", unsafe_allow_html=True)
-        if st.button("🔍", key=f"ref_busca_apply{ks}", use_container_width=True, help="Buscar"):
-            _sync_busca()
-            st.rerun(scope="fragment")
+    st.text_input(
+        "busca",
+        placeholder="🔍 Buscar alimento (Enter)...",
+        key=busca_key,
+        label_visibility="collapsed",
+        on_change=_sync_busca,
+    )
 
     _busca_ref = st.session_state.get(applied_key, "")
 
@@ -2001,42 +2066,44 @@ def _fragment_ref_busca_carrinho(
                     )
                 with _rb:
                     _lbl = "✓" if _already else "➕"
+                    st.markdown('<div class="sh-ref-icon-mark"></div>', unsafe_allow_html=True)
                     if st.button(
                         _lbl, key=f"ref_add_cart_{_hr['id']}{ks}",
-                        use_container_width=True, disabled=_already,
+                        use_container_width=False, disabled=_already,
+                        help="Já no carrinho" if _already else f"Adicionar {_hr['descricao']}",
                     ):
                         _append_alimento_carrinho(carrinho, _hr)
                         st.rerun(scope="fragment")
-    else:
-        _fav_df = _df_banco[_df_banco["favorito"] == 1].head(6)
-        if not _fav_df.empty:
-            st.markdown(
-                f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};'
-                f'letter-spacing:1px;margin:6px 0 4px">⭐ FAVORITOS RÁPIDOS</div>',
-                unsafe_allow_html=True,
-            )
-            _fav_cols = st.columns(3)
-            for _fi, (_, _fr) in enumerate(_fav_df.iterrows()):
-                _already_f = any(c["id"] == int(_fr["id"]) for c in carrinho)
-                with _fav_cols[_fi % 3]:
-                    _fav_lbl = f"{'✓ ' if _already_f else ''}{str(_fr['descricao'])[:18]}"
-                    if st.button(
-                        _fav_lbl, key=f"ref_fav_cart_{_fr['id']}{ks}",
-                        use_container_width=True, disabled=_already_f,
-                        help=f"🔥{int(_fr['calorias'] or 0)} kcal",
-                    ):
-                        _append_alimento_carrinho(carrinho, _fr)
-                        st.rerun(scope="fragment")
 
-    if carrinho:
+    _fav_mask = pd.to_numeric(_df_banco.get("favorito"), errors="coerce").fillna(0) > 0
+    _fav_df = _df_banco[_fav_mask].head(6)
+    if _fav_df.empty and not _df_banco.empty:
+        _fav_df = _df_banco.sort_values("vezes_usado", ascending=False).head(6)
+    if not _fav_df.empty:
         st.markdown(
-            f'<div style="height:1px;background:{BORDER};margin:10px 0 8px"></div>',
+            '<div class="sh-ref-fav-anchor"></div>'
+            '<div class="sh-ref-fav-label">⭐ FAVORITOS RÁPIDOS</div>',
             unsafe_allow_html=True,
         )
+        with st.container(horizontal=True, gap="small"):
+            for _, _fr in _fav_df.iterrows():
+                _fid = int(_fr["id"])
+                _already_f = any(c["id"] == _fid for c in carrinho)
+                _nome = str(_fr["descricao"])[:18]
+                _kcal = int(_fr["calorias"] or 0)
+                _lbl = f"{'✓ ' if _already_f else '⭐ '}{_nome} · {_kcal}"
+                if st.button(
+                    _lbl,
+                    key=f"ref_fav_cart_{_fr['id']}{ks}",
+                    disabled=_already_f,
+                ):
+                    _append_alimento_carrinho(carrinho, _fr)
+                    st.rerun(scope="fragment")
+
+    if carrinho:
+        st.markdown('<div class="sh-ref-block-sep"></div>', unsafe_allow_html=True)
         st.markdown(
-            f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
-            f'letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px">'
-            f'🛒 REFEIÇÃO ATUAL · {len(carrinho)} item(s)</div>',
+            sh_subheading(f"Refeição atual · {len(carrinho)} item(s)"),
             unsafe_allow_html=True,
         )
 
@@ -2061,7 +2128,7 @@ def _fragment_ref_busca_carrinho(
         _remover = []
 
         for i, item in enumerate(carrinho):
-            _ci1, _ci2, _ci3, _ci4 = st.columns([1.8, 0.85, 1.7, 0.18])
+            _ci1, _ci2, _ci3, _ci4 = st.columns([1.75, 0.85, 1.65, 0.28])
             with _ci1:
                 st.markdown(
                     f'<div style="font-size:11px;color:{TEXT};font-weight:600;padding-top:4px">'
@@ -2100,7 +2167,8 @@ def _fragment_ref_busca_carrinho(
                     unsafe_allow_html=True,
                 )
             with _ci4:
-                if st.button("✕", key=f"rm_cart_{ks}_{i}", help="Remover"):
+                st.markdown('<div class="sh-ref-rm-col sh-ref-rm-mark" aria-hidden="true"></div>', unsafe_allow_html=True)
+                if st.button("×", key=f"rm_cart_{ks}_{i}", help="Remover item do carrinho"):
                     _remover.append(i)
 
         if _remover:
@@ -2121,9 +2189,9 @@ def _fragment_ref_busca_carrinho(
         )
 
         if show_register:
-            _cs, _cf, _cd = st.columns([2, 1, 1])
-            with _cs:
-                if st.button("✅ REGISTRAR REFEIÇÃO", key=f"btn_registrar_carrinho{ks}", use_container_width=True):
+            st.markdown('<div class="sh-ref-actions-mark" aria-hidden="true"></div>', unsafe_allow_html=True)
+            with section_actions():
+                if st.button("✅ REGISTRAR REFEIÇÃO", key=f"btn_registrar_carrinho{ks}", use_container_width=False):
                     tk, tp, tc, tg, comps, desc = _carrinho_snapshot(carrinho_key, ks)
                     _cat = register_cat or _cat_hora()
                     try:
@@ -2144,40 +2212,52 @@ def _fragment_ref_busca_carrinho(
                         st.rerun()
                     except Exception as e:
                         st.error(f"Erro ao registrar: {e}")
-            with _cf:
-                if st.button("⭐ Favorito", key=f"btn_fav_combo{ks}", use_container_width=True, help="Salvar combinação nos favoritos"):
+                if st.button("⭐ Favorito", key=f"btn_fav_combo{ks}", use_container_width=False, help="Salvar combinação nos favoritos"):
                     tk, tp, tc, tg, comps, desc = _carrinho_snapshot(carrinho_key, ks)
                     if desc:
                         _salvar_combo_favorito(desc, comps, register_cat or _cat_hora(), tk, tp, tc, tg)
                         st.rerun(scope="fragment")
-            with _cd:
-                if st.button("🗑️ Limpar", key=f"btn_limpar_carrinho{ks}", use_container_width=True):
+                if st.button("🗑️ Limpar", key=f"btn_limpar_carrinho{ks}", use_container_width=False, help="Limpar carrinho de alimentos"):
                     st.session_state[carrinho_key] = []
                     st.rerun(scope="fragment")
 
-    st.markdown(f'<div style="height:1px;background:{BORDER};margin:12px 0 8px"></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="height:1px;background:{BORDER};margin:6px 0 4px"></div>', unsafe_allow_html=True)
 
 
-@st.dialog("➕ Nova Refeição", width="large")
+def _open_refeicao_dialog():
+    st.session_state["_ref_busca_reset"] = True
+    _tab_refeicao()
+
+
+@st.dialog("➕ Nova Refeição", width="medium")
 def _tab_refeicao():
     """Painel de registro — múltiplos itens com cálculo proporcional por porção."""
+    st.markdown('<div class="sh-ref-dialog-host"></div>', unsafe_allow_html=True)
     if "carrinho_refeicao" not in st.session_state:
         st.session_state["carrinho_refeicao"] = []
+    if st.session_state.pop("_ref_busca_reset", False):
+        st.session_state["ref_busca_applied"] = ""
 
     _fragment_ref_busca_carrinho()
 
-    # ── Análise por foto ─────────────────────────────────────────────────────
+    with st.expander("📸 Foto ou descrever para IA", expanded=False):
+        _render_refeicao_foto_ia()
+
+
+def _render_refeicao_foto_ia():
+    """Bloco opcional: foto + IA por texto (dentro do expander)."""
     foto_up = st.file_uploader(
-        "📸 Envie uma foto do prato para análise automática de macros",
+        "Foto do prato",
         type=["jpg", "jpeg", "png", "webp"],
         key="foto_refeicao",
+        label_visibility="collapsed",
     )
     if foto_up is not None:
-        ci, cb = st.columns([3, 1])
+        ci, cb = st.columns([2.2, 1])
         with ci:
-            st.image(foto_up, width=220)
+            st.image(foto_up, width=160)
         with cb:
-            if st.button("🔍 Analisar", key="btn_foto_analisar", width="stretch"):
+            if st.button("🔍 Analisar foto", key="btn_foto_analisar", use_container_width=False):
                 if not _GEMINI_KEY:
                     st.error("❌ Chave GEMINI_API_KEY não configurada.")
                 else:
@@ -2195,7 +2275,7 @@ def _tab_refeicao():
             _card_resultado(item, cor=CYAN)
         cs, cd = st.columns(2)
         with cs:
-            if st.button("✅ Salvar tudo", key="salvar_foto", width="stretch"):
+            if st.button("✅ Salvar tudo", key="salvar_foto"):
                 for item in itens:
                     DB.execute(
                         "INSERT INTO refeicoes "
@@ -2221,24 +2301,21 @@ def _tab_refeicao():
                 _notif("Foto registrada com sucesso!")
                 st.rerun()
         with cd:
-            if st.button("✗ Descartar", key="desc_foto", width="stretch"):
+            if st.button("✗ Descartar", key="desc_foto"):
                 del st.session_state["foto_resultado"]
                 st.rerun(scope="fragment")
 
-    # ── IA por texto ─────────────────────────────────────────────────────────
-    st.markdown(
-        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};'
-        f'letter-spacing:1.5px;text-align:center;margin:14px 0 8px">'
-        f'── OU DESCREVA E DEIXE A IA CALCULAR ──</div>',
-        unsafe_allow_html=True,
-    )
-    desc_ia = st.text_input(
-        "Descrição",
-        placeholder="Ex: frango grelhado 200g + arroz integral 150g",
-        key="ia_text_input",
-        label_visibility="collapsed",
-    )
-    if st.button("🤖 Analisar macros com IA", key="btn_ia_text", width="stretch"):
+    _iac1, _iac2 = st.columns([5, 1])
+    with _iac1:
+        desc_ia = st.text_input(
+            "Descrever para a IA",
+            placeholder="Ex: frango 200g + arroz 150g",
+            key="ia_text_input",
+            label_visibility="visible",
+        )
+    with _iac2:
+        _ia_clicked = st.button("🤖 Analisar", key="btn_ia_text", use_container_width=False)
+    if _ia_clicked:
         if not _GEMINI_KEY:
             st.error("❌ Chave GEMINI_API_KEY não configurada nos Secrets do Streamlit.")
         elif desc_ia.strip():
@@ -2257,7 +2334,7 @@ def _tab_refeicao():
         _card_resultado(r, cor=GREEN)
         cs2, cd2 = st.columns(2)
         with cs2:
-            if st.button("✅ Salvar", key="salvar_ia_text", width="stretch"):
+            if st.button("✅ Salvar", key="salvar_ia_text"):
                 DB.execute(
                     "INSERT INTO refeicoes "
                     "(categoria,descricao,calorias,proteinas,carboidratos,gorduras,componentes_json) "
@@ -2273,7 +2350,7 @@ def _tab_refeicao():
                 _notif(f"Refeicao salva · {r.get('calorias',0)} kcal")
                 st.rerun()
         with cd2:
-            if st.button("✗ Descartar", key="desc_ia_text", width="stretch"):
+            if st.button("✗ Descartar", key="desc_ia_text"):
                 del st.session_state["ia_text_result"]
                 st.rerun(scope="fragment")
 
@@ -2292,7 +2369,7 @@ def _tab_suplemento():
                 _sel_supps.append((label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s))
     _btn_label = (f"✅ Registrar {len(_sel_supps)} selecionado(s)"
                   if _sel_supps else "Selecione suplementos acima")
-    if st.button(_btn_label, key="btn_reg_supps", width="stretch",
+    if st.button(_btn_label, key="btn_reg_supps",
                  disabled=not _sel_supps):
         cat_agora = _cat_hora()
         for label, desc_s, _cat_s, kcal_s, prot_s, carb_s, gord_s in _sel_supps:
@@ -2322,6 +2399,7 @@ def _tab_suplemento():
 
 @st.dialog("💧 Hidratação · Recovery", width="large")
 def _tab_agua():
+    st.markdown('<div class="sh-agua-dialog-host"></div>', unsafe_allow_html=True)
     if st.session_state.pop("_agua_meta_atingida", False):
         st.balloons()
 
@@ -2348,72 +2426,65 @@ def _tab_agua():
         ),
         unsafe_allow_html=True,
     )
+    st.markdown('<div class="sh-ref-block-sep"></div>', unsafe_allow_html=True)
 
-    _col_agua, _col_rec = st.columns([1.15, 0.85], gap="medium")
+    _col_agua, _col_rec = st.columns(2, gap="medium")
     with _col_agua:
-        st.markdown('<div class="sh-modal-zone">', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="sh-modal-zone__title">💧 Registrar água</div>'
-            '<div class="sh-modal-zone__sub">Toque no atalho ou informe outro volume</div>',
-            unsafe_allow_html=True,
-        )
-        st.markdown('<div class="sh-agua-chips">', unsafe_allow_html=True)
-        _w1, _w2, _w3, _w4 = st.columns(4)
-        for _col, _ml, _key in [
-            (_w1, 200, "agua_200"), (_w2, 500, "agua_500"),
-            (_w3, 750, "agua_750"), (_w4, 1000, "agua_1000"),
-        ]:
-            with _col:
-                if st.button(f"+{_ml} ml", key=_key, type="secondary", use_container_width=True):
-                    _reg_agua(_ml)
-        st.markdown("</div>", unsafe_allow_html=True)
-        with st.form("form_agua_custom_modal", clear_on_submit=True):
-            _ml_in = st.number_input("Outro volume (ml)", min_value=50, max_value=2000, value=300, step=50)
-            if st.form_submit_button("Registrar volume", type="primary", use_container_width=True):
-                _reg_agua(int(_ml_in))
-        st.markdown("</div>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown(
+                '<div class="sh-modal-zone__title">💧 Registrar água</div>'
+                '<div class="sh-modal-zone__sub">Toque no atalho ou informe outro volume</div>',
+                unsafe_allow_html=True,
+            )
+            with section_actions():
+                for _ml, _key in [(200, "agua_200"), (500, "agua_500"), (750, "agua_750"), (1000, "agua_1000")]:
+                    if st.button(f"+{_ml} ml", key=_key, type="secondary", use_container_width=False, help=f"Registrar +{_ml} ml de água"):
+                        _reg_agua(_ml)
+            with st.form("form_agua_custom_modal", clear_on_submit=True):
+                _ml_in = st.number_input("Outro volume (ml)", min_value=50, max_value=2000, value=300, step=50)
+                if st.form_submit_button("Registrar volume", type="primary", use_container_width=False):
+                    _reg_agua(int(_ml_in))
 
     with _col_rec:
-        st.markdown('<div class="sh-modal-zone">', unsafe_allow_html=True)
-        st.markdown(
-            '<div class="sh-modal-zone__title">💓 Recovery (Amazfit)</div>'
-            '<div class="sh-modal-zone__sub">Atualize HRV e PAI do dia</div>',
-            unsafe_allow_html=True,
-        )
-        _hrv_c = GREEN if hrv >= 35 else (AMBER if hrv >= 25 else RED)
-        _r1, _r2 = st.columns(2)
-        with _r1:
+        with st.container(border=True):
             st.markdown(
-                sh_metric(_hrv_c, "HRV", f"{hrv}", "ms", meta=hrv_txt, variant="compact"),
+                '<div class="sh-modal-zone__title">💓 Recovery (Amazfit)</div>'
+                '<div class="sh-modal-zone__sub">Atualize HRV e PAI do dia</div>',
                 unsafe_allow_html=True,
             )
-        with _r2:
-            st.markdown(
-                sh_metric(pai_cor, "PAI", f"{pai}", "", meta=f"meta {META_PAI}", variant="compact"),
-                unsafe_allow_html=True,
-            )
-        with st.form("form_hrv_pai_modal"):
-            _h1, _h2 = st.columns(2)
-            with _h1:
-                hrv_in = st.number_input("HRV (ms)", min_value=0, max_value=200, value=int(hrv) if hrv else 0, step=1)
-            with _h2:
-                pai_in = st.number_input("PAI", min_value=0, max_value=300, value=int(pai) if pai else 0, step=1)
-            if st.form_submit_button("Salvar recovery", type="primary", use_container_width=True):
-                DB.execute(
-                    "INSERT INTO amazfit_dados (data_hora,passos,calorias_gastas,distancia_km,"
-                    "sono_total_min,sono_profundo_min,hrv_ms,pai) VALUES (?,0,0,0,0,0,0,0) "
-                    "ON CONFLICT(data_hora) DO NOTHING",
-                    [f"{hoje_sql} 00:00:00"],
+            _hrv_c = GREEN if hrv >= 35 else (AMBER if hrv >= 25 else RED)
+            _r1, _r2 = st.columns(2)
+            with _r1:
+                st.markdown(
+                    sh_metric(_hrv_c, "HRV", f"{hrv}", "ms", meta=hrv_txt, variant="compact"),
+                    unsafe_allow_html=True,
                 )
-                DB.execute(
-                    "UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?",
-                    [hrv_in, pai_in, f"{hoje_sql} 00:00:00"],
+            with _r2:
+                st.markdown(
+                    sh_metric(pai_cor, "PAI", f"{pai}", "", meta=f"meta {META_PAI}", variant="compact"),
+                    unsafe_allow_html=True,
                 )
-                hrv_status = "Bom" if hrv_in >= 35 else ("Médio" if hrv_in >= 25 else "Baixo")
-                _invalidate_cache(_q_amazfit)
-                _notif(f"HRV {hrv_in} ms ({hrv_status}) · PAI {pai_in}", "info")
-                st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+            with st.form("form_hrv_pai_modal"):
+                _h1, _h2 = st.columns(2)
+                with _h1:
+                    hrv_in = st.number_input("HRV (ms)", min_value=0, max_value=200, value=int(hrv) if hrv else 0, step=1)
+                with _h2:
+                    pai_in = st.number_input("PAI", min_value=0, max_value=300, value=int(pai) if pai else 0, step=1)
+                if st.form_submit_button("Salvar recovery", type="primary", use_container_width=False):
+                    DB.execute(
+                        "INSERT INTO amazfit_dados (data_hora,passos,calorias_gastas,distancia_km,"
+                        "sono_total_min,sono_profundo_min,hrv_ms,pai) VALUES (?,0,0,0,0,0,0,0) "
+                        "ON CONFLICT(data_hora) DO NOTHING",
+                        [f"{hoje_sql} 00:00:00"],
+                    )
+                    DB.execute(
+                        "UPDATE amazfit_dados SET hrv_ms=?, pai=? WHERE data_hora=?",
+                        [hrv_in, pai_in, f"{hoje_sql} 00:00:00"],
+                    )
+                    hrv_status = "Bom" if hrv_in >= 35 else ("Médio" if hrv_in >= 25 else "Baixo")
+                    _invalidate_cache(_q_amazfit)
+                    _notif(f"HRV {hrv_in} ms ({hrv_status}) · PAI {pai_in}", "info")
+                    st.rerun()
 
 
 @st.dialog("📏 Nova medida corporal", width="large")
@@ -2456,7 +2527,7 @@ def _dialog_bio_nova():
             _b_bic_d = st.number_input("Bíceps dir. (cm)", min_value=0.0, max_value=80.0, value=_bio_default("biceps_dir", 0.0), step=0.1, format="%.1f")
             _b_bic_e = st.number_input("Bíceps esq. (cm)", min_value=0.0, max_value=80.0, value=_bio_default("biceps_esq", 0.0), step=0.1, format="%.1f")
 
-        if st.form_submit_button("Salvar medidas", type="primary", use_container_width=True):
+        if st.form_submit_button("Salvar medidas", type="primary", use_container_width=False):
             _bio_data_sql = str(_bio_data)
 
             def _nz(v):
@@ -2486,7 +2557,7 @@ def _dialog_bio_nova():
             st.rerun()
 
 
-@st.dialog("✏️ Editar medida corporal", width="large")
+@st.dialog("Editar medida corporal", width="large")
 def _dialog_bio_editar():
     st.markdown(sh_section("Biometria", "Editar medidas existentes"), unsafe_allow_html=True)
 
@@ -2531,9 +2602,9 @@ def _dialog_bio_editar():
             _e_bic_e = st.number_input("Bíceps esq. (cm)", min_value=0.0, max_value=80.0, value=_ev("biceps_esq"), step=0.1, format="%.1f")
         _ef_sv, _ef_dl = st.columns([2, 1])
         with _ef_sv:
-            _edit_salvar = st.form_submit_button("✓ Salvar alterações", use_container_width=True, type="primary")
+            _edit_salvar = st.form_submit_button("✓ Salvar alterações", use_container_width=False, type="primary")
         with _ef_dl:
-            _edit_del = st.form_submit_button("🗑 Excluir", use_container_width=True)
+            _edit_del = st.form_submit_button("🗑 Excluir", use_container_width=False)
 
     if _edit_salvar:
         def _nz(v):
@@ -2559,34 +2630,16 @@ def _dialog_bio_editar():
         st.warning(f"Confirmar exclusão do registro de {_sel_fmt}?")
         _dc1, _dc2 = st.columns(2)
         with _dc1:
-            if st.button("✓ Confirmar exclusão", key="bio_del_conf_modal", use_container_width=True):
+            if st.button("✓ Confirmar exclusão", key="bio_del_conf_modal", use_container_width=False):
                 DB.execute("DELETE FROM medidas WHERE date(data)=?", [_sel_ord])
                 _invalidate_cache(_q_peso, _q_peso_historico, _q_medidas, _q_biometria)
                 st.session_state.pop("bio_del_confirm_modal", None)
                 _notif(f"Registro de {_sel_fmt} excluído ✓")
                 st.rerun()
         with _dc2:
-            if st.button("✗ Cancelar", key="bio_del_cancel_modal", use_container_width=True):
+            if st.button("✗ Cancelar", key="bio_del_cancel_modal", use_container_width=False):
                 st.session_state.pop("bio_del_confirm_modal", None)
                 st.rerun()
-
-
-def _med_doses_list(df_med):
-    """Lista normalizada de doses Tirzepatida."""
-    doses = []
-    if df_med is None or df_med.empty:
-        return doses
-    for _, row in df_med.iterrows():
-        d = float(row["dose_mg"])
-        if d > 100:
-            d /= 1000
-        doses.append({
-            "iso": str(row["data_iso"])[:10],
-            "fmt": str(row["data_fmt"]),
-            "dose": d,
-            "id": int(row["id"]),
-        })
-    return doses
 
 
 @st.dialog("💊 Nova dose · Tirzepatida")
@@ -2613,7 +2666,7 @@ def _dialog_med_nova():
                 format="%.1f",
                 key="mdose_nova_modal",
             )
-        if st.form_submit_button("Registrar dose", type="primary", use_container_width=True):
+        if st.form_submit_button("Registrar dose", type="primary", use_container_width=False):
             DB.execute(
                 "INSERT INTO medicacao (data_hora, dose_mg) VALUES (?,?)",
                 [f"{nova_data} 12:00:00", nova_dose],
@@ -2623,12 +2676,12 @@ def _dialog_med_nova():
             st.rerun()
 
 
-@st.dialog("✏️ Editar dose · Tirzepatida", width="large")
+@st.dialog("Editar dose · Tirzepatida", width="large")
 def _dialog_med_editar():
     from datetime import date as _date, datetime as _datetime
 
     df_med = _q_medicacao()
-    doses = _med_doses_list(df_med)
+    doses = med_doses_list(df_med)
     if not doses:
         st.warning("Nenhuma dose registrada.")
         return
@@ -2672,9 +2725,9 @@ def _dialog_med_editar():
             )
         ba, bd = st.columns([2, 1])
         with ba:
-            salvar = st.form_submit_button("✓ Salvar alterações", use_container_width=True, type="primary")
+            salvar = st.form_submit_button("✓ Salvar alterações", use_container_width=False, type="primary")
         with bd:
-            deletar = st.form_submit_button("🗑 Excluir", use_container_width=True)
+            deletar = st.form_submit_button("🗑 Excluir", use_container_width=False)
         if salvar:
             DB.execute(
                 "UPDATE medicacao SET data_hora=?, dose_mg=? WHERE id=?",
@@ -2689,125 +2742,21 @@ def _dialog_med_editar():
 
     if st.session_state.get("med_del_confirm_modal") == mid:
         st.warning(f"Confirmar exclusão da dose de {data_fmt}?")
-        _dc1, _dc2 = st.columns(2)
-        with _dc1:
-            if st.button("✓ Confirmar exclusão", key=f"med_del_ok_{mid}", use_container_width=True):
+        with section_actions():
+            if st.button("✓ Confirmar exclusão", key=f"med_del_ok_{mid}", use_container_width=False):
                 DB.execute("DELETE FROM medicacao WHERE id=?", [mid])
                 _invalidate_cache(_q_medicacao)
                 st.session_state.pop("med_del_confirm_modal", None)
                 _notif("Registro removido", "err")
                 st.rerun()
-        with _dc2:
-            if st.button("✗ Cancelar", key=f"med_del_cancel_{mid}", use_container_width=True):
+            if st.button("✗ Cancelar", key=f"med_del_cancel_{mid}", use_container_width=False):
                 st.session_state.pop("med_del_confirm_modal", None)
                 st.rerun()
 
 
-def _render_medicacao_section():
-    """Seção Tirzepatida — card + timeline; registro/edição via modal."""
-    from datetime import date as _date, datetime as _datetime, timedelta as _td
-
-    df_med = _q_medicacao()
-    doses = _med_doses_list(df_med)
-
-    dose_atual = doses[0]["dose"] if doses else 0.0
-    n_doses = len(doses)
-    try:
-        dt_inicio = _datetime.strptime(doses[-1]["iso"], "%Y-%m-%d").date() if doses else _date.fromisoformat(hoje_sql)
-        semanas = (_date.fromisoformat(hoje_sql) - dt_inicio).days // 7
-    except Exception:
-        semanas = 0
-    try:
-        dt_ult = _datetime.strptime(doses[0]["iso"], "%Y-%m-%d").date() if doses else _date.fromisoformat(hoje_sql)
-        proxima = (dt_ult + _td(days=7)).strftime("%d/%m")
-    except Exception:
-        proxima = "—"
-
-    st.markdown(
-        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;'
-        f'border-top:3px solid {PURPLE};padding:14px 16px;margin-bottom:8px">'
-        f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
-        f'<div style="display:flex;align-items:center;gap:8px">'
-        f'<span style="font-size:16px">💊</span>'
-        f'<div>'
-        f'<div style="font-family:{MONO};font-size:10px;font-weight:700;letter-spacing:1.5px;'
-        f'text-transform:uppercase;color:{PURPLE}">Tirzepatida</div>'
-        f'<div style="font-size:11px;color:{MUTED};margin-top:1px">Protocolo farmacológico · injetável semanal</div>'
-        f'</div></div></div>'
-        f'<div style="height:1px;background:{BORDER2};margin-bottom:12px"></div>'
-        f'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">'
-        f'<div style="background:{BG3};border:1px solid rgba(0,230,118,0.15);border-radius:8px;padding:10px 12px;text-align:center">'
-        f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin-bottom:4px">Dose Atual</div>'
-        f'<div style="font-size:20px;font-weight:800;color:{GREEN};letter-spacing:-0.5px">{dose_atual:.1f}</div>'
-        f'<div style="font-size:10px;color:{MUTED};margin-top:1px">mg / semana</div></div>'
-        f'<div style="background:{BG3};border:1px solid {BORDER};border-radius:8px;padding:10px 12px;text-align:center">'
-        f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin-bottom:4px">Aplicações</div>'
-        f'<div style="font-size:20px;font-weight:800;color:{PURPLE};letter-spacing:-0.5px">{n_doses}</div>'
-        f'<div style="font-size:10px;color:{MUTED};margin-top:1px">doses totais</div></div>'
-        f'<div style="background:{BG3};border:1px solid {BORDER};border-radius:8px;padding:10px 12px;text-align:center">'
-        f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin-bottom:4px">Semanas</div>'
-        f'<div style="font-size:20px;font-weight:800;color:{AMBER};letter-spacing:-0.5px">{semanas}</div>'
-        f'<div style="font-size:10px;color:{MUTED};margin-top:1px">em protocolo</div></div>'
-        f'<div style="background:{BG3};border:1px solid {BORDER};border-radius:8px;padding:10px 12px;text-align:center">'
-        f'<div style="font-family:{MONO};font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin-bottom:4px">Próxima</div>'
-        f'<div style="font-size:20px;font-weight:800;color:{TEXT};letter-spacing:-0.5px">{proxima}</div>'
-        f'<div style="font-size:10px;color:{MUTED};margin-top:1px">estimativa</div></div>'
-        f'</div></div>',
-        unsafe_allow_html=True,
-    )
-
-    _btn_nova, _btn_edit = st.columns(2)
-    with _btn_nova:
-        if st.button("➕ Nova dose", key="btn_med_nova", use_container_width=True, type="primary"):
-            _dialog_med_nova()
-    with _btn_edit:
-        if st.button("✏️ Editar dose", key="btn_med_edit", use_container_width=True, disabled=not doses):
-            _dialog_med_editar()
-
-    st.markdown(
-        f'<div class="sh-med-hdr" style="font-family:{MONO};font-size:9px;font-weight:700;'
-        f'letter-spacing:1.5px;text-transform:uppercase;color:{MUTED};margin:12px 0 6px">Histórico de doses</div>',
-        unsafe_allow_html=True,
-    )
-
-    if not doses:
-        st.markdown(f'<p style="color:{GHOST};font-size:12px">Sem registros.</p>', unsafe_allow_html=True)
-        return
-
-    for i, item in enumerate(doses):
-        mid = item["id"]
-        dose = item["dose"]
-        data_fmt = item["fmt"]
-        is_atual = i == 0
-        _mc, _me = st.columns([1, 0.06])
-        with _mc:
-            if is_atual:
-                st.markdown(
-                    f'<div class="sh-med-row" style="display:flex;align-items:center;gap:8px;'
-                    f'padding:4px 8px;border-radius:5px;margin-bottom:1px;'
-                    f'background:rgba(0,230,118,0.05);border:1px solid rgba(0,230,118,0.15)">'
-                    f'<span style="width:6px;height:6px;border-radius:50%;background:{GREEN};'
-                    f'box-shadow:0 0 5px rgba(0,230,118,0.5);flex-shrink:0"></span>'
-                    f'<span style="font-family:{MONO};font-size:9px;color:{MUTED};flex:1">{data_fmt}</span>'
-                    f'<span style="font-size:13px;font-weight:800;color:{GREEN};letter-spacing:-0.3px">{dose:.1f} mg</span>'
-                    f'<span style="font-family:{MONO};font-size:7px;font-weight:700;color:{GREEN};'
-                    f'background:rgba(0,230,118,0.12);border:1px solid rgba(0,230,118,0.25);'
-                    f'padding:1px 5px;border-radius:8px;letter-spacing:1px">ATUAL</span></div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    f'<div class="sh-med-row" style="display:flex;align-items:center;gap:8px;'
-                    f'padding:2px 8px;margin-bottom:0;opacity:0.5">'
-                    f'<span style="width:3px;height:3px;border-radius:50%;background:{GHOST};flex-shrink:0"></span>'
-                    f'<span style="font-family:{MONO};font-size:9px;color:{GHOST};flex:1">{data_fmt}</span>'
-                    f'<span style="font-size:11px;font-weight:600;color:{MUTED}">{dose:.1f} mg</span></div>',
-                    unsafe_allow_html=True,
-                )
-        with _me:
-            if st.button("✏", key=f"tog_med_{mid}", use_container_width=True, help="Editar dose"):
-                st.session_state["med_edit_preselect_id"] = mid
-                _dialog_med_editar()
+def _med_edit_row(mid: int) -> None:
+    st.session_state["med_edit_preselect_id"] = mid
+    _dialog_med_editar()
 
 
 def _form_editar_refeicao(row, form_key_suffix=""):
@@ -2838,11 +2787,8 @@ def _form_editar_refeicao(row, form_key_suffix=""):
         st.session_state.pop(desc_key, None)
 
     st.markdown(
-        f'<div class="sh-metric sh-metric--compact" style="min-height:auto;margin-bottom:12px">'
-        f'<div class="sh-metric__accent" style="background:{CYAN}"></div>'
-        f'<div class="sh-metric__label">Selecionada · {hora}</div>'
-        f'<div class="sh-metric__value" style="font-size:1.1rem">{food[:56]}</div>'
-        f'<div class="sh-metric__meta">🔥 {kcal_v} kcal · P {prot_v:.0f}g</div></div>',
+        f'<div class="sh-ref-edit-meta">{hora} · <strong style="color:{TEXT}">{food[:56]}</strong> · '
+        f'🔥 {kcal_v} kcal · P {prot_v:.0f}g</div>',
         unsafe_allow_html=True,
     )
 
@@ -2858,11 +2804,7 @@ def _form_editar_refeicao(row, form_key_suffix=""):
     with _ed:
         nova_desc = st.text_input("Descrição", key=desc_key)
 
-    st.markdown(
-        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;margin:8px 0 4px">'
-        f'ADICIONAR / EDITAR ALIMENTOS</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(sh_subheading("Adicionar / editar alimentos"), unsafe_allow_html=True)
     _fragment_ref_busca_carrinho(carrinho_key=carrinho_key, ks=ks, show_register=False)
 
     carrinho = st.session_state.get(carrinho_key, [])
@@ -2885,9 +2827,9 @@ def _form_editar_refeicao(row, form_key_suffix=""):
                 "Gord g", value=gord_v, min_value=0.0, step=0.5, format="%.1f", key=f"edit_gord_{sk}"
             )
 
-    ba, bf, bd = st.columns([2, 1, 1])
-    with ba:
-        if st.button("✓ Salvar alterações", key=f"edit_save_{sk}", use_container_width=True, type="primary"):
+    st.markdown('<div class="sh-ref-actions-mark" aria-hidden="true"></div>', unsafe_allow_html=True)
+    with section_actions():
+        if st.button("✓ Salvar alterações", key=f"edit_save_{sk}", use_container_width=False, type="primary", help="Salvar refeição"):
             try:
                 if carrinho:
                     tk, tp, tc, tg, comps, desc_auto = _carrinho_snapshot(carrinho_key, ks)
@@ -2918,8 +2860,7 @@ def _form_editar_refeicao(row, form_key_suffix=""):
                 st.rerun()
             except Exception as e:
                 st.error(f"Erro ao salvar: {e}")
-    with bf:
-        if st.button("⭐ Favorito", key=f"edit_fav_{sk}", use_container_width=True):
+        if st.button("⭐ Favorito", key=f"edit_fav_{sk}", use_container_width=False, help="Salvar refeição nos favoritos"):
             if carrinho:
                 tk, tp, tc, tg, comps, desc_auto = _carrinho_snapshot(carrinho_key, ks)
                 _salvar_combo_favorito(
@@ -2928,8 +2869,7 @@ def _form_editar_refeicao(row, form_key_suffix=""):
                 st.rerun(scope="fragment")
             else:
                 st.warning("Adicione alimentos ao carrinho para salvar como favorito.")
-    with bd:
-        if st.button("🗑 Excluir", key=f"edit_del_{sk}", use_container_width=True):
+        if st.button("🗑 Excluir", key=f"edit_del_{sk}", use_container_width=False, help="Excluir refeição"):
             try:
                 DB.execute("DELETE FROM refeicoes WHERE id=?", [rid])
                 _invalidate_cache(_q_refeicoes, _q_macros, _q_supp_check, _q_alimentos_favoritos)
@@ -2941,9 +2881,10 @@ def _form_editar_refeicao(row, form_key_suffix=""):
                 st.error(f"Erro ao excluir: {e}")
 
 
-@st.dialog("✏️ Editar refeições", width="large")
+@st.dialog("Editar refeições", width="large")
 def _tab_editar():
-    """Edição unificada via modal — sidebar ou botão ✏ nos cards."""
+    """Edição unificada via modal — sidebar ou botão editar nos cards."""
+    st.markdown('<div class="sh-ref-dialog-host"></div>', unsafe_allow_html=True)
     pre_id = st.session_state.pop("edit_ref_preselect_id", None)
     if pre_id:
         df_one = DB.query(
@@ -3035,10 +2976,64 @@ if "hevy_auto_synced" not in st.session_state:
         _hevy_status_txt = "sem dados novos"
         _hevy_status_cor = AMBER
 
+def _qp_sync_val():
+    val = st.query_params.get("sync")
+    if isinstance(val, list):
+        return val[0] if val else None
+    return val
+
+
+def _handle_sync_query():
+    """Sync Zepp/Hevy via ?sync=zepp|hevy (botões HTML no header — mesma aba)."""
+    sync = _qp_sync_val()
+    if sync not in ("zepp", "hevy"):
+        return
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+    if sync == "zepp":
+        with st.spinner("Zepp…"):
+            _sync_result = _zepp_sync_dashboard(hoje_sql)
+        _invalidate_cache(_q_amazfit)
+        _notif(
+            _sync_result,
+            "ok" if "passos" in _sync_result or "sincronizado" in _sync_result.lower() else "info",
+        )
+    else:
+        with st.spinner("Hevy…"):
+            _h_sync_result = _hevy_sync_dashboard()
+        _invalidate_cache(_q_hevy_hoje, _q_hevy_ultimo)
+        _notif(
+            _h_sync_result,
+            "ok" if "sincronizado" in _h_sync_result.lower() or "atualizados" in _h_sync_result.lower() else "info",
+        )
+    st.rerun()
+
+
+_HEADER_SYNC_JS = """
+<script>
+(function(){
+  if(window.__shHeaderSyncInit)return;
+  window.__shHeaderSyncInit=true;
+  document.addEventListener('click',function(e){
+    var btn=e.target.closest('[data-sh-sync]');
+    if(!btn)return;
+    e.preventDefault();
+    var url=new URL(window.location.href);
+    url.searchParams.set('sync',btn.getAttribute('data-sh-sync'));
+    window.location.assign(url.toString());
+  });
+})();
+</script>
+"""
+
 # ════════════════════════════════════════════════════════════════════════════
 # APP HEADER (identidade + sync — métricas ficam na página Visão)
 # ════════════════════════════════════════════════════════════════════════════
-_h_brand, _h_actions = st.columns([2.4, 1])
+_handle_sync_query()
+
+_h_brand, _h_actions = st.columns([1.72, 1.28])
 with _h_brand:
     st.markdown(
         f'<div class="sh-app-header sh-topbar" style="border:none;padding-bottom:0;margin-bottom:0">'
@@ -3049,33 +3044,24 @@ with _h_brand:
         unsafe_allow_html=True,
     )
 with _h_actions:
-    st.markdown('<div class="sh-header-actions">', unsafe_allow_html=True)
+    st.markdown('<div class="sh-header-actions-mark" aria-hidden="true"></div>', unsafe_allow_html=True)
     st.markdown(
-        f'<div class="sh-header-status sh-topbar-right">'
-        f'<span style="color:{_zepp_status_cor}"><span class="sh-status-dot" style="background:{_zepp_status_cor}"></span>'
+        f'<div class="sh-header-sync">'
+        f'<div class="sh-header-status-html">'
+        f'<span class="sh-header-status-line" style="color:{_zepp_status_cor}">'
+        f'<span class="sh-status-dot" style="background:{_zepp_status_cor}"></span>'
         f'Amazfit · {_zepp_status_txt}</span>'
-        f'<span style="color:{GHOST};margin:0 6px">·</span>'
-        f'<span style="color:{_hevy_status_cor}"><span class="sh-status-dot" style="background:{_hevy_status_cor}"></span>'
-        f'Hevy · {_hevy_status_txt}</span></div>',
+        f'<span class="sh-header-status-line" style="color:{_hevy_status_cor}">'
+        f'<span class="sh-status-dot" style="background:{_hevy_status_cor}"></span>'
+        f'Hevy · {_hevy_status_txt}</span>'
+        f'</div>'
+        f'<div class="sh-header-sync-btns">'
+        f'<button type="button" class="sh-sync-link" data-sh-sync="zepp">⌚ Zepp</button>'
+        f'<button type="button" class="sh-sync-link" data-sh-sync="hevy">💪 Hevy</button>'
+        f'</div></div>',
         unsafe_allow_html=True,
     )
-    st.markdown('<div class="sh-header-sync">', unsafe_allow_html=True)
-    _hb1, _hb2 = st.columns(2, gap="small")
-    with _hb1:
-        if st.button("⌚ Zepp", key="btn_zepp_sync_top", type="secondary", use_container_width=True):
-            with st.spinner("Zepp…"):
-                _sync_result = _zepp_sync_dashboard(hoje_sql)
-            _invalidate_cache(_q_amazfit)
-            _notif(_sync_result, "ok" if "passos" in _sync_result or "sincronizado" in _sync_result.lower() else "info")
-            st.rerun()
-    with _hb2:
-        if st.button("💪 Hevy", key="btn_hevy_sync_top", type="secondary", use_container_width=True):
-            with st.spinner("Hevy…"):
-                _h_sync_result = _hevy_sync_dashboard()
-            _invalidate_cache(_q_hevy_hoje, _q_hevy_ultimo)
-            _notif(_h_sync_result, "ok" if "sincronizado" in _h_sync_result.lower() or "atualizados" in _h_sync_result.lower() else "info")
-            st.rerun()
-    st.markdown("</div></div>", unsafe_allow_html=True)
+    st.html(_HEADER_SYNC_JS)
 st.markdown(f'<div style="border-bottom:1px solid {BORDER};margin-bottom:12px;padding-bottom:4px"></div>', unsafe_allow_html=True)
 st.markdown(
     f'<div class="sh-mobile-hint">'
@@ -3085,13 +3071,21 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+from app_sidebar import (
+    EDIT_ICON,
+    handle_nav_scroll_query,
+    handle_quick_dialog_query,
+    render_app_sidebar,
+)
+
+handle_quick_dialog_query()
+handle_nav_scroll_query()
+
 # ── Notificação animada pendente (roda UMA vez por ação) ─────────────────────
 _render_notif_pendente()
 _celebrate = st.session_state.pop("_celebrate_pending", None)
 if _celebrate:
     _render_goal_celebration(_celebrate)
-
-from app_sidebar import render_app_sidebar, render_mobile_quick_bar
 
 # ── Sidebar — navegação + status + atalhos ────────────────────────────────────
 def _render_dashboard_sidebar():
@@ -3111,7 +3105,7 @@ def _render_dashboard_sidebar():
             "pai_cor": pai_cor,
         },
         quick_actions={
-            "refeicao": _tab_refeicao,
+            "refeicao": _open_refeicao_dialog,
             "editar": _tab_editar,
             "agua": _tab_agua,
             "supp": _tab_suplemento,
@@ -3133,7 +3127,7 @@ setTimeout(function() {{
 
 _open_dlg = st.session_state.pop("open_dialog", None)
 if _open_dlg == "refeicao":
-    _tab_refeicao()
+    _open_refeicao_dialog()
 elif _open_dlg == "editar":
     _tab_editar()
 elif _open_dlg == "agua":
@@ -3144,7 +3138,7 @@ elif _open_dlg == "supp":
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 1 — HOJE (tabs: Nutrição · Wearable · Agenda)
 # ════════════════════════════════════════════════════════════════════════════
-st.markdown('<div id="sec-hoje"></div>', unsafe_allow_html=True)
+st.markdown(section_anchor("sec-hoje", "Hoje"), unsafe_allow_html=True)
 st.markdown(sh_section("Hoje", f"Resumo · {hoje_pt}"), unsafe_allow_html=True)
 
 _gcal_ok = _gcal_configured()
@@ -3157,7 +3151,7 @@ with tab_nutri:
     pct_agua = agua_l / META_AGUA
     cor_agua = "#a78bfa" if pct_agua < 0.50 else ("#00d4ff" if pct_agua < 1.0 else "#00e676")
     badge_agua = "⚠️ Desidratado" if pct_agua < 0.50 else ("⚡ Em progresso" if pct_agua < 1.0 else "✓ Hidratado")
-    st.markdown('<div class="sh-nutri-metrics">', unsafe_allow_html=True)
+    st.markdown('<div class="sh-metrics-row sh-nutri-metrics">', unsafe_allow_html=True)
     h_a, h_b, h_c, h_d = st.columns(4)
     with h_a:
         st.markdown(sh_metric(
@@ -3176,6 +3170,7 @@ with tab_nutri:
 with tab_wear:
     st.markdown(sh_section("Amazfit Bip 6", "Atividade · recovery"), unsafe_allow_html=True)
 
+    st.markdown('<div class="sh-metrics-row">', unsafe_allow_html=True)
     a_col1, a_col2, a_col3, a_col4 = st.columns(4)
     with a_col1:
         pct_p = passos / META_PASS if META_PASS else 0
@@ -3183,16 +3178,19 @@ with tab_wear:
             CYAN, "👟 Passos", f"{passos:,}", "",
             meta=f"{int(pct_p * 100)}% da meta {META_PASS:,}",
             extra_html=pbar(pct_p, CYAN),
+            variant="compact",
         ), unsafe_allow_html=True)
     with a_col2:
         st.markdown(sh_metric(
             GREEN, "🔥 Gasto total", f"{gasto_total_dia:,}", "kcal",
             meta=f"{def_txt} · atividade {cal_gasta:,} kcal",
+            variant="compact",
         ), unsafe_allow_html=True)
     with a_col3:
         st.markdown(sh_metric(
             CYAN, "📍 Distância", f"{dist_km:.1f}", "km",
             meta="distância registrada hoje",
+            variant="compact",
         ), unsafe_allow_html=True)
     with a_col4:
         pct_sp = sono_prof / META_SONO if META_SONO else 0
@@ -3200,7 +3198,9 @@ with tab_wear:
             PURPLE, "🌙 Sono", sono_h_fmt, "",
             meta=f"profundo {sono_prof} min · meta {META_SONO} min",
             extra_html=pbar(pct_sp, sono_cor),
+            variant="compact",
         ), unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if not _az.empty and "data_hora" in _az.columns:
         try:
@@ -3214,6 +3214,7 @@ with tab_wear:
         )
 
     with st.expander("Recovery · PAI · corrida · musculação", expanded=False):
+        st.markdown('<div class="sh-metrics-row">', unsafe_allow_html=True)
         a_col5, a_col6, a_col7, a_col8 = st.columns(4)
         with a_col5:
             pct_hrv = min(1.0, max(0, (hrv - 20) / 60)) if hrv else 0
@@ -3221,6 +3222,7 @@ with tab_wear:
                 GREEN, "💓 HRV", str(hrv), "ms",
                 meta=hrv_txt,
                 extra_html=pbar(pct_hrv, hrv_cor),
+                variant="compact",
             ), unsafe_allow_html=True)
         with a_col6:
             svg_pai = (
@@ -3236,6 +3238,7 @@ with tab_wear:
                 AMBER, "⚡ PAI", str(pai), "",
                 meta=f"meta ≥ {META_PAI}",
                 extra_html=svg_pai,
+                variant="compact",
             ), unsafe_allow_html=True)
         with a_col7:
             _corr_meta = (
@@ -3245,6 +3248,7 @@ with tab_wear:
             st.markdown(sh_metric(
                 CYAN, "🏃 Corrida", f"{corrida_km:.2f}", "km",
                 meta=_corr_meta,
+                variant="compact",
             ), unsafe_allow_html=True)
         with a_col8:
             df_hevy_hoje = _q_hevy_hoje(hoje_sql)
@@ -3273,7 +3277,9 @@ with tab_wear:
             st.markdown(sh_metric(
                 GREEN, "💪 Hevy", hevy_val, hevy_unit,
                 meta=hevy_meta,
+                variant="compact",
             ), unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 with tab_agenda:
     st.markdown(sh_section("Agenda", f"Hoje · {hoje_pt}"), unsafe_allow_html=True)
@@ -3304,7 +3310,7 @@ with tab_agenda:
             _gcal_refresh = st.button(
                 "🔄 Atualizar",
                 key="btn_gcal_refresh",
-                use_container_width=True,
+                use_container_width=False,
                 help="Buscar eventos do Google Calendar agora",
             )
         if _gcal_refresh:
@@ -3391,7 +3397,7 @@ with tab_agenda:
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 4 — EVOLUÇÃO
 # ════════════════════════════════════════════════════════════════════════════
-st.markdown('<div id="sec-evolucao"></div>', unsafe_allow_html=True)
+st.markdown(section_anchor("sec-evolucao", "Evolução"), unsafe_allow_html=True)
 st.markdown(sh_section("Evolução", "Peso histórico e macros"), unsafe_allow_html=True)
 
 c1, c2 = st.columns([2, 1])
@@ -3448,7 +3454,7 @@ with c2:
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO — REGISTROS
 # ════════════════════════════════════════════════════════════════════════════
-st.markdown('<div id="sec-registros"></div>', unsafe_allow_html=True)
+st.markdown(section_anchor("sec-registros", "Registros"), unsafe_allow_html=True)
 st.markdown(sh_section("Registros", "Refeições e suplementação"), unsafe_allow_html=True)
 
 
@@ -3637,7 +3643,7 @@ def _render_col_refeicoes():
                 )
             with _ce:
                 st.markdown('<div style="margin-top:14px"></div>', unsafe_allow_html=True)
-                if st.button("✏", key=f"tog_meal_{rid}", use_container_width=True, help="Editar refeição"):
+                if st.button("", key=f"tog_meal_{rid}", use_container_width=False, icon=EDIT_ICON, help="Editar refeição"):
                     st.session_state["edit_ref_preselect_id"] = rid
                     _tab_editar()
 
@@ -3711,25 +3717,18 @@ def _fragment_registros_dia():
 
 _fragment_registros_dia()
 
-st.markdown('<div id="sec-treinos"></div>', unsafe_allow_html=True)
+st.markdown(section_anchor("sec-treinos", "Treinos"), unsafe_allow_html=True)
 st.markdown(sh_section("Treinos", "Hevy e corridas"), unsafe_allow_html=True)
 
 # PAINEL — DETALHES DOS TREINOS (Hevy)
 # ════════════════════════════════════════════════════════════════════════════
-_tbtn1, _tbtn2 = st.columns(2)
-with _tbtn1:
+with section_actions():
     _ui_toggle_button("📋 TREINOS ▴", "📋 TREINOS ▾", "treino_tab_open", "btn_treino_tab")
-with _tbtn2:
     _ui_toggle_button("🏃 CORRIDAS ▴", "🏃 CORRIDAS ▾", "corrida_tab_open", "btn_corrida_tab")
 
 # ── Tabela de treinos (Hevy) ──────────────────────────────────────────────────
 if _toggle_key("treino_tab_open", True):
-    st.markdown(
-        f'<div style="background:{BG3};border:1px solid {GREEN}33;'
-        f'border-top:2px solid {GREEN};border-radius:0 0 10px 10px;'
-        f'padding:16px 18px 18px;margin-bottom:12px">',
-        unsafe_allow_html=True,
-    )
+    st.markdown(sh_treino_shell_open(GREEN), unsafe_allow_html=True)
 
     # Seletor de período
     _tw_col1, _tw_col2 = st.columns([2, 1])
@@ -3841,14 +3840,11 @@ if _toggle_key("treino_tab_open", True):
                          for r in _linhas if r["Volume (kg)"] != "—")
 
         st.markdown(
-            f'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">'
-            f'<span style="font-family:{MONO};font-size:10px;color:{GREEN}">'
-            f'⚡ {_n_treinos} treinos</span>'
-            f'<span style="font-family:{MONO};font-size:10px;color:{CYAN}">'
-            f'📌 {len(_df_exp)} séries</span>'
-            f'<span style="font-family:{MONO};font-size:10px;color:{AMBER}">'
-            f'🏋️ {_vol_total:,.0f} kg volume total</span>'
-            f'</div>',
+            sh_chip_row(
+                (f"⚡ {_n_treinos} treinos", GREEN),
+                (f"📌 {len(_df_exp)} séries", CYAN),
+                (f"🏋️ {_vol_total:,.0f} kg volume total", AMBER),
+            ),
             unsafe_allow_html=True,
         )
 
@@ -3893,16 +3889,11 @@ if _toggle_key("treino_tab_open", True):
             unsafe_allow_html=True,
         )
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(sh_treino_shell_close(), unsafe_allow_html=True)
 
 # ── Tabela de corridas (Amazfit) ──────────────────────────────────────────────
 if _toggle_key("corrida_tab_open"):
-    st.markdown(
-        f'<div style="background:{BG3};border:1px solid {CYAN}33;'
-        f'border-top:2px solid {CYAN};border-radius:0 0 10px 10px;'
-        f'padding:16px 18px 18px;margin-bottom:12px">',
-        unsafe_allow_html=True,
-    )
+    st.markdown(sh_treino_shell_open(CYAN), unsafe_allow_html=True)
 
     st.markdown(
         f'<div style="font-family:{MONO};font-size:9px;font-weight:700;'
@@ -3939,16 +3930,12 @@ if _toggle_key("corrida_tab_open"):
         _rc_media_km  = _rc_total_km / _rc_n if _rc_n > 0 else 0
 
         st.markdown(
-            f'<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">'
-            f'<span style="font-family:{MONO};font-size:10px;color:{CYAN}">'
-            f'📍 {_rc_total_km:.1f} km total</span>'
-            f'<span style="font-family:{MONO};font-size:10px;color:{GREEN}">'
-            f'🔥 {_rc_total_cal:,} kcal</span>'
-            f'<span style="font-family:{MONO};font-size:10px;color:{AMBER}">'
-            f'📊 {_rc_media_km:.2f} km/sessão</span>'
-            f'<span style="font-family:{MONO};font-size:10px;color:{MUTED}">'
-            f'🏁 {_rc_n} sessões</span>'
-            f'</div>',
+            sh_chip_row(
+                (f"📍 {_rc_total_km:.1f} km total", CYAN),
+                (f"🔥 {_rc_total_cal:,} kcal", GREEN),
+                (f"📊 {_rc_media_km:.2f} km/sessão", AMBER),
+                (f"🏁 {_rc_n} sessões", MUTED),
+            ),
             unsafe_allow_html=True,
         )
 
@@ -3993,130 +3980,15 @@ if _toggle_key("corrida_tab_open"):
             unsafe_allow_html=True,
         )
 
-    st.markdown('</div>', unsafe_allow_html=True)
-
-
-
-# ── BLOCO: ANÁLISE ───────────────────────────────────────────────────────────
-# ════════════════════════════════════════════════════════════════════════════
-# SEÇÃO 7 — BANCO DE ALIMENTOS (página dedicada)
-# ════════════════════════════════════════════════════════════════════════════
-st.markdown('<div id="sec-banco"></div>', unsafe_allow_html=True)
-st.markdown(sh_section("Banco", "Cadastro · Edição · Favoritos"), unsafe_allow_html=True)
-
-_df_banco_cnt = _q_alimentos_favoritos()
-_banco_n = len(_df_banco_cnt)
-_banco_fav = int((_df_banco_cnt["favorito"] == 1).sum()) if not _df_banco_cnt.empty else 0
-
-st.markdown(
-    f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;padding:16px 18px;margin-bottom:12px">'
-    f'<div style="font-size:14px;color:{TEXT};font-weight:600;margin-bottom:6px">🍽️ Banco de Alimentos</div>'
-    f'<div style="font-size:12px;color:{MUTED};line-height:1.5;margin-bottom:10px">'
-    f'Cadastre alimentos, defina porção de referência (g, ml, L, und) e marque favoritos. '
-    f'Combinações de refeição também podem ser salvas como favorito na nova/edição de refeição.</div>'
-    f'<div style="display:flex;gap:16px;font-family:{MONO};font-size:10px;color:{GHOST}">'
-    f'<span>{_banco_n} alimento(s)</span><span>⭐ {_banco_fav} favorito(s)</span></div></div>',
-    unsafe_allow_html=True,
-)
-
-if st.button("Abrir Banco de Alimentos →", key="btn_open_banco_page", use_container_width=True, type="primary"):
-    st.switch_page("pages/1_Banco_de_Alimentos.py")
+    st.markdown(sh_treino_shell_close(), unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 6 — HISTÓRICO SEMANAL
 # ════════════════════════════════════════════════════════════════════════════
-st.markdown('<div id="sec-historico"></div>', unsafe_allow_html=True)
+st.markdown(section_anchor("sec-historico", "Histórico"), unsafe_allow_html=True)
 st.markdown(sh_section("Histórico", "Últimos 30 dias e tendências"), unsafe_allow_html=True)
 
-
-def chart_layout(height=200, show_legend=False):
-    return dict(
-        height=height, margin=dict(t=10, b=10, l=0, r=0),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(gridcolor=BORDER, title=None,
-                   tickformat="%d/%m", tickfont=dict(color=GHOST, size=9, family="monospace"),
-                   showgrid=True),
-        yaxis=dict(gridcolor=BORDER, title=None,
-                   tickfont=dict(color=GHOST, size=9), showgrid=True),
-        showlegend=show_legend,
-        font=dict(family="monospace", color=GHOST),
-    )
-
-def linha(df, col, cor, name="", fill=False, dash=None):
-    return go.Scatter(
-        x=df["dia"], y=df[col], mode="lines+markers", name=name,
-        line=dict(color=cor, width=2, dash=dash),
-        marker=dict(size=5, color=cor),
-        fill="tozeroy" if fill else "none",
-        fillcolor=cor.replace("ff", "22") if fill and cor.startswith("#") else "rgba(0,0,0,0)",
-        hovertemplate=f"<b>%{{x|%d/%m}}</b><br>{name}: %{{y}}<extra></extra>",
-    )
-
-def barra(df, col, cor, name=""):
-    return go.Bar(
-        x=df["dia"], y=df[col], name=name,
-        marker_color=cor, opacity=0.8,
-        hovertemplate=f"<b>%{{x|%d/%m}}</b><br>{name}: %{{y}}<extra></extra>",
-    )
-
-def _trend_data(df, col):
-    """Regressão linear: retorna (x_vals, y_fit, slope)."""
-    import numpy as np
-    if len(df) < 3 or col not in df.columns:
-        return None, None, 0
-    y = pd.to_numeric(df[col], errors="coerce").fillna(0).values
-    x = np.arange(len(y))
-    coeffs = np.polyfit(x, y, 1)
-    slope = float(coeffs[0])
-    y_fit = np.polyval(coeffs, x)
-    return df["dia"].values, y_fit, slope
-
-def trend_line(df, col, cor="#aaaaaa", name="Tendência"):
-    """Trace de linha de tendência (regressão linear)."""
-    xs, ys, _ = _trend_data(df, col)
-    if xs is None:
-        return None
-    return go.Scatter(
-        x=xs, y=ys, mode="lines", name=name,
-        line=dict(color=cor, width=1.5, dash="dot"),
-        opacity=0.65,
-        hovertemplate=f"<b>%{{x|%d/%m}}</b><br>{name}: %{{y:.1f}}<extra></extra>",
-    )
-
-def _trend_badge(df, col, higher_is_better=True):
-    """Retorna (ícone, cor_hex, str_pct) comparando 1ª metade vs 2ª metade do período."""
-    if len(df) < 4 or col not in df.columns:
-        return "→", MUTED, ""
-    y = pd.to_numeric(df[col], errors="coerce").fillna(0).values
-    half = max(1, len(y) // 2)
-    avg1 = float(y[:half].mean())
-    avg2 = float(y[half:].mean())
-    if avg1 == 0:
-        return "→", MUTED, ""
-    pct = (avg2 - avg1) / abs(avg1) * 100
-    going_up   = pct >  2.5
-    going_down = pct < -2.5
-    if higher_is_better:
-        icon  = "↑" if going_up   else ("↓" if going_down  else "→")
-        color = GREEN if going_up  else (RED  if going_down  else AMBER)
-    else:
-        icon  = "↓" if going_down else ("↑" if going_up    else "→")
-        color = GREEN if going_down else (RED if going_up    else AMBER)
-    return icon, color, f"{pct:+.1f}%"
-
-
-
-def _df_media(df, col):
-    if df is None or df.empty or col not in df.columns:
-        return 0
-    return df[col].replace(0, pd.NA).mean()
-
-
-def _fmt_metric(val, sufixo="", decimais=0):
-    if pd.isna(val) or val == 0:
-        return "—"
-    return f"{val:.{decimais}f}{sufixo}"
 
 
 def _ia_coach_periodo_dias():
@@ -4177,7 +4049,7 @@ def _ia_coach_load_data(n_dias):
 def _render_ia_coach():
     """IA Coach — sempre visível; dados carregados ao gerar análise."""
     # ── IA Coach ─────────────────────────────────────────────────────────────
-    st.markdown('<div id="sec-ia"></div>', unsafe_allow_html=True)
+    st.markdown(section_anchor("sec-ia", "IA Coach"), unsafe_allow_html=True)
     st.markdown(sh_section("IA Coach", "Análise de Emagrecimento & Performance"), unsafe_allow_html=True)
 
     # Valores padrão do protocolo
@@ -4191,16 +4063,19 @@ def _render_ia_coach():
         st.session_state["coach_proto"] = _proto_defaults.copy()
     _proto = st.session_state["coach_proto"]
 
-    _proto_hdr, _proto_edit_btn = st.columns([1, 0.2])
-    with _proto_hdr:
-        st.markdown(
-            f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-            f'text-transform:uppercase;color:{CYAN};margin-bottom:6px">📋 PROTOCOLO & METAS METABÓLICAS</div>',
-            unsafe_allow_html=True,
-        )
-    with _proto_edit_btn:
-        if st.button("✏ editar" if not st.session_state.get("coach_proto_editing") else "✕ fechar",
-                     key="btn_proto_edit", use_container_width=True):
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
+        f'text-transform:uppercase;color:{MUTED};margin-bottom:6px">📋 PROTOCOLO & METAS METABÓLICAS</div>',
+        unsafe_allow_html=True,
+    )
+    with section_actions():
+        if st.button(
+            "Fechar" if st.session_state.get("coach_proto_editing") else "Editar",
+            key="btn_proto_edit",
+            use_container_width=False,
+            icon="✕" if st.session_state.get("coach_proto_editing") else EDIT_ICON,
+            help="Fechar edição do protocolo" if st.session_state.get("coach_proto_editing") else "Editar protocolo e metas",
+        ):
             st.session_state["coach_proto_editing"] = not st.session_state.get("coach_proto_editing", False)
             st.rerun()
 
@@ -4213,7 +4088,7 @@ def _render_ia_coach():
             with _p2:
                 _zona2_in  = st.text_input("Treinos Zona 2", value=_proto["zona2"])
                 _pinit_in  = st.text_input("Peso inicial (referência)", value=_proto["peso_inicial"])
-            if st.form_submit_button("✓ SALVAR PROTOCOLO", use_container_width=True):
+            if st.form_submit_button("✓ SALVAR PROTOCOLO", use_container_width=False):
                 st.session_state["coach_proto"] = {
                     "rotina": _rotina_in, "hiit": _hiit_in,
                     "zona2": _zona2_in, "peso_inicial": _pinit_in,
@@ -4242,10 +4117,6 @@ def _render_ia_coach():
     """
     st.markdown(coach_html, unsafe_allow_html=True)
 
-    btn_col, sel_col = st.columns([1, 1])
-    with btn_col:
-        executar_analise = st.button("🧠 NOVA ANÁLISE DE EMAGRECIMENTO", key="btn_ia_coach", use_container_width=True)
-
     # Busca análises anteriores para o seletor histórico
     df_past = db("""
         SELECT id, data_hora, n_dias
@@ -4270,10 +4141,11 @@ def _render_ia_coach():
             past_options.append(lbl)
             id_map[lbl] = int(r_row["id"])
 
-    with sel_col:
+    with section_actions():
+        executar_analise = st.button("🧠 Nova análise", key="btn_ia_coach", use_container_width=False)
         _hist_open = st.session_state.get("ia_hist_open", False)
-        _hist_lbl = "✕ FECHAR" if _hist_open else "📂 HISTÓRICO ▾"
-        if st.button(_hist_lbl, key="btn_ia_hist_toggle", use_container_width=True):
+        _hist_lbl = "✕ Fechar histórico" if _hist_open else "📂 Histórico ▾"
+        if st.button(_hist_lbl, key="btn_ia_hist_toggle", use_container_width=False):
             st.session_state["ia_hist_open"] = not _hist_open
             st.rerun()
 
@@ -4291,7 +4163,7 @@ def _render_ia_coach():
                 if st.button(
                     f"↩  {_hlbl}",
                     key=f"ia_hist_item_{_hid}",
-                    use_container_width=True,
+                    use_container_width=False,
                 ):
                     _df_sel = db("SELECT analise_txt FROM ia_analises_clinicas WHERE id = ?", [_hid])
                     if not _df_sel.empty:
@@ -4319,18 +4191,18 @@ def _render_ia_coach():
                 )
 
                 # ── 1. MÉDIAS DO PERÍODO SELECIONADO ─────────────────────────
-                media_passos      = _df_media(df_hist, "passos")
-                media_cal_gastas  = _df_media(df_hist, "calorias_gastas")
-                media_sono        = _df_media(df_hist, "sono_total_min")
-                media_sono_prof   = _df_media(df_hist, "sono_profundo_min")
-                media_hrv         = _df_media(df_hist, "hrv_ms")
-                media_pai         = _df_media(df_hist, "pai")
-                media_cal_ingestao= _df_media(df_macro_hist, "cal")
-                media_prot        = _df_media(df_macro_hist, "prot")
-                media_carb        = _df_media(df_macro_hist, "carb")
-                media_gord        = _df_media(df_macro_hist, "gord")
-                media_corrida_km  = _df_media(df_hist, "corrida_km")
-                media_corrida_cal = _df_media(df_hist, "corrida_cal")
+                media_passos      = df_media(df_hist, "passos")
+                media_cal_gastas  = df_media(df_hist, "calorias_gastas")
+                media_sono        = df_media(df_hist, "sono_total_min")
+                media_sono_prof   = df_media(df_hist, "sono_profundo_min")
+                media_hrv         = df_media(df_hist, "hrv_ms")
+                media_pai         = df_media(df_hist, "pai")
+                media_cal_ingestao= df_media(df_macro_hist, "cal")
+                media_prot        = df_media(df_macro_hist, "prot")
+                media_carb        = df_media(df_macro_hist, "carb")
+                media_gord        = df_media(df_macro_hist, "gord")
+                media_corrida_km  = df_media(df_hist, "corrida_km")
+                media_corrida_cal = df_media(df_hist, "corrida_cal")
 
                 # ── 2. DADOS BRUTOS COMPLETOS (queries extras) ────────────────
                 _ia_status.write("⚖️ Buscando histórico de peso...")
@@ -4560,21 +4432,21 @@ def _render_ia_coach():
                     f"═══════════════════════════════════════════════════\n"
                     f"MÉDIAS DO PERÍODO ANALISADO ({n_dias} dias)\n"
                     "═══════════════════════════════════════════════════\n"
-                    f"- Calorias ingeridas: {_fmt_metric(media_cal_ingestao,' kcal',0)} · "
-                    f"Proteínas: {_fmt_metric(media_prot,' g',0)} · "
-                    f"Carb: {_fmt_metric(media_carb,' g',0)} · "
-                    f"Gordura: {_fmt_metric(media_gord,' g',0)}\n"
-                    f"- Gasto calórico ativ: {_fmt_metric(media_cal_gastas,' kcal',0)} · "
-                    f"Déficit médio: {_fmt_metric(media_deficit,' kcal',0)}\n"
-                    f"- Corrida: {_fmt_metric(media_corrida_km,' km/dia',2)} · "
-                    f"{_fmt_metric(media_corrida_cal,' kcal/dia',0)}\n"
+                    f"- Calorias ingeridas: {fmt_metric(media_cal_ingestao,' kcal',0)} · "
+                    f"Proteínas: {fmt_metric(media_prot,' g',0)} · "
+                    f"Carb: {fmt_metric(media_carb,' g',0)} · "
+                    f"Gordura: {fmt_metric(media_gord,' g',0)}\n"
+                    f"- Gasto calórico ativ: {fmt_metric(media_cal_gastas,' kcal',0)} · "
+                    f"Déficit médio: {fmt_metric(media_deficit,' kcal',0)}\n"
+                    f"- Corrida: {fmt_metric(media_corrida_km,' km/dia',2)} · "
+                    f"{fmt_metric(media_corrida_cal,' kcal/dia',0)}\n"
                     f"- Musculação: {total_treinos} treinos · "
-                    f"Vol médio: {_fmt_metric(media_vol_treino,' kg',0)} · "
-                    f"Duração média: {_fmt_metric(media_dur_treino,' min',0)}\n"
-                    f"- Passos: {_fmt_metric(media_passos,'',0)}/dia · "
-                    f"Sono total: {_fmt_metric(media_sono,' min',0)} · "
-                    f"Sono profundo: {_fmt_metric(media_sono_prof,' min',0)}\n"
-                    f"- HRV: {_fmt_metric(media_hrv,' ms',0)} · PAI: {_fmt_metric(media_pai,'',0)}\n\n"
+                    f"Vol médio: {fmt_metric(media_vol_treino,' kg',0)} · "
+                    f"Duração média: {fmt_metric(media_dur_treino,' min',0)}\n"
+                    f"- Passos: {fmt_metric(media_passos,'',0)}/dia · "
+                    f"Sono total: {fmt_metric(media_sono,' min',0)} · "
+                    f"Sono profundo: {fmt_metric(media_sono_prof,' min',0)}\n"
+                    f"- HRV: {fmt_metric(media_hrv,' ms',0)} · PAI: {fmt_metric(media_pai,'',0)}\n\n"
 
                     "═══════════════════════════════════════════════════\n"
                     "DADOS BRUTOS COMPLETOS\n"
@@ -4641,641 +4513,62 @@ def _render_ia_coach():
         )
         st.markdown(st.session_state["ia_coach_result"])
 
-        _ia_nav1, _ia_nav2, _ia_nav3 = st.columns([1, 1.2, 1])
-        with _ia_nav1:
-            if st.button("⬆ Início do dashboard", key="btn_ia_top", use_container_width=True):
+        with section_actions():
+            if st.button("⬆ Início do dashboard", key="btn_ia_top", use_container_width=False):
                 st.session_state["_scroll_to"] = "sec-hoje"
                 st.rerun()
-        with _ia_nav3:
-            if st.button("✕ Fechar análise", key="btn_ia_close", use_container_width=True):
+            if st.button("✕ Fechar análise", key="btn_ia_close", use_container_width=False):
                 st.session_state.pop("ia_coach_result", None)
                 st.rerun()
 
 
 
-@st.fragment
-def _fragment_historico():
-    """Período + queries + Plotly só após o usuário carregar o histórico."""
-    if not st.session_state.get("hist_carregado", False):
-        st.markdown(
-            f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:10px;'
-            f'padding:32px 24px;text-align:center;margin-bottom:16px">'
-            f'<div style="font-size:32px;margin-bottom:12px">📊</div>'
-            f'<div style="font-family:{MONO};font-size:11px;font-weight:700;letter-spacing:1.5px;'
-            f'text-transform:uppercase;color:{MUTED};margin-bottom:8px">Histórico não carregado</div>'
-            f'<div style="font-size:12px;color:{GHOST}">Clique em <b style="color:{CYAN}">📊 Carregar</b> '
-            f'para buscar e exibir os gráficos do período selecionado</div>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-        _hload1, _hload2, _hload3 = st.columns([1, 2, 1])
-        with _hload2:
-            if st.button("📊 Carregar dados do período", key="btn_hist_load", use_container_width=True):
-                st.session_state["hist_carregado"] = True
-                st.rerun(scope="fragment")
-        return
-
-    st.markdown(
-        f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-        f'text-transform:uppercase;color:{MUTED};margin-bottom:4px">PERÍODO DE ANÁLISE</div>',
-        unsafe_allow_html=True,
-    )
-    periodo = st.radio(
-        "Período",
-        ["7 dias", "14 dias", "30 dias", "90 dias"],
-        index=1,
-        horizontal=True,
-        label_visibility="collapsed",
-        key="periodo_hist",
-    )
-    n_dias = int(periodo.split()[0])
-
-    df_hist = pd.DataFrame()
-    df_macro_hist = pd.DataFrame()
-    df_hevy_hist = pd.DataFrame()
-    df_hevy_list = pd.DataFrame()
-    total_treinos = 0
-    total_vol = 0.0
-    total_dur = 0
-    media_vol_treino = 0.0
-    media_dur_treino = 0.0
-    media_deficit = 0.0
-
-    df_hist = db(f"""
-        SELECT
-            date(data_hora) as dia,
-            passos, calorias_gastas, distancia_km,
-            sono_total_min, sono_profundo_min,
-            hrv_ms, pai,
-            corrida_km, corrida_cal
-        FROM amazfit_dados
-        WHERE date(data_hora) >= date('now', '-{n_dias} days')
-        ORDER BY dia ASC
-    """)
-
-    df_macro_hist = db(f"""
-        SELECT
-            date(data_hora, 'localtime') as dia,
-            SUM(calorias)    as cal,
-            SUM(proteinas)   as prot,
-            SUM(carboidratos) as carb,
-            SUM(gorduras)    as gord
-        FROM refeicoes
-        WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
-        GROUP BY dia
-        ORDER BY dia ASC
-    """)
-
-    # Hevy history query
-    df_hevy_hist = db(f"""
-        SELECT
-            COUNT(*) as count_treino,
-            SUM(duracao_min) as dur,
-            SUM(volume_kg) as vol
-        FROM hevy_treinos
-        WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
-    """)
-    total_treinos = int(df_hevy_hist["count_treino"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["count_treino"].iloc[0] is not None else 0
-    total_vol = float(df_hevy_hist["vol"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["vol"].iloc[0] is not None else 0.0
-    total_dur = int(df_hevy_hist["dur"].iloc[0]) if not df_hevy_hist.empty and df_hevy_hist["dur"].iloc[0] is not None else 0
-    media_vol_treino = total_vol / total_treinos if total_treinos > 0 else 0.0
-    media_dur_treino = total_dur / total_treinos if total_treinos > 0 else 0.0
-
-    df_hevy_list = db(f"""
-        SELECT
-            date(data_hora, 'localtime') as dia,
-            titulo, duracao_min, volume_kg
-        FROM hevy_treinos
-        WHERE date(data_hora, 'localtime') >= date('now', '-{n_dias} days')
-        ORDER BY data_hora ASC
-    """)
-
-    # ── Caption: intervalo real dos dados carregados ─────────────────────────
-    if not df_hist.empty:
-        try:
-            _min_d = pd.to_datetime(df_hist["dia"].min()).strftime("%d/%m/%Y")
-            _max_d = pd.to_datetime(df_hist["dia"].max()).strftime("%d/%m/%Y")
-            _n_nutri = len(df_macro_hist)
-            st.markdown(
-                f'<div style="font-size:10px;color:{GHOST};font-family:{MONO};'
-                f'letter-spacing:0.5px;margin:4px 0 8px;text-align:right">'
-                f'📅 {_min_d} → {_max_d} · {len(df_hist)} dias Amazfit · {_n_nutri} dias nutrição</div>',
-                unsafe_allow_html=True,
-            )
-        except Exception:
-            pass
-
-    _tem_qualquer_dado = not df_hist.empty or not df_macro_hist.empty
-
-    if _tem_qualquer_dado:
-
-        # ── Tabela resumo semanal ─────────────────────────────────────────────────
-        st.markdown(sh_section("Resumo", f"Médias dos últimos {n_dias} dias"), unsafe_allow_html=True)
-
-        if df_hist.empty and not df_macro_hist.empty:
-            st.info("💡 Dados do Amazfit não encontrados para este período. Exibindo dados de nutrição disponíveis.")
-
-        def media(df, col):
-            return df[col].replace(0, pd.NA).mean() if col in df.columns else 0
-
-        def fmt_val(val, sufixo="", decimais=0):
-            if pd.isna(val) or val == 0:
-                return "—"
-            return f"{val:.{decimais}f}{sufixo}"
-
-        # Calcular déficit calórico médio para o resumo
-        media_deficit = 0.0
-        if not df_hist.empty or not df_macro_hist.empty:
-            df_h = df_hist.copy() if not df_hist.empty else pd.DataFrame(columns=["dia", "calorias_gastas"])
-            df_m = df_macro_hist.copy() if not df_macro_hist.empty else pd.DataFrame(columns=["dia", "cal"])
-            if "calorias_gastas" not in df_h.columns:
-                df_h["calorias_gastas"] = 0.0
-            if "cal" not in df_m.columns:
-                df_m["cal"] = 0.0
-            df_merged = pd.merge(df_h, df_m, on="dia", how="outer").fillna(0)
-            df_merged["deficit"] = (TMB + df_merged["calorias_gastas"]) - df_merged["cal"]
-            media_deficit = df_merged["deficit"].mean()
-
-        medias = [
-            ("👟", "Passos/dia",       fmt_val(media(df_hist, "passos"), "", 0),
-             f"meta {META_PASS:,}"),
-            ("📍", "Distância/dia",    fmt_val(media(df_hist, "distancia_km"), " km", 1),
-             ""),
-            ("🌙", "Sono total/dia",   fmt_val(media(df_hist, "sono_total_min"), " min", 0),
-             "≥ 420 min"),
-            ("💤", "Sono profundo/dia",fmt_val(media(df_hist, "sono_profundo_min"), " min", 0),
-             f"meta {META_SONO} min"),
-            ("💓", "HRV médio",        fmt_val(media(df_hist, "hrv_ms"), " ms", 0),
-             ""),
-            ("⚡", "PAI médio",        fmt_val(media(df_hist, "pai"), "", 0),
-             "meta ≥ 100"),
-        ]
-        if not df_macro_hist.empty:
-            medias += [
-                ("🔥", "Calorias/dia",  fmt_val(media(df_macro_hist, "cal"), " kcal", 0),
-                 f"meta {TMB}"),
-                ("🥩", "Proteínas/dia", fmt_val(media(df_macro_hist, "prot"), " g", 0),
-                 f"meta {META_PROT}g"),
-                ("📉", "Déficit/dia",    fmt_val(media_deficit, " kcal", 0),
-                 "meta 500 kcal"),
-            ]
-
-        # Musculação averages from Hevy
-        medias += [
-            ("🏋️", "Vol. Musculação", fmt_val(media_vol_treino, " kg", 0), f"{total_treinos} treinos"),
-            ("⏱️", "Treino Médio",    fmt_val(media_dur_treino, " min", 0), "musculação"),
-        ]
-
-        # Grid 4 colunas
-        cols_med = st.columns(4)
-        for i, (icon, lbl, val, ref) in enumerate(medias):
-            with cols_med[i % 4]:
-                ref_html = (f'<div style="font-size:10px;color:{GHOST};margin-top:4px">{ref}</div>'
-                            if ref else "")
-                st.markdown(
-                    f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:9px;'
-                    f'padding:14px 14px 12px;margin-bottom:10px;min-height:105px;'
-                    f'display:flex;flex-direction:column;justify-content:space-between">'
-                    f'<div>'
-                    f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-                    f'text-transform:uppercase;color:{GHOST};margin-bottom:6px">{icon} {lbl}</div>'
-                    f'<div style="font-size:22px;font-weight:800;color:{TEXT};line-height:1">{val}</div>'
-                    f'</div>'
-                    f'{ref_html}</div>',
-                    unsafe_allow_html=True,
-                )
-
-        # ── Linha 1: Passos + Distância ───────────────────────────────────────────
-        if not df_hist.empty:
-            h1a, h1b = st.columns(2)
-
-            with h1a:
-                st.markdown(panel(
-                    ptitl("👟 Passos diários") +
-                    f'<div id="chart_passos"></div>'
-                ), unsafe_allow_html=True)
-                fig = go.Figure()
-                fig.add_trace(barra(df_hist, "passos", CYAN, "Passos"))
-                _tl = trend_line(df_hist, "passos", CYAN, "Tendência")
-                if _tl: fig.add_trace(_tl)
-                fig.add_hline(y=META_PASS, line_dash="dash", line_color=GREEN,
-                              line_width=1, opacity=0.5,
-                              annotation_text=f"Meta {META_PASS:,}",
-                              annotation_font_color=GREEN, annotation_font_size=9)
-                fig.update_layout(**chart_layout(180))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-            with h1b:
-                st.markdown(panel(ptitl("📍 Distância (km)")), unsafe_allow_html=True)
-                fig = go.Figure()
-                fig.add_trace(linha(df_hist, "distancia_km", CYAN, "km", fill=True))
-                _tl = trend_line(df_hist, "distancia_km", AMBER, "Tendência")
-                if _tl: fig.add_trace(_tl)
-                fig.update_layout(**chart_layout(180))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-            # ── Linha 2: Sono ─────────────────────────────────────────────────────────
-            h2a, h2b = st.columns(2)
-
-            with h2a:
-                st.markdown(panel(ptitl("🌙 Sono total (min)")), unsafe_allow_html=True)
-                fig = go.Figure()
-                fig.add_trace(barra(df_hist, "sono_total_min", PURPLE, "Total"))
-                fig.add_trace(barra(df_hist, "sono_profundo_min", CYAN, "Profundo"))
-                _tl_sono = trend_line(df_hist, "sono_total_min", PURPLE, "Tend. Total")
-                if _tl_sono: fig.add_trace(_tl_sono)
-                fig.add_hline(y=META_SONO, line_dash="dash", line_color=RED,
-                              line_width=1, opacity=0.5,
-                              annotation_text=f"Meta prof. {META_SONO}min",
-                              annotation_font_color=RED, annotation_font_size=9)
-                fig.update_layout(**chart_layout(180, show_legend=True),
-                                  barmode="overlay",
-                                  legend=dict(font=dict(color=GHOST, size=9),
-                                              bgcolor="rgba(0,0,0,0)"))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-            with h2b:
-                st.markdown(panel(ptitl("💓 HRV · PAI")), unsafe_allow_html=True)
-                fig = go.Figure()
-                fig.add_trace(linha(df_hist, "hrv_ms",  GREEN,  "HRV (ms)"))
-                fig.add_trace(linha(df_hist, "pai",      AMBER,  "PAI", dash="dot"))
-                _tl_hrv = trend_line(df_hist, "hrv_ms", GREEN, "Tend. HRV")
-                if _tl_hrv: fig.add_trace(_tl_hrv)
-                _tl_pai = trend_line(df_hist, "pai", AMBER, "Tend. PAI")
-                if _tl_pai: fig.add_trace(_tl_pai)
-                fig.update_layout(**chart_layout(180, show_legend=True),
-                                  legend=dict(font=dict(color=GHOST, size=9),
-                                              bgcolor="rgba(0,0,0,0)"))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-        # ── Linha 3: Nutrição ─────────────────────────────────────────────────────
-        if not df_macro_hist.empty:
-            h3a, h3b, h3c = st.columns(3)
-
-            with h3a:
-                st.markdown(panel(ptitl("🔥 Calorias diárias")), unsafe_allow_html=True)
-                fig = go.Figure()
-                fig.add_trace(barra(df_macro_hist, "cal", GREEN, "Calorias"))
-                _tl = trend_line(df_macro_hist, "cal", GREEN, "Tendência")
-                if _tl: fig.add_trace(_tl)
-                fig.add_hline(y=TMB, line_dash="dash", line_color=CYAN,
-                              line_width=1, opacity=0.5,
-                              annotation_text=f"Meta {TMB}",
-                              annotation_font_color=CYAN, annotation_font_size=9)
-                fig.update_layout(**chart_layout(180))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-            with h3b:
-                st.markdown(panel(ptitl("🥩 Proteínas diárias (g)")), unsafe_allow_html=True)
-                fig = go.Figure()
-                fig.add_trace(barra(df_macro_hist, "prot", RED, "Proteínas"))
-                _tl = trend_line(df_macro_hist, "prot", RED, "Tendência")
-                if _tl: fig.add_trace(_tl)
-                fig.add_hline(y=META_PROT, line_dash="dash", line_color=CYAN,
-                              line_width=1, opacity=0.5,
-                              annotation_text=f"Meta {META_PROT}g",
-                              annotation_font_color=CYAN, annotation_font_size=9)
-                fig.update_layout(**chart_layout(180))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-            with h3c:
-                st.markdown(panel(ptitl("📉 Déficit Calórico")), unsafe_allow_html=True)
-                df_h = df_hist.copy() if not df_hist.empty else pd.DataFrame(columns=["dia", "calorias_gastas"])
-                df_m = df_macro_hist.copy() if not df_macro_hist.empty else pd.DataFrame(columns=["dia", "cal"])
-                if "calorias_gastas" not in df_h.columns:
-                    df_h["calorias_gastas"] = 0.0
-                if "cal" not in df_m.columns:
-                    df_m["cal"] = 0.0
-                df_merged = pd.merge(df_h, df_m, on="dia", how="outer").fillna(0)
-                df_merged["deficit"] = (TMB + df_merged["calorias_gastas"]) - df_merged["cal"]
-            
-                fig = go.Figure()
-                fig.add_trace(barra(df_merged, "deficit", PURPLE, "Déficit"))
-                _tl = trend_line(df_merged, "deficit", PURPLE, "Tendência")
-                if _tl: fig.add_trace(_tl)
-                fig.add_hline(y=500, line_dash="dash", line_color=CYAN,
-                              line_width=1, opacity=0.5,
-                              annotation_text="Meta 500",
-                              annotation_font_color=CYAN, annotation_font_size=9)
-                fig.update_layout(**chart_layout(180))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-        # ── Linha 4: Musculação (Hevy) ─────────────────────────────────────────────
-        if not df_hevy_list.empty:
-            h4a, h4b = st.columns(2)
-        
-            with h4a:
-                st.markdown(panel(ptitl("🏋️ Volume de Carga (kg/treino)")), unsafe_allow_html=True)
-                fig = go.Figure()
-                fig.add_trace(go.Bar(
-                    x=df_hevy_list["dia"], y=df_hevy_list["volume_kg"],
-                    name="Volume", marker_color=GREEN, opacity=0.8,
-                    text=df_hevy_list["titulo"],
-                    hovertemplate="<b>%{x|%d/%m}</b><br>Treino: %{text}<br>Volume: %{y:,.0f} kg<extra></extra>"
-                ))
-                _tl_vol = trend_line(df_hevy_list, "volume_kg", GREEN, "Tendência")
-                if _tl_vol: fig.add_trace(_tl_vol)
-                fig.update_layout(**chart_layout(180))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-            with h4b:
-                st.markdown(panel(ptitl("⏱️ Duração do Treino (min)")), unsafe_allow_html=True)
-                fig = go.Figure()
-                fig.add_trace(go.Bar(
-                    x=df_hevy_list["dia"], y=df_hevy_list["duracao_min"],
-                    name="Duração", marker_color=AMBER, opacity=0.8,
-                    text=df_hevy_list["titulo"],
-                    hovertemplate="<b>%{x|%d/%m}</b><br>Treino: %{text}<br>Duração: %{y} min<extra></extra>"
-                ))
-                _tl_dur = trend_line(df_hevy_list, "duracao_min", AMBER, "Tendência")
-                if _tl_dur: fig.add_trace(_tl_dur)
-                fig.update_layout(**chart_layout(180))
-                st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
-
-        # ── Tendências ────────────────────────────────────────────────────────────
-        st.markdown(sh_section("Tendências", f"Direção dos indicadores nos últimos {n_dias} dias"), unsafe_allow_html=True)
-
-        # Montar lista de indicadores com badges
-        _tend_items = []
-
-        if not df_hist.empty:
-            _i_pass, _c_pass, _p_pass = _trend_badge(df_hist, "passos",           higher_is_better=True)
-            _i_dist, _c_dist, _p_dist = _trend_badge(df_hist, "distancia_km",     higher_is_better=True)
-            _i_sono, _c_sono, _p_sono = _trend_badge(df_hist, "sono_total_min",    higher_is_better=True)
-            _i_prof, _c_prof, _p_prof = _trend_badge(df_hist, "sono_profundo_min", higher_is_better=True)
-            _i_hrv,  _c_hrv,  _p_hrv  = _trend_badge(df_hist, "hrv_ms",           higher_is_better=True)
-            _i_pai,  _c_pai,  _p_pai  = _trend_badge(df_hist, "pai",               higher_is_better=True)
-            _tend_items += [
-                ("👟", "Passos/dia",       _i_pass, _c_pass, _p_pass, f"média {fmt_val(media(df_hist,'passos'),'',0)}"),
-                ("📍", "Distância/dia",    _i_dist, _c_dist, _p_dist, f"média {fmt_val(media(df_hist,'distancia_km'),' km',1)}"),
-                ("🌙", "Sono total",       _i_sono, _c_sono, _p_sono, f"média {fmt_val(media(df_hist,'sono_total_min'),' min',0)}"),
-                ("💤", "Sono profundo",    _i_prof, _c_prof, _p_prof, f"média {fmt_val(media(df_hist,'sono_profundo_min'),' min',0)}"),
-                ("💓", "HRV",             _i_hrv,  _c_hrv,  _p_hrv,  f"média {fmt_val(media(df_hist,'hrv_ms'),' ms',0)}"),
-                ("⚡", "PAI",             _i_pai,  _c_pai,  _p_pai,  f"média {fmt_val(media(df_hist,'pai'),'',0)}"),
-            ]
-
-        if not df_macro_hist.empty:
-            _i_cal,  _c_cal,  _p_cal  = _trend_badge(df_macro_hist, "cal",  higher_is_better=False)
-            _i_prot, _c_prot, _p_prot = _trend_badge(df_macro_hist, "prot", higher_is_better=True)
-            _i_carb, _c_carb, _p_carb = _trend_badge(df_macro_hist, "carb", higher_is_better=False)
-            _i_gord, _c_gord, _p_gord = _trend_badge(df_macro_hist, "gord", higher_is_better=False)
-            _tend_items += [
-                ("🔥", "Calorias/dia",    _i_cal,  _c_cal,  _p_cal,  f"média {fmt_val(media(df_macro_hist,'cal'),' kcal',0)}"),
-                ("🥩", "Proteínas/dia",   _i_prot, _c_prot, _p_prot, f"média {fmt_val(media(df_macro_hist,'prot'),' g',0)}"),
-                ("🍞", "Carboidratos",    _i_carb, _c_carb, _p_carb, f"média {fmt_val(media(df_macro_hist,'carb'),' g',0)}"),
-                ("🧈", "Gorduras",        _i_gord, _c_gord, _p_gord, f"média {fmt_val(media(df_macro_hist,'gord'),' g',0)}"),
-            ]
-
-        if not df_hevy_list.empty:
-            _i_vol,  _c_vol,  _p_vol  = _trend_badge(df_hevy_list, "volume_kg",  higher_is_better=True)
-            _i_dur,  _c_dur,  _p_dur  = _trend_badge(df_hevy_list, "duracao_min", higher_is_better=True)
-            _tend_items += [
-                ("🏋️", "Volume/treino",   _i_vol,  _c_vol,  _p_vol,  f"média {fmt_val(media_vol_treino,' kg',0)}"),
-                ("⏱️", "Duração/treino",  _i_dur,  _c_dur,  _p_dur,  f"média {fmt_val(media_dur_treino,' min',0)}"),
-            ]
-
-        # Renderizar grade de badges de tendência
-        if _tend_items:
-            _cols_t = st.columns(4)
-            for _ti, (icon_t, lbl_t, icon_dir, cor_dir, pct_str, ref_t) in enumerate(_tend_items):
-                with _cols_t[_ti % 4]:
-                    st.markdown(
-                        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:9px;'
-                        f'padding:12px 14px;margin-bottom:10px;min-height:88px;'
-                        f'display:flex;flex-direction:column;justify-content:space-between">'
-                        f'<div style="font-family:{MONO};font-size:9px;font-weight:700;letter-spacing:1.5px;'
-                        f'text-transform:uppercase;color:{GHOST};margin-bottom:6px">{icon_t} {lbl_t}</div>'
-                        f'<div style="display:flex;align-items:center;gap:8px">'
-                        f'  <span style="font-size:26px;font-weight:900;color:{cor_dir};line-height:1">{icon_dir}</span>'
-                        f'  <span style="font-family:{MONO};font-size:14px;font-weight:700;color:{cor_dir}">{pct_str}</span>'
-                        f'</div>'
-                        f'<div style="font-size:10px;color:{GHOST};margin-top:4px">{ref_t}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-        else:
-            st.markdown(
-                f'<div style="font-family:{MONO};font-size:11px;color:{MUTED};padding:16px;'
-                f'text-align:center">Dados insuficientes para calcular tendências neste período</div>',
-                unsafe_allow_html=True,
-            )
-
-    else:
-        st.markdown(
-        panel(f'<p style="color:{GHOST};font-size:13px;padding:8px 0">'
-              f'Ainda sem dados históricos do Amazfit. Rode /sync no bot para começar.</p>'),
-        unsafe_allow_html=True,
-        )
 
 
 
 
 
-
-_fragment_historico()
+render_historico_fragment(
+    db,
+    tmb=TMB,
+    meta_pass=META_PASS,
+    meta_sono=META_SONO,
+    meta_prot=META_PROT,
+)
 
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO — MEDICAÇÃO (Tirzepatida)
 # ════════════════════════════════════════════════════════════════════════════
-st.markdown('<div id="sec-medicacao"></div>', unsafe_allow_html=True)
+st.markdown(section_anchor("sec-medicacao", "Medicação"), unsafe_allow_html=True)
 st.markdown(sh_section("Medicação", "Tirzepatida · protocolo semanal"), unsafe_allow_html=True)
-_render_medicacao_section()
+render_medicacao_section(
+    hoje_sql,
+    _q_medicacao(),
+    edit_icon=EDIT_ICON,
+    on_nova=_dialog_med_nova,
+    on_edit=_dialog_med_editar,
+    on_edit_dose=_med_edit_row,
+)
 
-st.markdown('<div id="sec-biometria"></div>', unsafe_allow_html=True)
+st.markdown(section_anchor("sec-biometria", "Biometria"), unsafe_allow_html=True)
 st.markdown(sh_section("Biometria", "Evolução de medidas"), unsafe_allow_html=True)
-
-if st.button("📏 Nova medida", key="btn_bio_nova", type="primary", use_container_width=True):
-    _dialog_bio_nova()
-
-df_bio = _q_biometria()
-
-if not df_bio.empty:
-    df_bio = df_bio.sort_values("data_ord", ascending=True)
-    COLS_NUM = ["peso","cintura","abdomen","peitoral","quadril",
-                "coxa_dir","coxa_esq","panturrilha_dir","panturrilha_esq","biceps_dir","biceps_esq"]
-    idx_rec = df_bio.index[-1]
-    diffs = {}
-    for c in COLS_NUM:
-        atual = df_bio.loc[idx_rec, c]
-        if pd.isna(atual):
-            diffs[c] = 0
-        else:
-            dm = atual - df_bio[c].max()
-            dn = atual - df_bio[c].min()
-            diffs[c] = dm if abs(dm) >= abs(dn) else dn
-
-    df_bio = df_bio.sort_values("data_ord", ascending=False)
-
-    # ── Primitivos de estilo ──────────────────────────────────────────────
-    _td  = ("padding:7px 6px;border-bottom:1px solid #0a1020;"
-            "text-align:center;vertical-align:middle;")
-    _tdr = _td + f"background:rgba(0,212,255,0.06);"
-
-    def cel(val, diff, peso=False, rec=False):
-        base = _tdr if rec else _td
-        if pd.isna(val):
-            return f"<td style='{base}color:{GHOST}'>—</td>"
-        fmt  = f"{val:.1f}"
-        un   = "kg" if peso else "cm"
-        cor  = CYAN if rec else TEXT
-        num  = f"<b style='font-size:13px;font-weight:700;color:{cor}'>{fmt}</b>"
-        if rec and diff:
-            arrow      = "▼" if diff < 0 else "▲"
-            diff_color = GREEN if diff < 0 else RED
-            delta = (f"<span style='color:{diff_color};font-size:10px;"
-                     f"display:block;margin-top:1px;font-weight:600'>"
-                     f"{arrow} {abs(diff):.1f}{un}</span>")
-            return f"<td style='{base}'>{num}{delta}</td>"
-        return f"<td style='{base}'>{num}</td>"
-
-    _th = (f"font-family:{MONO};background:{BG3};color:{MUTED};"
-           f"padding:9px 6px;border-bottom:2px solid {BORDER2};"
-           f"text-transform:uppercase;font-size:10px;letter-spacing:1.5px;"
-           f"text-align:center;white-space:nowrap;font-weight:400")
-
-    def _td_data(row, rec):
-        badge = (
-            f'<span style="background:{CYAN};color:{BG};font-size:8px;'
-            f'font-family:{MONO};font-weight:900;padding:1px 4px;border-radius:2px;'
-            f'letter-spacing:1px;margin-left:5px;vertical-align:middle">ATUAL</span>'
-            if rec else ""
-        )
-        left_bdr = f"border-left:2px solid {CYAN};" if rec else ""
-        bg       = f"background:rgba(0,212,255,0.06);" if rec else ""
-        cor      = CYAN if rec else GHOST
-        wt       = "700" if rec else "400"
-        return (
-            f"<td style='{_td}{bg}{left_bdr}'>"
-            f"<span style='font-family:{MONO};font-size:11px;color:{cor};"
-            f"font-weight:{wt};white-space:nowrap'>{row['data_fmt']}{badge}</span></td>"
-        )
-
-    # colgroup: data fixa + colunas de medida uniformes
-    _cg1 = ('<colgroup><col style="width:95px">'
-            + '<col style="width:68px">' * 5 + '</colgroup>')
-    _cg2 = ('<colgroup><col style="width:95px">'
-            + '<col style="width:68px">' * 6 + '</colgroup>')
-    _tbl = (f"width:100%;border-collapse:collapse;table-layout:fixed;"
-            f"background:{BG2}")
-
-    _bio_tab1, _bio_tab2 = st.tabs(["🏛️ Tronco · Composição", "💪 Membros"])
-
-    # ── Tab 1: Peso + medidas do tronco ──────────────────────────────────
-    with _bio_tab1:
-        HEADS_T1 = ["Data","Peso","Cintura","Abdômen","Peitoral","Quadril"]
-        ths1  = "".join(f"<th style='{_th}'>{h}</th>" for h in HEADS_T1)
-        body1 = ""
-        for i, (_, row) in enumerate(df_bio.iterrows()):
-            rec    = (i == 0)
-            body1 += f"<tr>{_td_data(row, rec)}"
-            body1 += cel(row["peso"], diffs["peso"], peso=True, rec=rec)
-            for c in ["cintura","abdomen","peitoral","quadril"]:
-                body1 += cel(row[c], diffs[c], rec=rec)
-            body1 += "</tr>"
-        st.markdown(
-            panel(
-                ptitl("Evolução — Tronco & Composição Corporal") +
-                f'<div class="sh-table-scroll" style="border-radius:6px;border:1px solid {BORDER}">'
-                f'<table style="{_tbl}">{_cg1}'
-                f'<thead><tr>{ths1}</tr></thead>'
-                f'<tbody>{body1}</tbody></table></div>'
-            ),
-            unsafe_allow_html=True,
-        )
-
-    # ── Tab 2: Membros ────────────────────────────────────────────────────
-    with _bio_tab2:
-        HEADS_T2 = ["Data","Coxa D","Coxa E","Pant. D","Pant. E","Bíceps D","Bíceps E"]
-        ths2  = "".join(f"<th style='{_th}'>{h}</th>" for h in HEADS_T2)
-        body2 = ""
-        for i, (_, row) in enumerate(df_bio.iterrows()):
-            rec    = (i == 0)
-            body2 += f"<tr>{_td_data(row, rec)}"
-            for c in ["coxa_dir","coxa_esq","panturrilha_dir","panturrilha_esq","biceps_dir","biceps_esq"]:
-                body2 += cel(row[c], diffs[c], rec=rec)
-            body2 += "</tr>"
-        st.markdown(
-            panel(
-                ptitl("Evolução — Membros") +
-                f'<div class="sh-table-scroll" style="border-radius:6px;border:1px solid {BORDER}">'
-                f'<table style="{_tbl}">{_cg2}'
-                f'<thead><tr>{ths2}</tr></thead>'
-                f'<tbody>{body2}</tbody></table></div>'
-            ),
-            unsafe_allow_html=True,
-        )
-
-    if st.button("✏️ Editar medida", key="btn_bio_edit", use_container_width=True):
-        _dialog_bio_editar()
-
+render_biometria_section(
+    _q_biometria(),
+    edit_icon=EDIT_ICON,
+    on_nova=_dialog_bio_nova,
+    on_edit=_dialog_bio_editar,
+)
 
 # ════════════════════════════════════════════════════════════════════════════
 # SEÇÃO 6 — EVACUAÇÃO (controle intestinal)
 # ════════════════════════════════════════════════════════════════════════════
-st.markdown('<div id="sec-evacuacao"></div>', unsafe_allow_html=True)
+st.markdown(section_anchor("sec-evacuacao", "Evacuação"), unsafe_allow_html=True)
 st.markdown(sh_section("Evacuação", "Registro intestinal — intervalo e histórico"), unsafe_allow_html=True)
 
-# ── Busca todos os registros de evacuação ────────────────────────────────────
 _ev_df = _q_evacuacoes()
+render_evacuacao_summary(_ev_df)
 
-# ── Card de resumo ────────────────────────────────────────────────────────────
-if not _ev_df.empty:
-    _ev_datas = pd.to_datetime(_ev_df["data_hora"])
-    _ev_ultima = _ev_datas.iloc[0]
-    _agora_brt = datetime.now(_BR)
-    _ev_dias_sem = (_agora_brt - _ev_ultima.replace(tzinfo=_BR)).days
-    _ev_horas_sem = int((_agora_brt - _ev_ultima.replace(tzinfo=_BR)).total_seconds() / 3600)
-
-    # Intervalo médio entre evacuações
-    if len(_ev_datas) >= 2:
-        _ev_diffs = _ev_datas.diff(-1).dropna().abs()
-        _ev_media_h = _ev_diffs.mean().total_seconds() / 3600
-        _ev_media_dias = _ev_media_h / 24
-        _ev_media_txt = f"{_ev_media_dias:.1f} dias"
-    else:
-        _ev_media_txt = "—"
-
-    _ev_cor_alerta = RED if _ev_dias_sem >= 3 else (AMBER if _ev_dias_sem >= 2 else GREEN)
-    _ev_status_txt = (
-        f"⚠️ {_ev_dias_sem} dias sem evacuar!" if _ev_dias_sem >= 3
-        else f"🟡 {_ev_dias_sem} dia(s) sem evacuar" if _ev_dias_sem >= 2
-        else f"✓ Último registro há {_ev_horas_sem}h"
-    )
-
-    st.markdown(
-        f'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">'
-        # card última evacuação
-        f'<div style="background:{BG2};border:1px solid {_ev_cor_alerta}55;border-top:2px solid {_ev_cor_alerta};'
-        f'border-radius:8px;padding:14px 16px;text-align:center">'
-        f'<div style="font-family:{MONO};font-size:9px;color:{MUTED};letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Última evacuação</div>'
-        f'<div style="font-size:22px;font-weight:700;color:{_ev_cor_alerta}">{_ev_dias_sem}d</div>'
-        f'<div style="font-family:{MONO};font-size:10px;color:{_ev_cor_alerta};margin-top:4px">{_ev_status_txt}</div>'
-        f'</div>'
-        # card intervalo médio
-        f'<div style="background:{BG2};border:1px solid {BORDER};border-top:2px solid {CYAN};'
-        f'border-radius:8px;padding:14px 16px;text-align:center">'
-        f'<div style="font-family:{MONO};font-size:9px;color:{MUTED};letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Intervalo médio</div>'
-        f'<div style="font-size:22px;font-weight:700;color:{CYAN}">{_ev_media_txt}</div>'
-        f'<div style="font-family:{MONO};font-size:10px;color:{MUTED};margin-top:4px">entre registros</div>'
-        f'</div>'
-        # card total de registros
-        f'<div style="background:{BG2};border:1px solid {BORDER};border-top:2px solid {PURPLE};'
-        f'border-radius:8px;padding:14px 16px;text-align:center">'
-        f'<div style="font-family:{MONO};font-size:9px;color:{MUTED};letter-spacing:1px;text-transform:uppercase;margin-bottom:6px">Total registrado</div>'
-        f'<div style="font-size:22px;font-weight:700;color:{PURPLE}">{len(_ev_df)}</div>'
-        f'<div style="font-family:{MONO};font-size:10px;color:{MUTED};margin-top:4px">evacuações</div>'
-        f'</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-else:
-    st.markdown(
-        panel(f'<p style="color:{GHOST};font-size:13px;padding:8px 0">'
-              f'Nenhum registro ainda. Use o formulário abaixo para começar a monitorar.</p>'),
-        unsafe_allow_html=True,
-    )
-
-# ── Botão + formulário de novo registro ──────────────────────────────────────
+# ── Modal de novo registro ───────────────────────────────────────────────────
 @st.dialog("🚽 Registrar Evacuação")
 def _dialog_evacuacao():
     _ESF_OPTS = [
@@ -5304,7 +4597,7 @@ def _dialog_evacuacao():
             "Observação (opcional)", placeholder="Ex: consistência normal, dor abdominal…",
             key="evac_obs_modal_input"
         )
-        if st.form_submit_button("💾 SALVAR", use_container_width=True):
+        if st.form_submit_button("💾 SALVAR", use_container_width=False):
             _evac_dt = f"{_evac_data} {_evac_hora}"
             _evac_esforco_val = int(next(c for c in _evac_esforco_sel if c.isdigit()))
             DB.execute(
@@ -5315,94 +4608,32 @@ def _dialog_evacuacao():
             _notif("Evacuação registrada ✓")
             st.rerun()
 
-if st.button("🚽 REGISTRAR EVACUAÇÃO", key="btn_evac_nova", use_container_width=True):
-    _dialog_evacuacao()
-
-# ── Tabela de histórico ───────────────────────────────────────────────────────
-_ui_toggle_button(
-    "📋 HISTÓRICO DE EVACUAÇÕES ▴",
-    "📋 HISTÓRICO DE EVACUAÇÕES ▾",
-    "evac_hist_open",
-    "btn_evac_hist",
-)
+render_evacuacao_actions(_dialog_evacuacao, _ui_toggle_button)
 
 if _toggle_key("evac_hist_open") and not _ev_df.empty:
-    _ev_show = _ev_df.copy()
-    _ev_show["data_hora_fmt"] = pd.to_datetime(_ev_show["data_hora"]).dt.strftime("%d/%m/%Y  %H:%M")
-    _ev_show["observacao"] = _ev_show["observacao"].fillna("—")
+    render_evacuacao_history(_ev_df)
 
-    # Calcula intervalo desde o registro anterior
-    _ev_dts_ord = pd.to_datetime(_ev_show["data_hora"]).reset_index(drop=True)
-    _intervalos = []
-    for _i in range(len(_ev_dts_ord)):
-        if _i < len(_ev_dts_ord) - 1:
-            _diff = (_ev_dts_ord[_i] - _ev_dts_ord[_i + 1]).total_seconds() / 3600
-            _intervalos.append(f"{_diff / 24:.1f}d ({int(_diff)}h)")
-        else:
-            _intervalos.append("—")
-    _ev_show["intervalo"] = _intervalos
+    def _evac_confirm_delete(ultimo_id: int) -> None:
+        DB.execute("DELETE FROM evacuacoes WHERE id=?", [ultimo_id])
+        _invalidate_cache(_q_evacuacoes)
+        st.session_state.pop("evac_del_confirm", None)
+        _notif("Registro removido ✓")
+        st.rerun()
 
-    # Mapa de esforço: cor e rótulo curto
-    _ESFORCO_COR_T  = ["#00e676", "#7ed321", "#fde047", "#fbbf24", "#f97316", "#ff6b6b"]
-    _ESFORCO_LABEL_T = ["0 · suave", "1 · normal", "2 · leve+", "3 · grande", "4 · sangrou", "5 · máximo"]
+    def _evac_cancel_delete() -> None:
+        st.session_state.pop("evac_del_confirm", None)
+        st.rerun()
 
-    # Renderiza tabela estilizada
-    _ev_rows_html = ""
-    for _, _row in _ev_show.iterrows():
-        _esf = int(_row["esforco"]) if _row["esforco"] is not None and not pd.isna(_row["esforco"]) else 0
-        _esf_cor = _ESFORCO_COR_T[min(_esf, 5)]
-        _esf_lbl = _ESFORCO_LABEL_T[min(_esf, 5)]
-        _pct = _esf / 5 * 100
-        _ev_rows_html += (
-            f'<tr style="border-bottom:1px solid {BORDER}">'
-            f'<td style="padding:8px 12px;font-family:{MONO};font-size:12px;color:{TEXT}">{_row["data_hora_fmt"]}</td>'
-            f'<td style="padding:8px 12px;font-family:{MONO};font-size:12px;color:{CYAN};text-align:center">{_row["intervalo"]}</td>'
-            f'<td style="padding:6px 12px;min-width:110px">'
-            f'<div style="font-family:{MONO};font-size:11px;font-weight:700;color:{_esf_cor};margin-bottom:4px">{_esf_lbl}</div>'
-            f'<div style="height:5px;border-radius:3px;background:{BORDER};overflow:hidden">'
-            f'<div style="height:100%;width:{_pct:.0f}%;border-radius:3px;'
-            f'background:linear-gradient(to right,#00e676,#7ed321,#fde047,#fbbf24,#f97316,#ff6b6b);'
-            f'background-size:{100 / (_pct/100) if _pct > 0 else 100:.0f}% 100%"></div>'
-            f'</div></td>'
-            f'<td style="padding:8px 12px;font-size:12px;color:{MUTED}">{_row["observacao"]}</td>'
-            f'</tr>'
-        )
-    st.markdown(
-        f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:8px;overflow:hidden;margin-top:8px">'
-        f'<table style="width:100%;border-collapse:collapse">'
-        f'<thead><tr style="background:{BG3};border-bottom:2px solid {BORDER}">'
-        f'<th style="padding:8px 12px;font-family:{MONO};font-size:10px;color:{MUTED};text-align:left;letter-spacing:1px">DATA / HORA</th>'
-        f'<th style="padding:8px 12px;font-family:{MONO};font-size:10px;color:{MUTED};text-align:center;letter-spacing:1px">INTERVALO</th>'
-        f'<th style="padding:8px 12px;font-family:{MONO};font-size:10px;color:{MUTED};text-align:center;letter-spacing:1px">ESFORÇO</th>'
-        f'<th style="padding:8px 12px;font-family:{MONO};font-size:10px;color:{MUTED};text-align:left;letter-spacing:1px">OBSERVAÇÃO</th>'
-        f'</tr></thead>'
-        f'<tbody>{_ev_rows_html}</tbody>'
-        f'</table></div>',
-        unsafe_allow_html=True,
+    def _evac_request_delete() -> None:
+        st.session_state["evac_del_confirm"] = True
+        st.rerun()
+
+    render_evacuacao_delete(
+        _ev_df,
+        on_confirm=_evac_confirm_delete,
+        on_cancel=_evac_cancel_delete,
+        on_request_delete=_evac_request_delete,
     )
-
-    # Botão excluir último registro
-    st.markdown("<div style='margin-top:10px'>", unsafe_allow_html=True)
-    _evac_del_confirm = st.session_state.get("evac_del_confirm", False)
-    if _evac_del_confirm:
-        _edc1, _edc2 = st.columns(2)
-        with _edc1:
-            if st.button("✓ Confirmar exclusão do último", key="evac_del_ok", use_container_width=True):
-                _ev_ultimo_id = int(_ev_df["id"].iloc[0])
-                DB.execute("DELETE FROM evacuacoes WHERE id=?", [_ev_ultimo_id])
-                _invalidate_cache(_q_evacuacoes)
-                st.session_state.pop("evac_del_confirm", None)
-                _notif("Registro removido ✓")
-                st.rerun()
-        with _edc2:
-            if st.button("✗ Cancelar", key="evac_del_cancel", use_container_width=True):
-                st.session_state.pop("evac_del_confirm", None)
-                st.rerun()
-    else:
-        if st.button("🗑️ EXCLUIR ÚLTIMO REGISTRO", key="evac_del_btn", use_container_width=True):
-            st.session_state["evac_del_confirm"] = True
-            st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -5410,8 +4641,20 @@ if _toggle_key("evac_hist_open") and not _ev_df.empty:
 # ════════════════════════════════════════════════════════════════════════════
 _render_ia_coach()
 
-# ── Barra rápida mobile (rodapé — oculta no desktop) ─────────────────────────
-render_mobile_quick_bar(on_dashboard=True)
+# ════════════════════════════════════════════════════════════════════════════
+# BANCO — teaser (fora do menu; após fluxo principal)
+# ════════════════════════════════════════════════════════════════════════════
+render_banco_teaser(_q_alimentos_favoritos())
+
+# ── Ações rápidas mobile (rodapé — só ≤680px; sidebar cobre desktop) ─────────
+from app_sidebar import render_mobile_quick_bar
+
+render_mobile_quick_bar(
+    on_dashboard=True,
+    on_refeicao=_open_refeicao_dialog,
+    on_agua=_tab_agua,
+    on_supp=_tab_suplemento,
+)
 
 # ════════════════════════════════════════════════════════════════════════════
 # RODAPÉ

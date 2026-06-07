@@ -6,8 +6,6 @@ import os
 import pandas as pd
 import streamlit as st
 
-from busca_alimentos_ui import embed_html_iframe
-
 try:
     for _k, _v in st.secrets.items():
         if isinstance(_v, str):
@@ -16,20 +14,53 @@ except Exception:
     pass
 
 import db as DB
+from app_sidebar import DELETE_ICON, EDIT_ICON, STAR_ICON, STAR_OUTLINE_ICON
+from sh_tokens import AMBER, BG, BG2, BG3, BORDER, BORDER2, CYAN, GHOST, GREEN, MONO, MUTED, PURPLE, TEXT
 
-BG = "#080c14"
-BG2 = "#0d1424"
-BG3 = "#080e1a"
-BORDER = "#1a2035"
-BORDER2 = "#111c2e"
-CYAN = "#00d4ff"
-GREEN = "#00e676"
-AMBER = "#fbbf24"
-TEXT = "#e8edf5"
-MUTED = "#4a5568"
-GHOST = "#2a3448"
-PURPLE = "#a78bfa"
-MONO = "'Space Mono',monospace"
+_BANCO_HIT_CSS = f"""
+<style>
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]{{
+  align-items:center!important;gap:10px!important;margin:0!important;
+  padding:8px 10px!important;border-bottom:1px solid {BORDER2}!important;
+  background:{BG2}!important;border-radius:0!important}}
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:first-child{{
+  min-width:0!important}}
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child{{
+  flex:0 0 auto!important;width:auto!important;min-width:0!important}}
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child [data-testid="stVerticalBlock"]{{
+  gap:0!important}}
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child [data-testid="stHorizontalBlock"]{{
+  gap:8px!important;flex-wrap:nowrap!important;justify-content:flex-end!important;
+  width:auto!important;margin:0!important}}
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child [data-testid="stHorizontalBlock"]>[data-testid="column"]{{
+  flex:0 0 32px!important;width:32px!important;min-width:32px!important;max-width:32px!important;
+  padding:0!important;margin:0!important}}
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child [data-testid="stHorizontalBlock"] [data-testid="stButton"]{{
+  margin:0!important;padding:0!important}}
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child [data-testid="stHorizontalBlock"] button{{
+  min-width:32px!important;max-width:32px!important;width:32px!important;
+  min-height:32px!important;max-height:32px!important;height:32px!important;
+  padding:0!important;margin:0!important;display:inline-flex!important;
+  align-items:center!important;justify-content:center!important;
+  border-radius:8px!important;background:{BG3}!important;
+  border:1px solid {BORDER}!important;color:{TEXT}!important;
+  font-size:16px!important;line-height:1!important;letter-spacing:0!important}}
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child [data-testid="stHorizontalBlock"] button:hover{{
+  border-color:rgba(0,212,255,.45)!important;color:{CYAN}!important;
+  background:rgba(0,212,255,.08)!important;transform:none!important;
+  box-shadow:none!important}}
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child [data-testid="stHorizontalBlock"] button p,
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child [data-testid="stHorizontalBlock"] button div{{
+  margin:0!important;padding:0!important;line-height:1!important}}
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child [data-testid="stHorizontalBlock"] button svg,
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child [data-testid="stHorizontalBlock"] [data-testid="stIconMaterial"]{{
+  width:16px!important;height:16px!important;font-size:16px!important;color:{TEXT}!important;
+  fill:currentColor!important;margin:0!important}}
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child [data-testid="stHorizontalBlock"] button:hover svg,
+[data-testid="stMarkdownContainer"]:has(.sh-banco-hit-mark)+[data-testid="stHorizontalBlock"]>[data-testid="column"]:last-child [data-testid="stHorizontalBlock"] button:hover [data-testid="stIconMaterial"]{{
+  color:{CYAN}!important}}
+</style>
+"""
 
 
 def _invalidate_cache(*funcs):
@@ -75,10 +106,18 @@ def _open_dialog_on_dashboard(dialog: str):
     st.switch_page("dashboard.py")
 
 
+def _qp_val(key: str):
+    """Lê query param (Streamlit pode devolver str ou lista)."""
+    val = st.query_params.get(key)
+    if isinstance(val, list):
+        return val[0] if val else None
+    return val
+
+
 def _handle_banco_url_actions():
     """Ações star/edit/del vindas dos links da busca HTML."""
-    act = st.query_params.get("banco_act")
-    bid = st.query_params.get("banco_id")
+    act = _qp_val("banco_act")
+    bid = _qp_val("banco_id")
     if not act or not bid:
         return
     try:
@@ -98,11 +137,15 @@ def _handle_banco_url_actions():
     elif act == "del":
         st.session_state["banco_del_confirm"] = rid
 
-    st.query_params.clear()
+    for _k in ("banco_act", "banco_id"):
+        try:
+            del st.query_params[_k]
+        except Exception:
+            pass
     st.rerun()
 
 
-def _render_banco_edit_form(_brow):
+def _render_banco_edit_form(_brow, in_dialog: bool = False):
     _bid = int(_brow["id"])
     _bdesc = str(_brow["descricao"])
     _bkcal = float(_brow["calorias"] or 0)
@@ -112,9 +155,11 @@ def _render_banco_edit_form(_brow):
     _bqtd = float(_brow.get("qtd_referencia") or 100)
     _bunit = str(_brow.get("unidade_referencia") or "g")
 
-    with st.container(border=True):
-        st.caption(f"✏️ Editando: {_bdesc}")
-        with st.form(f"form_banco_edit_page_{_bid}"):
+    _wrap = st.container(border=not in_dialog)
+    with _wrap:
+        if not in_dialog:
+            st.caption(f"Editando: {_bdesc}")
+        with st.form(f"form_banco_edit_page_{_bid}", border=False):
             _e_desc = st.text_input("Nome", value=_bdesc)
             _eq1, _eq2 = st.columns(2)
             with _eq1:
@@ -132,7 +177,7 @@ def _render_banco_edit_form(_brow):
             with _em2:
                 _e_prot = st.number_input("Prot (g)", value=_bprot, min_value=0.0, step=0.5, format="%.1f")
                 _e_gord = st.number_input("Gord (g)", value=_bgord, min_value=0.0, step=0.5, format="%.1f")
-            if st.form_submit_button("✅ Salvar", use_container_width=True):
+            if st.form_submit_button("✅ Salvar", use_container_width=False):
                 DB.execute(
                     "UPDATE alimentos_favoritos SET descricao=?,calorias=?,proteinas=?,"
                     "carboidratos=?,gorduras=?,qtd_referencia=?,unidade_referencia=? WHERE id=?",
@@ -144,19 +189,78 @@ def _render_banco_edit_form(_brow):
                 st.rerun()
 
 
-def _render_banco_busca_live(_df_banco_all: pd.DataFrame):
-    """Busca instantânea no navegador — filtra a cada tecla, sem Enter."""
+def _banco_toggle_star(rid: int):
+    row = DB.query("SELECT favorito FROM alimentos_favoritos WHERE id=?", [rid])
+    if row.empty:
+        return
+    fav = int(row["favorito"].iloc[0] or 0)
+    DB.execute("UPDATE alimentos_favoritos SET favorito=? WHERE id=?", [1 - fav, rid])
+    _invalidate_cache(_q_alimentos_favoritos)
+    _notif("Favorito atualizado!")
+
+
+@st.fragment
+def _fragment_banco_busca(_df_banco_all: pd.DataFrame):
+    """Busca + ações nativas Streamlit (iframe sandbox impede editar/favoritar/excluir)."""
     if _df_banco_all.empty:
         st.info("Nenhum alimento cadastrado ainda.")
         return
 
-    _rows = []
-    for _, r in _df_banco_all.sort_values(["favorito", "vezes_usado"], ascending=[False, False]).iterrows():
+    st.markdown(_BANCO_HIT_CSS, unsafe_allow_html=True)
+
+    if "banco_busca_applied" not in st.session_state:
+        st.session_state["banco_busca_applied"] = ""
+
+    def _sync_busca():
+        st.session_state["banco_busca_applied"] = (st.session_state.get("banco_busca_q") or "").strip()
+
+    _iq, _ib = st.columns([0.88, 0.12])
+    with _iq:
+        st.text_input(
+            "busca",
+            placeholder="🔍 Digite o nome do alimento...",
+            key="banco_busca_q",
+            label_visibility="collapsed",
+            on_change=_sync_busca,
+        )
+    with _ib:
+        if st.button("🔍", key="banco_busca_go", use_container_width=False, help="Buscar alimentos"):
+            _sync_busca()
+            st.rerun(scope="fragment")
+
+    _term = st.session_state.get("banco_busca_applied", "")
+    _n = len(_df_banco_all)
+
+    if not _term:
+        st.markdown(
+            f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;'
+            f'margin:8px 0 6px">Digite para buscar entre {_n} alimento(s)</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    _hits = (
+        _df_banco_all[_df_banco_all["descricao"].str.contains(_term, case=False, na=False)]
+        .sort_values(["favorito", "vezes_usado"], ascending=[False, False])
+    )
+    if _hits.empty:
+        st.markdown(
+            f'<div style="font-size:11px;color:{GHOST};padding:10px 12px;'
+            f'background:{BG2};border:1px solid {BORDER};border-radius:8px">Nenhum resultado</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    st.markdown(
+        f'<div style="font-family:{MONO};font-size:9px;color:{GHOST};letter-spacing:1px;'
+        f'margin:8px 0 6px">{len(_hits)} resultado(s)</div>',
+        unsafe_allow_html=True,
+    )
+
+    for _, r in _hits.iterrows():
         bid = int(r["id"])
         desc = html_mod.escape(str(r["descricao"]))
-        q = html_mod.escape(str(r["descricao"]).lower())
         fav = int(r.get("favorito") or 0)
-        star = "⭐" if fav else "☆"
         kcal = int(r.get("calorias") or 0)
         prot = float(r.get("proteinas") or 0)
         carb = float(r.get("carboidratos") or 0)
@@ -164,137 +268,61 @@ def _render_banco_busca_live(_df_banco_all: pd.DataFrame):
         used = int(r.get("vezes_usado") or 0)
         qtd = float(r.get("qtd_referencia") or 100)
         unit = html_mod.escape(str(r.get("unidade_referencia") or "g"))
-        _rows.append(
-            f'<div class="banco-hit" data-q="{q}">'
-            f'<div class="banco-hit__info">'
-            f'<div class="banco-hit__name">{"⭐ " if fav else ""}{desc}</div>'
-            f'<div class="banco-hit__ref">Ref: {qtd:.0f} {unit}</div>'
-            f'<div class="banco-hit__macros">'
-            f'<span class="kcal">🔥{kcal}</span>'
-            f'<span class="prot">P:{prot:.0f}g</span>'
-            f'<span class="carb">C:{carb:.0f}g</span>'
-            f'<span class="gord">G:{gord:.0f}g</span>'
-            f'<span class="used">×{used}</span>'
-            f"</div></div>"
-            f'<div class="banco-hit__acts">'
-            f'<a class="banco-act" href="?banco_act=star&banco_id={bid}" target="_parent" title="Favorito">{star}</a>'
-            f'<a class="banco-act" href="?banco_act=edit&banco_id={bid}" target="_parent" title="Editar">✏️</a>'
-            f'<a class="banco-act" href="?banco_act=del&banco_id={bid}" target="_parent" title="Excluir">🗑️</a>'
-            f"</div></div>"
-        )
 
-    _hits_html = "\n".join(_rows)
-    _n = len(_rows)
-    _frame_h = min(520, max(220, 150 + min(_n, 7) * 58))
+        st.markdown('<div class="sh-banco-hit-mark"></div>', unsafe_allow_html=True)
+        _rc, _ra = st.columns([5.6, 1.4], vertical_alignment="center")
+        with _rc:
+            st.markdown(
+                f'<div>'
+                f'<div style="font-size:12px;font-weight:600;color:{TEXT}">'
+                f'{"⭐ " if fav else ""}{desc}</div>'
+                f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};margin-top:2px">'
+                f'Ref: {qtd:.0f} {unit}</div>'
+                f'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;font-size:9px">'
+                f'<span style="font-family:{MONO};color:{AMBER}">🔥{kcal}</span>'
+                f'<span style="color:{GREEN}">P:{prot:.0f}g</span>'
+                f'<span style="color:#2dd4bf">C:{carb:.0f}g</span>'
+                f'<span style="color:{PURPLE}">G:{gord:.0f}g</span>'
+                f'<span style="color:{GHOST}">×{used}</span>'
+                f"</div></div>",
+                unsafe_allow_html=True,
+            )
+        with _ra:
+            _bs1, _bs2, _bs3 = st.columns(3, gap="small")
+            with _bs1:
+                if st.button(
+                    "", key=f"banco_star_{bid}",
+                    icon=STAR_ICON if fav else STAR_OUTLINE_ICON,
+                    help="Favorito",
+                ):
+                    _banco_toggle_star(bid)
+                    st.rerun()
+            with _bs2:
+                if st.button("", key=f"banco_edit_{bid}", icon=EDIT_ICON, help="Editar"):
+                    st.session_state["banco_edit_id"] = bid
+                    st.rerun()
+            with _bs3:
+                if st.button("", key=f"banco_del_{bid}", icon=DELETE_ICON, help="Excluir"):
+                    st.session_state["banco_del_confirm"] = bid
+                    st.rerun()
 
-    _html_doc = f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<style>
-* {{ box-sizing: border-box; }}
-body {{
-  margin: 0; padding: 0;
-  font-family: 'DM Sans', system-ui, sans-serif;
-  background: {BG};
-  color: {TEXT};
-}}
-#banco-live-q {{
-  width: 100%;
-  background: {BG3};
-  border: 1px solid {CYAN};
-  border-radius: 8px;
-  color: {TEXT};
-  font-size: 14px;
-  padding: 10px 12px;
-  outline: none;
-}}
-#banco-live-q::placeholder {{ color: {GHOST}; }}
-#banco-live-meta {{
-  font-family: {MONO};
-  font-size: 9px;
-  color: {GHOST};
-  letter-spacing: 1px;
-  margin: 8px 0 6px;
-}}
-#banco-live-empty {{ display: none; font-size: 11px; color: {GHOST}; padding: 10px 12px;
-  background: {BG2}; border: 1px solid {BORDER}; border-radius: 8px; }}
-#banco-live-list {{ display: none; background: {BG2}; border: 1px solid {BORDER};
-  border-radius: 8px; max-height: 400px; overflow-y: auto; }}
-.banco-hit {{
-  display: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border-bottom: 1px solid {BORDER2};
-}}
-.banco-hit:last-child {{ border-bottom: none; }}
-.banco-hit__info {{ flex: 1; min-width: 0; }}
-.banco-hit__name {{ font-size: 12px; font-weight: 600; color: {TEXT};
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
-.banco-hit__ref {{ font-family: {MONO}; font-size: 9px; color: {CYAN}; margin-top: 2px; }}
-.banco-hit__macros {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; font-size: 9px; }}
-.banco-hit__macros .kcal {{ font-family: {MONO}; color: {AMBER}; }}
-.banco-hit__macros .prot {{ color: {GREEN}; }}
-.banco-hit__macros .carb {{ color: #2dd4bf; }}
-.banco-hit__macros .gord {{ color: {PURPLE}; }}
-.banco-hit__macros .used {{ color: {GHOST}; }}
-.banco-hit__acts {{ display: flex; gap: 6px; flex-shrink: 0; }}
-.banco-act {{
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 34px; height: 34px; border: 1px solid {BORDER}; border-radius: 8px;
-  background: {BG3}; color: {TEXT}; text-decoration: none; font-size: 14px;
-}}
-.banco-act:hover {{ border-color: {CYAN}; color: {CYAN}; background: rgba(0,212,255,0.08); }}
-</style></head><body>
-<input type="search" id="banco-live-q" placeholder="🔍 Digite o nome do alimento..." autocomplete="off" />
-<div id="banco-live-meta">Digite para buscar entre {_n} alimento(s)</div>
-<div id="banco-live-empty">Nenhum resultado</div>
-<div id="banco-live-list">{_hits_html}</div>
-<script>
-(function() {{
-  var q = document.getElementById("banco-live-q");
-  var meta = document.getElementById("banco-live-meta");
-  var empty = document.getElementById("banco-live-empty");
-  var list = document.getElementById("banco-live-list");
-  var hits = list.querySelectorAll(".banco-hit");
-  function filter() {{
-    var term = (q.value || "").toLowerCase().trim();
-    var visible = 0;
-    for (var i = 0; i < hits.length; i++) {{
-      var el = hits[i];
-      var match = term.length > 0 && (el.getAttribute("data-q") || "").indexOf(term) >= 0;
-      el.style.display = match ? "flex" : "none";
-      if (match) visible++;
-    }}
-    if (!term) {{
-      meta.textContent = "Digite para buscar entre {_n} alimento(s)";
-      list.style.display = "none";
-      empty.style.display = "none";
-    }} else if (visible === 0) {{
-      meta.textContent = "0 resultado(s)";
-      list.style.display = "none";
-      empty.style.display = "block";
-    }} else {{
-      meta.textContent = visible + " resultado(s)";
-      list.style.display = "block";
-      empty.style.display = "none";
-    }}
-  }}
-  q.addEventListener("input", filter);
-  q.addEventListener("keyup", filter);
-  filter();
-}})();
-</script>
-</body></html>"""
 
-    embed_html_iframe(_html_doc, _frame_h)
+@st.dialog("Editar alimento", width="medium")
+def _dialog_banco_edit(_brow):
+    from sh_components import section_actions
+
+    _render_banco_edit_form(_brow, in_dialog=True)
+    with section_actions():
+        if st.button("✕ Fechar", key="banco_edit_close_dlg", use_container_width=False):
+            st.session_state.pop("banco_edit_id", None)
+            st.rerun()
 
 
 def render_banco_page():
     DB.init_tables()
     _handle_banco_url_actions()
 
-    from app_sidebar import render_app_sidebar, render_mobile_quick_bar
+    from app_sidebar import render_app_sidebar
 
     render_app_sidebar(
         active_page="banco",
@@ -318,6 +346,8 @@ def render_banco_page():
 
     _banco_cols = st.columns([1.1, 1.9])
 
+    _df_busca = _q_alimentos_favoritos()
+
     with _banco_cols[0]:
         st.markdown(
             f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};font-weight:700;'
@@ -325,7 +355,7 @@ def render_banco_page():
             f'➕ CADASTRAR NOVO ALIMENTO</div>',
             unsafe_allow_html=True,
         )
-        with st.form("form_banco_add_page", clear_on_submit=True):
+        with st.form("form_banco_add_page", clear_on_submit=True, border=False):
             b_desc = st.text_input("Nome do alimento *", placeholder="Ex: Banana, Whey Protein...")
             bcq1, bcq2 = st.columns([2, 1])
             with bcq1:
@@ -339,7 +369,7 @@ def render_banco_page():
             with bc2:
                 b_prot = st.number_input("Prot (g)", min_value=0.0, step=0.5, format="%.1f")
                 b_gord = st.number_input("Gord (g)", min_value=0.0, step=0.5, format="%.1f")
-            if st.form_submit_button("✅ Cadastrar", use_container_width=True):
+            if st.form_submit_button("✅ Cadastrar", use_container_width=False):
                 if b_desc.strip():
                     _existente = DB.query(
                         "SELECT id FROM alimentos_favoritos WHERE descricao=?",
@@ -374,14 +404,6 @@ def render_banco_page():
             f'🔍 BUSCAR ALIMENTO</div>',
             unsafe_allow_html=True,
         )
-        _df_busca = _q_alimentos_favoritos()
-
-        _edit_id = st.session_state.get("banco_edit_id")
-        if _edit_id:
-            _edit_row = _df_busca[_df_busca["id"] == int(_edit_id)]
-            if not _edit_row.empty:
-                _render_banco_edit_form(_edit_row.iloc[0])
-
         _del_id = st.session_state.get("banco_del_confirm")
         if _del_id:
             _del_row = _df_busca[_df_busca["id"] == int(_del_id)]
@@ -390,17 +412,23 @@ def render_banco_page():
                 st.warning(f"Excluir **{_ddesc}**?")
                 _dc1, _dc2 = st.columns(2)
                 with _dc1:
-                    if st.button("Confirmar exclusão", key="banco_del_ok", use_container_width=True):
+                    if st.button("Confirmar exclusão", key="banco_del_ok", use_container_width=False):
                         DB.execute("DELETE FROM alimentos_favoritos WHERE id=?", [int(_del_id)])
                         st.session_state.pop("banco_del_confirm", None)
                         _invalidate_cache(_q_alimentos_favoritos)
                         _notif(f"'{_ddesc}' excluído.")
                         st.rerun()
                 with _dc2:
-                    if st.button("Cancelar", key="banco_del_cancel", use_container_width=True):
+                    if st.button("Cancelar", key="banco_del_cancel", use_container_width=False):
                         st.session_state.pop("banco_del_confirm", None)
                         st.rerun()
 
-        _render_banco_busca_live(_df_busca)
+        _fragment_banco_busca(_df_busca)
 
-    render_mobile_quick_bar(on_dashboard=False)
+    _edit_id = st.session_state.get("banco_edit_id")
+    if _edit_id:
+        _edit_match = _df_busca[_df_busca["id"] == int(_edit_id)]
+        if not _edit_match.empty:
+            _dialog_banco_edit(_edit_match.iloc[0])
+        else:
+            st.session_state.pop("banco_edit_id", None)
