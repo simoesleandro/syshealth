@@ -11,7 +11,7 @@ import nutri_engine as NE
 logging.getLogger("zepp_sync").setLevel(logging.ERROR)
 
 # Identificador visível no deploy (Streamlit Cloud → Management → Logs)
-_APP_BUILD = "2026-06-07-icon-fix"
+_APP_BUILD = "2026-06-07-ref-cart-spacing"
 
 # ── Streamlit Cloud: sincroniza st.secrets → os.environ para db.py ───────────
 # No Streamlit Community Cloud os segredos ficam em st.secrets, não em os.environ.
@@ -356,15 +356,66 @@ html.sh-sm .sh-mob-quick-bar,html.sh-xs .sh-mob-quick-bar{
 html.sh-sm .sh-mob-quick-bar [data-testid="stHorizontalBlock"],
 html.sh-xs .sh-mob-quick-bar [data-testid="stHorizontalBlock"]{
   display:flex!important;gap:8px!important;flex-wrap:nowrap!important}
-.sh-header-actions-mark{display:none!important;height:0!important;margin:0!important;padding:0!important}
+.sh-header-actions-mark,.sh-header-sync-host{display:none!important;height:0!important;margin:0!important;padding:0!important}
+[data-testid="stHorizontalBlock"]:has(.sh-header-actions-mark){
+  align-items:flex-start!important}
 [data-testid="column"]:has(.sh-header-actions-mark){
   padding-right:0!important;margin-right:0!important}
 [data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stVerticalBlock"]{
-  align-items:flex-end!important;width:100%!important;padding:0!important;margin:0!important}
-[data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stMarkdownContainer"]:has(.sh-header-sync){
-  width:100%!important;padding:0!important;margin:0!important}
+  align-items:flex-end!important;justify-content:flex-start!important;
+  width:100%!important;padding:0!important;margin:0!important;gap:0!important}
+.sh-header-right{display:flex!important;flex-direction:column!important;align-items:flex-end!important;
+  width:100%!important;gap:6px!important;margin:0!important;padding:0!important}
+.sh-header-right .sh-header-status-html{
+  font-size:11px!important;line-height:1.5!important;text-align:right!important;width:100%!important;
+  display:flex!important;flex-direction:column!important;align-items:flex-end!important;gap:2px!important}
+.sh-header-right .sh-header-status-line{white-space:nowrap!important}
+.sh-header-sync-btns-row{display:flex!important;flex-direction:row!important;justify-content:flex-end!important;
+  align-items:center!important;gap:10px!important;width:100%!important;margin:0!important;padding:0!important}
+button.sh-hdr-sync-btn{
+  appearance:none!important;-webkit-appearance:none!important;cursor:pointer!important;
+  background:#0c1525!important;border:1px solid #1e2840!important;border-radius:8px!important;
+  color:#e8edf5!important;font-family:var(--sh-font-display)!important;font-size:12px!important;
+  font-weight:600!important;line-height:1!important;letter-spacing:0!important;
+  height:30px!important;min-width:86px!important;padding:0 12px!important;margin:0!important;
+  display:inline-flex!important;align-items:center!important;justify-content:center!important;
+  gap:5px!important;white-space:nowrap!important;box-sizing:border-box!important;
+  transition:border-color .15s,color .15s,background .15s,box-shadow .15s!important}
+button.sh-hdr-sync-btn:hover{
+  color:#00d4ff!important;border-color:rgba(0,212,255,.45)!important;
+  background:rgba(0,212,255,.1)!important;box-shadow:0 0 12px rgba(0,212,255,.15)!important}
+button.sh-hdr-sync-btn:focus-visible{
+  outline:2px solid rgba(0,212,255,.45)!important;outline-offset:2px!important}
+/* Botões sync header — st.button + classe st-key-* (DOM principal, sync nativo) */
+[data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_zepp,
+[data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_hevy{
+  width:100%!important;max-width:92px!important;margin:0!important;padding:0!important}
+[data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_zepp [data-testid="stBaseButton-secondary"],
+[data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_hevy [data-testid="stBaseButton-secondary"],
+[data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_zepp button,
+[data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_hevy button{
+  width:100%!important;min-width:86px!important;max-width:92px!important;
+  height:30px!important;min-height:30px!important;max-height:30px!important;
+  padding:0 12px!important;margin:0!important;box-sizing:border-box!important;
+  display:flex!important;align-items:center!important;justify-content:center!important;
+  line-height:1!important;gap:5px!important;transform:none!important}
+[data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_zepp [data-testid="stBaseButton-secondary"] p,
+[data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_hevy [data-testid="stBaseButton-secondary"] p,
+[data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_zepp button p,
+[data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_hevy button p,
+[data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_zepp [data-testid="stMarkdownContainer"],
+[data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_hevy [data-testid="stMarkdownContainer"]{
+  margin:0!important;padding:0!important;display:flex!important;align-items:center!important;
+  justify-content:center!important;line-height:1!important;height:auto!important;width:auto!important}
+[data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stVerticalBlock"]:has(.sh-header-sync-host)>[data-testid="stHorizontalBlock"]:has(.st-key-hdr_sync_zepp){
+  display:flex!important;justify-content:flex-end!important;align-items:stretch!important;
+  gap:10px!important;width:100%!important;margin:6px 0 0!important;padding:0!important}
+[data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stVerticalBlock"]:has(.sh-header-sync-host)>[data-testid="stHorizontalBlock"]:has(.st-key-hdr_sync_zepp)>[data-testid="column"]:first-child{
+  flex:1 1 auto!important;min-width:0!important;padding:0!important}
+[data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stVerticalBlock"]:has(.sh-header-sync-host)>[data-testid="stHorizontalBlock"]:has(.st-key-hdr_sync_zepp)>[data-testid="column"]:not(:first-child){
+  flex:0 0 92px!important;width:92px!important;min-width:92px!important;max-width:92px!important;padding:0!important}
 .sh-header-sync{display:flex!important;flex-direction:column!important;align-items:flex-end!important;
-  width:100%!important;gap:8px!important;margin:0!important;padding:0!important}
+  width:100%!important;gap:0!important;margin:0!important;padding:0!important}
 .sh-header-sync .sh-header-status-html{
   font-size:11px!important;line-height:1.5!important;text-align:right!important;width:100%!important;
   display:flex!important;flex-direction:column!important;align-items:flex-end!important;gap:2px!important}
@@ -630,7 +681,7 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"]{font-family
 [data-testid="stDialog"]:has(.sh-agua-dialog-host) [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stButton"] button{
   min-height:36px!important;padding:6px 10px!important;font-size:11px!important;font-weight:600!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) .sh-ref-block-sep{
-  height:1px;background:var(--sh-border);margin:16px 0}
+  height:1px;background:var(--sh-border);margin:20px 0!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stSelectbox"] > div,
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stTextInput"] input{
   background:#0c1525!important}
@@ -655,11 +706,52 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"]{font-family
 [data-testid="stDialog"] [data-testid="stModalHeader"] button svg{
   display:block!important;width:20px!important;height:20px!important;
   stroke:#c8d0dc!important;fill:none!important;opacity:1!important}
-/* Modal Nova Refeição — compacto, hover = dashboard */
+/* Modal Nova Refeição — respiro entre blocos */
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]{
-  gap:10px!important}
+  gap:16px!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stHorizontalBlock"]{
-  gap:8px!important;align-items:flex-end!important}
+  gap:12px!important;align-items:center!important}
+.sh-ref-cart-head-mark,.sh-ref-cart-row-mark{display:none!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-head-mark){
+  gap:0!important;margin:12px 0 8px!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-row-mark){
+  gap:0!important;margin:0 0 10px!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-head-mark)>[data-testid="stMarkdownContainer"],
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-row-mark)>[data-testid="stMarkdownContainer"]{
+  display:none!important;height:0!important;min-height:0!important;margin:0!important;padding:0!important;overflow:hidden!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-head-mark)>[data-testid="stHorizontalBlock"],
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-row-mark)>[data-testid="stHorizontalBlock"]{
+  display:grid!important;
+  grid-template-columns:minmax(0,1.8fr) minmax(84px,0.85fr) minmax(0,1.7fr) 38px!important;
+  gap:12px!important;align-items:center!important;width:100%!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-head-mark)>[data-testid="stHorizontalBlock"]>[data-testid="column"],
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-row-mark)>[data-testid="stHorizontalBlock"]>[data-testid="column"]{
+  width:100%!important;min-width:0!important;max-width:none!important;flex:none!important;
+  display:flex!important;flex-direction:column!important;justify-content:center!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-head-mark)>[data-testid="stHorizontalBlock"]>[data-testid="column"]:nth-child(2) [data-testid="stMarkdownContainer"],
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-head-mark)>[data-testid="stHorizontalBlock"]>[data-testid="column"]:nth-child(3) [data-testid="stMarkdownContainer"]{
+  justify-content:center!important;text-align:center!important;width:100%!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-row-mark)>[data-testid="stHorizontalBlock"]>[data-testid="column"]:nth-child(1) [data-testid="stMarkdownContainer"],
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-row-mark)>[data-testid="stHorizontalBlock"]>[data-testid="column"]:nth-child(3) [data-testid="stMarkdownContainer"]{
+  display:flex!important;align-items:center!important;margin:0!important;padding:0!important;width:100%!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-row-mark)>[data-testid="stHorizontalBlock"]>[data-testid="column"]:nth-child(2){
+  align-items:center!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-row-mark)>[data-testid="stHorizontalBlock"]>[data-testid="column"] [data-testid="stElementContainer"]{
+  display:flex!important;align-items:center!important;margin:0!important;width:100%!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-row-mark)>[data-testid="stHorizontalBlock"] [data-testid="stNumberInput"]{
+  margin:0!important;padding:0!important;width:100%!important;max-width:100%!important}
+.sh-ref-cart-total{
+  display:grid!important;
+  grid-template-columns:minmax(0,1.8fr) minmax(84px,0.85fr) minmax(0,1.7fr) 38px!important;
+  gap:12px!important;align-items:center!important;width:100%!important;box-sizing:border-box!important}
+.sh-ref-cart-total__label{font-family:var(--sh-font-mono);font-size:9px;color:var(--sh-text-dim);letter-spacing:.5px}
+.sh-ref-cart-total__macros{display:flex;gap:12px;align-items:center;flex-wrap:nowrap;font-size:11px}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-row-mark)>[data-testid="stHorizontalBlock"] [data-testid="stWidgetLabel"],
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-row-mark)>[data-testid="stHorizontalBlock"] label{
+  display:none!important;height:0!important;min-height:0!important;margin:0!important;padding:0!important;
+  overflow:hidden!important;visibility:hidden!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-cart-row-mark)>[data-testid="stHorizontalBlock"] [data-testid="column"]:has(.sh-ref-rm-col){
+  align-items:center!important;justify-content:center!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stWidgetLabel"] p,
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stWidgetLabel"] label{
   font-family:var(--sh-font-mono)!important;font-size:9px!important;font-weight:700!important;
@@ -672,6 +764,19 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"]{font-family
   letter-spacing:0!important;text-transform:none!important;border-radius:8px!important;
   background:#0c1525!important;border:1px solid #1e2840!important;color:#e8edf5!important;
   transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease,background .18s ease,color .18s ease!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="column"]:has(.sh-ref-rm-col) [data-testid="stButton"]>button,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="column"]:has(.sh-ref-rm-col) [data-testid="stButton"] button{
+  background:transparent!important;border:none!important;box-shadow:none!important;
+  min-width:34px!important;width:34px!important;max-width:34px!important;
+  min-height:34px!important;padding:0!important;font-size:18px!important;font-weight:700!important;
+  color:#c8d0dc!important;transform:none!important;line-height:1!important;display:flex!important;
+  align-items:center!important;justify-content:center!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="column"]:has(.sh-ref-rm-col) [data-testid="stButton"] [data-testid="stIconMaterial"],
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="column"]:has(.sh-ref-rm-col) [data-testid="stButton"] svg{
+  color:#c8d0dc!important;fill:currentColor!important;width:18px!important;height:18px!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="column"]:has(.sh-ref-rm-col) [data-testid="stButton"]>button p,
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="column"]:has(.sh-ref-rm-col) [data-testid="stButton"] button p{
+  display:none!important;width:0!important;height:0!important;overflow:hidden!important;margin:0!important;padding:0!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"] button:hover,
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stHorizontalBlock"] button:hover,
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) details[data-testid="stExpander"] button:hover,
@@ -698,11 +803,14 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"]{font-family
   color:#00d4ff!important;background:rgba(0,212,255,.1)!important;border-radius:6px!important;
   transform:none!important;box-shadow:none!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) .sh-ref-actions-mark+[data-testid="stHorizontalBlock"],
-[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-actions-mark)>[data-testid="stHorizontalBlock"]{
-  gap:8px!important;flex-wrap:wrap!important;justify-content:flex-start!important;margin:8px 0 0!important;width:100%!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-actions-mark)>[data-testid="stHorizontalBlock"],
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-actions-mark) [data-testid="stHorizontalBlock"]{
+  gap:12px!important;flex-wrap:wrap!important;justify-content:center!important;
+  margin:16px 0 8px!important;width:100%!important;row-gap:12px!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) .sh-ref-actions-mark+[data-testid="stHorizontalBlock"] [data-testid="stButton"],
-[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-actions-mark)>[data-testid="stHorizontalBlock"] [data-testid="stButton"]{
-  width:auto!important;flex:0 0 auto!important;align-self:flex-start!important}
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-actions-mark)>[data-testid="stHorizontalBlock"] [data-testid="stButton"],
+[data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-actions-mark) [data-testid="stHorizontalBlock"] [data-testid="stButton"]{
+  width:auto!important;flex:0 0 auto!important;align-self:center!important;margin:0!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stTextInput"] input,
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stNumberInput"] input{
   min-height:32px!important;font-size:12px!important;padding:6px 10px!important;
@@ -721,7 +829,7 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"]{font-family
   font-size:10px!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) details[data-testid="stExpander"]{
   border:1px solid var(--sh-border)!important;border-radius:var(--sh-radius-md)!important;
-  background:var(--sh-bg-subtle)!important;margin-top:2px!important;
+  background:var(--sh-bg-subtle)!important;margin-top:16px!important;
   width:100%!important;max-width:100%!important;
   box-shadow:var(--sh-shadow-sm)!important;
   transition:border-color .2s ease,box-shadow .2s ease,transform .15s ease!important}
@@ -733,13 +841,13 @@ section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"]{font-family
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) details[data-testid="stExpander"] summary:hover{
   background:rgba(0,212,255,.04)!important;color:var(--sh-text)!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-fav-anchor){
-  width:100%!important;max-width:100%!important;padding:0!important;margin-top:4px!important;
+  width:100%!important;max-width:100%!important;padding:0!important;margin-top:12px!important;
   background:transparent!important;border:none!important;box-shadow:none!important}
 .sh-ref-fav-label{
   font-family:var(--sh-font-mono)!important;font-size:9px!important;font-weight:700!important;
-  letter-spacing:1.1px!important;color:var(--sh-accent)!important;margin:0 0 6px!important}
+  letter-spacing:1.1px!important;color:var(--sh-accent)!important;margin:0 0 10px!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-fav-anchor) [data-testid="stHorizontalBlock"]{
-  flex-wrap:wrap!important;gap:6px!important;justify-content:flex-start!important;width:auto!important}
+  flex-wrap:wrap!important;gap:10px!important;justify-content:flex-start!important;width:auto!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-fav-anchor) [data-testid="column"]{
   flex:0 0 auto!important;width:auto!important;min-width:0!important}
 [data-testid="stDialog"]:has(.sh-ref-dialog-host) [data-testid="stVerticalBlock"]:has(.sh-ref-fav-anchor) button{
@@ -768,11 +876,10 @@ html.sh-xs [data-testid="stHorizontalBlock"]:has(.sh-metric--hero)>[data-testid=
 html.sh-sm [data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stVerticalBlock"],
 html.sh-xs [data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stVerticalBlock"]{
   align-items:flex-start!important}
-html.sh-sm .sh-header-sync,html.sh-xs .sh-header-sync{align-items:flex-start!important}
-html.sh-sm .sh-header-sync .sh-header-status-html,html.sh-xs .sh-header-sync .sh-header-status-html{
+html.sh-sm .sh-header-right,html.sh-xs .sh-header-right{align-items:flex-start!important}
+html.sh-sm .sh-header-right .sh-header-status-html,html.sh-xs .sh-header-right .sh-header-status-html{
   align-items:flex-start!important;text-align:left!important}
-html.sh-sm [data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stHorizontalBlock"]:has([data-testid="stButton"]),
-html.sh-xs [data-testid="column"]:has(.sh-header-actions-mark) [data-testid="stHorizontalBlock"]:has([data-testid="stButton"]){
+html.sh-sm .sh-header-right .sh-header-sync-btns-row,html.sh-xs .sh-header-right .sh-header-sync-btns-row{
   justify-content:flex-start!important}
 html.sh-sm .sh-wearable-card__value,html.sh-xs .sh-wearable-card__value{font-size:18px!important}
 @media(max-width:768px){
@@ -2108,6 +2215,7 @@ def _fragment_ref_busca_carrinho(
             unsafe_allow_html=True,
         )
 
+        st.markdown('<div class="sh-ref-cart-head-mark" aria-hidden="true"></div>', unsafe_allow_html=True)
         _ch1, _ch2, _ch3, _ch4 = st.columns([1.8, 0.85, 1.7, 0.18])
         with _ch1:
             st.markdown(
@@ -2116,12 +2224,14 @@ def _fragment_ref_busca_carrinho(
             )
         with _ch2:
             st.markdown(
-                f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1px">PORÇÃO</div>',
+                f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1px;'
+                f'text-align:center;width:100%">PORÇÃO</div>',
                 unsafe_allow_html=True,
             )
         with _ch3:
             st.markdown(
-                f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1px">MACROS</div>',
+                f'<div style="font-family:{MONO};font-size:8px;color:{GHOST};letter-spacing:1px;'
+                f'text-align:center;width:100%">MACROS</div>',
                 unsafe_allow_html=True,
             )
 
@@ -2129,10 +2239,11 @@ def _fragment_ref_busca_carrinho(
         _remover = []
 
         for i, item in enumerate(carrinho):
-            _ci1, _ci2, _ci3, _ci4 = st.columns([1.75, 0.85, 1.65, 0.28])
+            st.markdown('<div class="sh-ref-cart-row-mark" aria-hidden="true"></div>', unsafe_allow_html=True)
+            _ci1, _ci2, _ci3, _ci4 = st.columns([1.8, 0.85, 1.7, 0.18])
             with _ci1:
                 st.markdown(
-                    f'<div style="font-size:11px;color:{TEXT};font-weight:600;padding-top:4px">'
+                    f'<div style="font-size:11px;color:{TEXT};font-weight:600;line-height:1.3">'
                     f'{item["descricao"]}</div>'
                     f'<div style="font-family:{MONO};font-size:9px;color:{CYAN};margin-top:2px">'
                     f'Ref: {item["qtd_ref"]:.0f} {item["unidade"]}</div>',
@@ -2159,7 +2270,8 @@ def _fragment_ref_busca_carrinho(
                 total_carb += _carb_c
                 total_gord += _gord_c
                 st.markdown(
-                    f'<div style="font-size:9px;padding-top:8px;display:flex;gap:8px;flex-wrap:wrap">'
+                    f'<div style="font-size:10px;display:flex;gap:10px;flex-wrap:nowrap;align-items:center;'
+                    f'justify-content:center;width:100%;white-space:nowrap">'
                     f'<span style="font-family:{MONO};color:{AMBER}">🔥{_kcal_c:.0f}</span>'
                     f'<span style="color:{GREEN}">P:{_prot_c:.1f}g</span>'
                     f'<span style="color:#2dd4bf">C:{_carb_c:.1f}g</span>'
@@ -2169,7 +2281,12 @@ def _fragment_ref_busca_carrinho(
                 )
             with _ci4:
                 st.markdown('<div class="sh-ref-rm-col sh-ref-rm-mark" aria-hidden="true"></div>', unsafe_allow_html=True)
-                if st.button("×", key=f"rm_cart_{ks}_{i}", help="Remover item do carrinho"):
+                if st.button(
+                    "",
+                    key=f"rm_cart_{ks}_{i}",
+                    icon=":material/close:",
+                    help="Remover item do carrinho",
+                ):
                     _remover.append(i)
 
         if _remover:
@@ -2178,20 +2295,23 @@ def _fragment_ref_busca_carrinho(
             st.rerun(scope="fragment")
 
         st.markdown(
-            f'<div style="background:{BG2};border:1px solid {BORDER};border-radius:6px;'
-            f'padding:8px 12px;margin:8px 0;display:flex;gap:16px;align-items:center;flex-wrap:wrap">'
-            f'<span style="font-family:{MONO};font-size:9px;color:{GHOST}">TOTAL</span>'
-            f'<span style="font-family:{MONO};font-size:13px;color:{AMBER};font-weight:700">🔥{total_kcal:.0f}</span>'
-            f'<span style="font-size:11px;color:{GREEN}">P:{total_prot:.1f}g</span>'
-            f'<span style="font-size:11px;color:#2dd4bf">C:{total_carb:.1f}g</span>'
-            f'<span style="font-size:11px;color:{PURPLE}">G:{total_gord:.1f}g</span>'
-            f"</div>",
+            f'<div class="sh-ref-cart-total" style="background:{BG2};border:1px solid {BORDER};'
+            f'border-radius:8px;padding:10px 14px;margin:12px 0 16px">'
+            f'<span class="sh-ref-cart-total__label">TOTAL</span>'
+            f'<span></span>'
+            f'<div class="sh-ref-cart-total__macros">'
+            f'<span style="font-family:{MONO};font-size:13px;color:{AMBER};font-weight:700">'
+            f'🔥{total_kcal:.0f}</span>'
+            f'<span style="color:{GREEN}">P:{total_prot:.1f}g</span>'
+            f'<span style="color:#2dd4bf">C:{total_carb:.1f}g</span>'
+            f'<span style="color:{PURPLE}">G:{total_gord:.1f}g</span>'
+            f'</div><span></span></div>',
             unsafe_allow_html=True,
         )
 
         if show_register:
             st.markdown('<div class="sh-ref-actions-mark" aria-hidden="true"></div>', unsafe_allow_html=True)
-            with section_actions():
+            with st.container(horizontal=True, gap="medium"):
                 if st.button("✅ REGISTRAR REFEIÇÃO", key=f"btn_registrar_carrinho{ks}", use_container_width=False):
                     tk, tp, tc, tg, comps, desc = _carrinho_snapshot(carrinho_key, ks)
                     _cat = register_cat or _cat_hora()
@@ -2222,7 +2342,7 @@ def _fragment_ref_busca_carrinho(
                     st.session_state[carrinho_key] = []
                     st.rerun(scope="fragment")
 
-    st.markdown(f'<div style="height:1px;background:{BORDER};margin:6px 0 4px"></div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="height:1px;background:{BORDER};margin:16px 0 12px"></div>', unsafe_allow_html=True)
 
 
 def _open_refeicao_dialog():
@@ -2984,15 +3104,8 @@ def _qp_sync_val():
     return val
 
 
-def _handle_sync_query():
-    """Sync Zepp/Hevy via ?sync=zepp|hevy (botões HTML no header — mesma aba)."""
-    sync = _qp_sync_val()
-    if sync not in ("zepp", "hevy"):
-        return
-    try:
-        st.query_params.clear()
-    except Exception:
-        pass
+def _run_header_sync(sync: str):
+    """Executa sync Zepp/Hevy (st.button no header ou ?sync= na URL)."""
     if sync == "zepp":
         with st.spinner("Zepp…"):
             _sync_result = _zepp_sync_dashboard(hoje_sql)
@@ -3001,7 +3114,7 @@ def _handle_sync_query():
             _sync_result,
             "ok" if "passos" in _sync_result or "sincronizado" in _sync_result.lower() else "info",
         )
-    else:
+    elif sync == "hevy":
         with st.spinner("Hevy…"):
             _h_sync_result = _hevy_sync_dashboard()
         _invalidate_cache(_q_hevy_hoje, _q_hevy_ultimo)
@@ -3012,22 +3125,17 @@ def _handle_sync_query():
     st.rerun()
 
 
-_HEADER_SYNC_JS = """
-<script>
-(function(){
-  if(window.__shHeaderSyncInit)return;
-  window.__shHeaderSyncInit=true;
-  document.addEventListener('click',function(e){
-    var btn=e.target.closest('[data-sh-sync]');
-    if(!btn)return;
-    e.preventDefault();
-    var url=new URL(window.location.href);
-    url.searchParams.set('sync',btn.getAttribute('data-sh-sync'));
-    window.location.assign(url.toString());
-  });
-})();
-</script>
-"""
+def _handle_sync_query():
+    """Fallback sync via ?sync=zepp|hevy (links externos / bookmark)."""
+    sync = _qp_sync_val()
+    if sync not in ("zepp", "hevy"):
+        return
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+    _run_header_sync(sync)
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # APP HEADER (identidade + sync — métricas ficam na página Visão)
@@ -3046,8 +3154,9 @@ with _h_brand:
     )
 with _h_actions:
     st.markdown('<div class="sh-header-actions-mark" aria-hidden="true"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sh-header-sync-host" aria-hidden="true"></div>', unsafe_allow_html=True)
     st.markdown(
-        f'<div class="sh-header-sync">'
+        f'<div class="sh-header-right">'
         f'<div class="sh-header-status-html">'
         f'<span class="sh-header-status-line" style="color:{_zepp_status_cor}">'
         f'<span class="sh-status-dot" style="background:{_zepp_status_cor}"></span>'
@@ -3055,14 +3164,18 @@ with _h_actions:
         f'<span class="sh-header-status-line" style="color:{_hevy_status_cor}">'
         f'<span class="sh-status-dot" style="background:{_hevy_status_cor}"></span>'
         f'Hevy · {_hevy_status_txt}</span>'
-        f'</div>'
-        f'<div class="sh-header-sync-btns">'
-        f'<button type="button" class="sh-sync-link" data-sh-sync="zepp">⌚ Zepp</button>'
-        f'<button type="button" class="sh-sync-link" data-sh-sync="hevy">💪 Hevy</button>'
         f'</div></div>',
         unsafe_allow_html=True,
     )
-    st.html(_HEADER_SYNC_JS)
+    _bs, _bz, _bh = st.columns([2.2, 0.95, 0.95])
+    with _bs:
+        st.empty()
+    with _bz:
+        if st.button("⌚ Zepp", key="hdr_sync_zepp", use_container_width=True):
+            _run_header_sync("zepp")
+    with _bh:
+        if st.button("💪 Hevy", key="hdr_sync_hevy", use_container_width=True):
+            _run_header_sync("hevy")
 st.markdown(f'<div style="border-bottom:1px solid {BORDER};margin-bottom:12px;padding-bottom:4px"></div>', unsafe_allow_html=True)
 st.markdown(
     f'<div class="sh-mobile-hint">'

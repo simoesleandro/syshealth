@@ -327,10 +327,10 @@ def render_banco_page():
     render_app_sidebar(
         active_page="banco",
         quick_actions={
-            "refeicao": lambda: _open_dialog_on_dashboard("refeicao"),
-            "editar": lambda: _open_dialog_on_dashboard("editar"),
-            "agua": lambda: _open_dialog_on_dashboard("agua"),
-            "supp": lambda: _open_dialog_on_dashboard("supp"),
+            "refeicao": True,
+            "editar": True,
+            "agua": True,
+            "supp": True,
         },
     )
 

@@ -387,10 +387,12 @@ def _nav_to_dashboard_section(section: str):
     st.session_state["_pending_switch"] = DASHBOARD_PAGE
 
 
-def _queue_open_dialog(dlg: str):
+def _queue_open_dialog(dlg: str, active_page: str = "dashboard"):
     if dlg == "refeicao":
         st.session_state["_ref_busca_reset"] = True
     st.session_state["open_dialog"] = dlg
+    if active_page != "dashboard":
+        st.session_state["_pending_switch"] = DASHBOARD_PAGE
 
 
 def _sidebar_goto_banco():
@@ -445,7 +447,7 @@ def _render_quick_actions(active_page: str, quick_actions: Optional[dict[str, Ca
             key=f"sb_{action_key}_{active_page}",
             use_container_width=True,
             on_click=_queue_open_dialog,
-            kwargs={"dlg": action_key},
+            kwargs={"dlg": action_key, "active_page": active_page},
         )
     if active_page == "banco":
         st.button(

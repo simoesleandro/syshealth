@@ -118,6 +118,31 @@ section[data-testid="stSidebar"] [data-testid="stButton"] > button:hover{
 [data-testid="stHorizontalBlock"]:has(.sh-metric--compact) > [data-testid="column"]{
   flex:1 1 auto!important;width:auto!important}
 
+/* Header sync — st.button + st-key-hdr_sync_* (override FLUID_BUTTONS) */
+.stApp [data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_zepp [data-testid="stBaseButton-secondary"],
+.stApp [data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_hevy [data-testid="stBaseButton-secondary"],
+.stApp [data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_zepp button,
+.stApp [data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_hevy button{
+  background:#0c1525!important;border:1px solid #1e2840!important;box-shadow:none!important;
+  width:100%!important;min-width:86px!important;max-width:92px!important;
+  height:30px!important;min-height:30px!important;max-height:30px!important;
+  padding:0 12px!important;margin:0!important;box-sizing:border-box!important;
+  display:flex!important;align-items:center!important;justify-content:center!important;
+  line-height:1!important;gap:5px!important;transform:none!important;white-space:nowrap!important}
+.stApp [data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_zepp [data-testid="stBaseButton-secondary"]:hover,
+.stApp [data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_hevy [data-testid="stBaseButton-secondary"]:hover,
+.stApp [data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_zepp button:hover,
+.stApp [data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_hevy button:hover{
+  color:#00d4ff!important;background:rgba(0,212,255,.1)!important;
+  border-color:rgba(0,212,255,.45)!important;box-shadow:0 0 12px rgba(0,212,255,.15)!important;
+  transform:none!important}
+.stApp [data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_zepp [data-testid="stBaseButton-secondary"] p,
+.stApp [data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_hevy [data-testid="stBaseButton-secondary"] p,
+.stApp [data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_zepp button p,
+.stApp [data-testid="column"]:has(.sh-header-actions-mark) .st-key-hdr_sync_hevy button p{
+  margin:0!important;padding:0!important;display:flex!important;align-items:center!important;
+  justify-content:center!important;line-height:1!important;height:auto!important;width:auto!important}
+
 /* Modal — X do header: ghost, hover ciano sem caixa */
 [data-testid="stDialog"] header button:hover,
 [data-testid="stDialog"] [data-testid="stModalHeader"] button:hover{
