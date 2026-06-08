@@ -1,3 +1,7 @@
+### ⚠️ AVISO DE DEPRECIAÇÃO
+Este projeto foi a primeira versão do sistema (Python/Streamlit) e está arquivado. 
+A versão definitiva encontra-se em: [[https://github.com/simoesleandro/sys-health]]
+
 # ⚡ SYS.HEALTH
 
 > Ecossistema pessoal de saúde e performance — dashboard em tempo real, bot Telegram com IA e sincronização automática de wearable.
